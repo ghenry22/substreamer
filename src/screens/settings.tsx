@@ -1,13 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 
 import { useTheme } from '../hooks/useTheme';
 import { clearApiCache } from '../services/subsonicService';
 import type { ThemePreference } from '../store/themeStore';
+import { DEFAULT_PRIMARY_COLOR } from '../store/themeStore';
 import { authStore } from '../store/authStore';
 import {
   layoutPreferencesStore,
@@ -52,9 +53,31 @@ const LAYOUT_ROWS: { key: 'albumLayout' | 'artistLayout' | 'playlistLayout'; lab
   { key: 'playlistLayout', label: 'Playlists' },
 ];
 
+const ACCENT_COLORS: { label: string; hex: string }[] = [
+  { label: 'Default', hex: '#1D9BF0' },
+  { label: 'Red', hex: '#E91429' },
+  { label: 'Green', hex: '#00BA7C' },
+  { label: 'Orange', hex: '#FF6F00' },
+  { label: 'Purple', hex: '#7B61FF' },
+  { label: 'Pink', hex: '#F91880' },
+  { label: 'Teal', hex: '#00BCD4' },
+  { label: 'Yellow', hex: '#FFD600' },
+];
+
 export function SettingsScreen() {
   const router = useRouter();
-  const { colors, preference, setThemePreference } = useTheme();
+  const { colors, preference, primaryColor, setThemePreference, setPrimaryColor } = useTheme();
+  const activePrimary = primaryColor ?? DEFAULT_PRIMARY_COLOR;
+  const [accentOpen, setAccentOpen] = useState(false);
+  const activeAccentLabel = ACCENT_COLORS.find((c) => c.hex === activePrimary)?.label ?? 'Custom';
+
+  const handleAccentSelect = useCallback(
+    (hex: string) => {
+      setPrimaryColor(hex === DEFAULT_PRIMARY_COLOR ? null : hex);
+      setAccentOpen(false);
+    },
+    [setPrimaryColor]
+  );
   const serverInfo = serverInfoStore(
     useShallow((s) => ({
       serverType: s.serverType,
@@ -215,6 +238,75 @@ export function SettingsScreen() {
       </View>
 
       <View style={styles.section}>
+        <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>Accent color</Text>
+        <View style={[styles.accentDropdown, { backgroundColor: colors.card }]}>
+          <Pressable
+            onPress={() => setAccentOpen((prev) => !prev)}
+            style={({ pressed }) => [
+              styles.accentHeader,
+              pressed && styles.themeRowPressed,
+            ]}
+          >
+            <View style={styles.accentChip}>
+              <View style={[styles.chipDot, { backgroundColor: activePrimary }]} />
+              <Text style={[styles.chipLabel, { color: colors.textPrimary }]}>
+                {activeAccentLabel}
+              </Text>
+            </View>
+            <Ionicons
+              name={accentOpen ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color={colors.textSecondary}
+            />
+          </Pressable>
+          {accentOpen && (
+            <View style={[styles.accentList, { borderTopColor: colors.border }]}>
+              {ACCENT_COLORS.map((c) => {
+                const isActive = activePrimary === c.hex;
+                return (
+                  <Pressable
+                    key={c.hex}
+                    onPress={() => handleAccentSelect(c.hex)}
+                    style={({ pressed }) => [
+                      styles.accentOption,
+                      { borderBottomColor: colors.border },
+                      pressed && styles.themeRowPressed,
+                    ]}
+                  >
+                    <View style={styles.accentChip}>
+                      <View style={[styles.chipDot, { backgroundColor: c.hex }]} />
+                      <Text style={[styles.chipLabel, { color: colors.textPrimary }]}>
+                        {c.label}
+                      </Text>
+                    </View>
+                    {isActive && (
+                      <Ionicons name="checkmark" size={20} color={colors.primary} />
+                    )}
+                  </Pressable>
+                );
+              })}
+              {primaryColor != null && (
+                <Pressable
+                  onPress={() => {
+                    setPrimaryColor(null);
+                    setAccentOpen(false);
+                  }}
+                  style={({ pressed }) => [
+                    styles.resetButton,
+                    pressed && styles.themeRowPressed,
+                  ]}
+                >
+                  <Text style={[styles.resetButtonText, { color: colors.textSecondary }]}>
+                    Reset to default
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+          )}
+        </View>
+      </View>
+
+      <View style={styles.section}>
         <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>Default layouts</Text>
         <View style={styles.themeCard}>
           {LAYOUT_ROWS.map((row) => {
@@ -365,6 +457,50 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontStyle: 'italic',
     padding: 16,
+  },
+  accentDropdown: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  accentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  accentList: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  accentOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  accentChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  chipDot: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+  },
+  chipLabel: {
+    fontSize: 16,
+  },
+  resetButton: {
+    alignSelf: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+  },
+  resetButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   layoutRow: {
     flexDirection: 'row',
