@@ -40,12 +40,19 @@ export const AlbumRow = memo(function AlbumRow({ album }: { album: AlbumID3 }) {
     >
       <Image source={{ uri }} style={styles.cover} resizeMode="cover" />
       <View style={styles.text}>
-        <Text
-          style={[styles.albumName, { color: colors.textPrimary }]}
-          numberOfLines={1}
-        >
-          {album.name}
-        </Text>
+        <View style={styles.titleRow}>
+          <Text
+            style={[styles.albumName, { color: colors.textPrimary }]}
+            numberOfLines={1}
+          >
+            {album.name}
+          </Text>
+          {album.year != null && album.year > 0 && (
+            <Text style={[styles.year, { color: colors.textSecondary }]}>
+              ({album.year})
+            </Text>
+          )}
+        </View>
         <Text
           style={[styles.artistName, { color: colors.textSecondary }]}
           numberOfLines={1}
@@ -89,9 +96,18 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 12,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
   albumName: {
     fontSize: 16,
     fontWeight: '600',
+    flexShrink: 1,
+  },
+  year: {
+    fontSize: 14,
+    marginLeft: 6,
   },
   artistName: {
     fontSize: 14,

@@ -3,6 +3,8 @@ import SubsonicAPI, {
   type AlbumID3,
   type AlbumWithSongsID3,
   type ArtistID3,
+  type ArtistInfo2,
+  type ArtistWithAlbumsID3,
   type Child,
   type Playlist,
   type PlaylistWithSongs,
@@ -99,7 +101,7 @@ export function clearApiCache(): void {
   cachedCoverArtToken = null;
 }
 
-export type { AlbumID3, AlbumWithSongsID3, ArtistID3, Child, Playlist, PlaylistWithSongs };
+export type { AlbumID3, AlbumWithSongsID3, ArtistID3, ArtistInfo2, ArtistWithAlbumsID3, Child, Playlist, PlaylistWithSongs };
 
 export async function ensureCoverArtAuth(): Promise<void> {
   const { isLoggedIn, serverUrl, username, password } = authStore.getState();
@@ -237,6 +239,47 @@ export async function getAllArtists(): Promise<ArtistID3[]> {
   const response = await api.getArtists();
   const indexes = response.artists?.index ?? [];
   return indexes.flatMap((idx) => idx.artist ?? []);
+}
+
+/**
+ * Fetch a single artist by ID, including their albums.
+ */
+export async function getArtist(id: string): Promise<ArtistWithAlbumsID3 | null> {
+  const api = getApi();
+  if (!api) return null;
+  const response = await api.getArtist({ id });
+  return response.artist ?? null;
+}
+
+/**
+ * Fetch additional info for an artist (biography, similar artists, images).
+ * Returns null gracefully if the server does not support this endpoint.
+ */
+export async function getArtistInfo2(id: string): Promise<ArtistInfo2 | null> {
+  const api = getApi();
+  if (!api) return null;
+  try {
+    const response = await api.getArtistInfo2({ id });
+    return response.artistInfo2 ?? null;
+  } catch {
+    // Some servers don't support getArtistInfo2
+    return null;
+  }
+}
+
+/**
+ * Fetch top songs for a given artist by name.
+ * Returns an empty array if the server does not support this endpoint.
+ */
+export async function getTopSongs(artistName: string, count = 20): Promise<Child[]> {
+  const api = getApi();
+  if (!api) return [];
+  try {
+    const response = await api.getTopSongs({ artist: artistName, count } as any);
+    return response.topSongs?.song ?? [];
+  } catch {
+    return [];
+  }
 }
 
 /**

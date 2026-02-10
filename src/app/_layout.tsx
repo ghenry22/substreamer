@@ -92,7 +92,13 @@ export default function RootLayout() {
         />
         <Stack.Screen
           name="artist/[id]"
-          options={{ title: 'Artist', headerBackTitle: 'Back' }}
+          options={{
+            title: '',
+            headerBackTitle: 'Back',
+            headerTransparent: true,
+            headerStyle: { backgroundColor: 'transparent' },
+            contentStyle: { backgroundColor: 'transparent' },
+          }}
         />
         <Stack.Screen
           name="playlist/[id]"
