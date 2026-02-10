@@ -5,6 +5,7 @@ import SubsonicAPI, {
   type ArtistID3,
   type Child,
   type Playlist,
+  type PlaylistWithSongs,
 } from 'subsonic-api';
 
 import { authStore } from '../store/authStore';
@@ -98,7 +99,7 @@ export function clearApiCache(): void {
   cachedCoverArtToken = null;
 }
 
-export type { AlbumID3, AlbumWithSongsID3, ArtistID3, Child, Playlist };
+export type { AlbumID3, AlbumWithSongsID3, ArtistID3, Child, Playlist, PlaylistWithSongs };
 
 export async function ensureCoverArtAuth(): Promise<void> {
   const { isLoggedIn, serverUrl, username, password } = authStore.getState();
@@ -246,6 +247,16 @@ export async function getAllPlaylists(): Promise<Playlist[]> {
   if (!api) return [];
   const response = await api.getPlaylists();
   return response.playlists?.playlist ?? [];
+}
+
+/**
+ * Fetch a single playlist by ID, including its songs.
+ */
+export async function getPlaylist(id: string): Promise<PlaylistWithSongs | null> {
+  const api = getApi();
+  if (!api) return null;
+  const response = await api.getPlaylist({ id });
+  return response.playlist ?? null;
 }
 
 export async function fetchServerInfo(): Promise<ServerInfo | null> {
