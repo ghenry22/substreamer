@@ -55,10 +55,14 @@ export function PlaylistDetailScreen() {
     else setLoading(true);
     setError(null);
     try {
+      const minDelay = isRefresh
+        ? new Promise((resolve) => setTimeout(resolve, 2000))
+        : null;
       await ensureCoverArtAuth();
       const data = await getPlaylist(id);
       setPlaylist(data);
       if (!data) setError('Playlist not found');
+      await minDelay;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load playlist');
     } finally {
