@@ -11,6 +11,7 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import { fetch } from 'expo/fetch';
 
+import { imageCacheStore } from '../store/imageCacheStore';
 import { ensureCoverArtAuth, getCoverArtUrl } from './subsonicService';
 
 /* ------------------------------------------------------------------ */
@@ -113,6 +114,7 @@ async function downloadOne(
 
     const bytes = new Uint8Array(await response.arrayBuffer());
     file.write(bytes);
+    imageCacheStore.getState().addFile(bytes.length);
   } catch {
     // Swallow – caching is best-effort.
   }
@@ -184,5 +186,6 @@ export function clearImageCache(): number {
   // Recreate.
   cacheDir = null;
   initImageCache();
+  imageCacheStore.getState().reset();
   return freedBytes;
 }

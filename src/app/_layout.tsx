@@ -8,6 +8,7 @@ import AnimatedSplashScreen from '../components/AnimatedSplashScreen';
 import { useTheme } from '../hooks/useTheme';
 import { initImageCache } from '../services/imageCacheService';
 import { albumListsStore } from '../store/albumListsStore';
+import { imageCacheStore } from '../store/imageCacheStore';
 import { authStore, clearPersistedData } from '../store/authStore';
 import { fetchServerInfo } from '../services/subsonicService';
 import { serverInfoStore } from '../store/serverInfoStore';
@@ -19,6 +20,9 @@ SplashScreen.preventAutoHideAsync();
 
 // Initialise the on-disk image cache directory at module load.
 initImageCache();
+
+// Reconcile persisted cache stats with the actual filesystem.
+imageCacheStore.getState().recalculate();
 
 export default function RootLayout() {
   const [splashVisible, setSplashVisible] = useState(true);

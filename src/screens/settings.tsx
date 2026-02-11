@@ -1,16 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 
 import { useTheme } from '../hooks/useTheme';
-import {
-  clearImageCache,
-  getImageCacheStats,
-  type ImageCacheStats,
-} from '../services/imageCacheService';
+import { clearImageCache } from '../services/imageCacheService';
+import { imageCacheStore, getImageCount } from '../store/imageCacheStore';
 import { clearApiCache } from '../services/subsonicService';
 import type { ThemePreference } from '../store/themeStore';
 import { DEFAULT_PRIMARY_COLOR } from '../store/themeStore';
@@ -88,13 +85,10 @@ export function SettingsScreen() {
   const { colors, preference, primaryColor, setThemePreference, setPrimaryColor } = useTheme();
   const activePrimary = primaryColor ?? DEFAULT_PRIMARY_COLOR;
   const [accentOpen, setAccentOpen] = useState(false);
-  const [cacheStats, setCacheStats] = useState<ImageCacheStats>({ totalBytes: 0, imageCount: 0 });
+  const totalBytes = imageCacheStore((s) => s.totalBytes);
+  const fileCount = imageCacheStore((s) => s.fileCount);
+  const imageCount = getImageCount(fileCount);
   const activeAccentLabel = ACCENT_COLORS.find((c) => c.hex === activePrimary)?.label ?? 'Custom';
-
-  // Refresh cache stats on mount.
-  useEffect(() => {
-    setCacheStats(getImageCacheStats());
-  }, []);
 
   const handleAccentSelect = useCallback(
     (hex: string) => {
@@ -169,7 +163,7 @@ export function SettingsScreen() {
   const handleClearCache = useCallback(() => {
     Alert.alert(
       'Clear Image Cache',
-      `This will remove ${formatBytes(cacheStats.totalBytes)} of cached images. Continue?`,
+      `This will remove ${formatBytes(totalBytes)} of cached images. Continue?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -177,12 +171,11 @@ export function SettingsScreen() {
           style: 'destructive',
           onPress: () => {
             clearImageCache();
-            setCacheStats(getImageCacheStats());
           },
         },
       ],
     );
-  }, [cacheStats.totalBytes]);
+  }, [totalBytes]);
 
   const dynamicStyles = useMemo(
     () =>
@@ -460,13 +453,13 @@ export function SettingsScreen() {
           <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
             <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Cached images</Text>
             <Text style={[styles.infoValue, { color: colors.textPrimary }]}>
-              {cacheStats.imageCount} {cacheStats.imageCount === 1 ? 'image' : 'images'}
+              {imageCount} {imageCount === 1 ? 'image' : 'images'}
             </Text>
           </View>
           <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
             <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>Disk usage</Text>
             <Text style={[styles.infoValue, { color: colors.textPrimary }]}>
-              {formatBytes(cacheStats.totalBytes)}
+              {formatBytes(totalBytes)}
             </Text>
           </View>
           <Pressable
