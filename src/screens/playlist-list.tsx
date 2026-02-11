@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { PlaylistListView, type PlaylistLayout } from '../components/PlaylistListView';
@@ -19,8 +19,14 @@ export function PlaylistListScreen({ layout = 'list' }: { layout?: PlaylistLayou
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleRefresh = useCallback(() => {
-    fetchAllPlaylists();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    const minDelay = new Promise((resolve) => setTimeout(resolve, 2000));
+    await fetchAllPlaylists();
+    await minDelay;
+    setRefreshing(false);
   }, [fetchAllPlaylists]);
 
   return (
@@ -31,7 +37,7 @@ export function PlaylistListScreen({ layout = 'list' }: { layout?: PlaylistLayou
         loading={loading}
         error={error}
         onRefresh={handleRefresh}
-        refreshing={loading && playlists.length > 0}
+        refreshing={refreshing}
         showAlphabetScroller={layout === 'list'}
       />
     </View>

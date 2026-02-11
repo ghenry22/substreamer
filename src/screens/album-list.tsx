@@ -84,7 +84,9 @@ export function AlbumListScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
+    const minDelay = new Promise((resolve) => setTimeout(resolve, 2000));
     await fetchAlbums();
+    await minDelay;
     setRefreshing(false);
   }, [fetchAlbums]);
 

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import {
   Image,
   Pressable,
@@ -175,8 +175,15 @@ export function SearchScreen() {
     });
   }
 
-  const handleRefresh = useCallback(() => {
-    if (query.trim()) performSearch();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(async () => {
+    if (!query.trim()) return;
+    setRefreshing(true);
+    const minDelay = new Promise((resolve) => setTimeout(resolve, 2000));
+    await performSearch();
+    await minDelay;
+    setRefreshing(false);
   }, [query, performSearch]);
 
   const renderItem = useCallback(
@@ -256,7 +263,7 @@ export function SearchScreen() {
         stickySectionHeadersEnabled={false}
         showsVerticalScrollIndicator={false}
         onRefresh={handleRefresh}
-        refreshing={loading}
+        refreshing={refreshing}
         keyboardShouldPersistTaps="handled"
       />
     </View>

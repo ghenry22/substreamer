@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AlbumListView, type AlbumLayout } from '../components/AlbumListView';
@@ -19,8 +19,14 @@ export function AlbumLibraryListScreen({ layout = 'list' }: { layout?: AlbumLayo
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleRefresh = useCallback(() => {
-    fetchAllAlbums();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    const minDelay = new Promise((resolve) => setTimeout(resolve, 2000));
+    await fetchAllAlbums();
+    await minDelay;
+    setRefreshing(false);
   }, [fetchAllAlbums]);
 
   return (
@@ -31,7 +37,7 @@ export function AlbumLibraryListScreen({ layout = 'list' }: { layout?: AlbumLayo
         loading={loading}
         error={error}
         onRefresh={handleRefresh}
-        refreshing={loading && albums.length > 0}
+        refreshing={refreshing}
         showAlphabetScroller={layout === 'list'}
       />
     </View>

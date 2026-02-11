@@ -151,11 +151,15 @@ export function FavoritesScreen() {
   ]);
 
   /* ---- Pull-to-refresh ---- */
-  const handleRefresh = useCallback(() => {
-    fetchStarred();
-  }, [fetchStarred]);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const isRefreshing = loading && (songs.length > 0 || albums.length > 0 || artists.length > 0);
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    const minDelay = new Promise((resolve) => setTimeout(resolve, 2000));
+    await fetchStarred();
+    await minDelay;
+    setRefreshing(false);
+  }, [fetchStarred]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -168,7 +172,7 @@ export function FavoritesScreen() {
             loading={loading}
             error={error}
             onRefresh={handleRefresh}
-            refreshing={isRefreshing}
+            refreshing={refreshing}
             emptyMessage="No favorite songs yet"
             emptyIcon="heart-outline"
           />
@@ -180,7 +184,7 @@ export function FavoritesScreen() {
             loading={loading}
             error={error}
             onRefresh={handleRefresh}
-            refreshing={isRefreshing}
+            refreshing={refreshing}
             emptyMessage="No favorite albums yet"
             emptyIcon="heart-outline"
           />
@@ -192,7 +196,7 @@ export function FavoritesScreen() {
             loading={loading}
             error={error}
             onRefresh={handleRefresh}
-            refreshing={isRefreshing}
+            refreshing={refreshing}
             emptyMessage="No favorite artists yet"
             emptyIcon="heart-outline"
           />

@@ -182,6 +182,9 @@ export function ArtistDetailScreen() {
     setError(null);
     setBiography(null);
     try {
+      const minDelay = isRefresh
+        ? new Promise((resolve) => setTimeout(resolve, 2000))
+        : null;
       await ensureCoverArtAuth();
 
       const [artistData, infoData] = await Promise.all([
@@ -213,6 +216,7 @@ export function ArtistDetailScreen() {
           if (mbBio) setBiography(stripHtml(mbBio));
         }
       }
+      await minDelay;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load artist');
     } finally {

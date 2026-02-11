@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { ArtistListView, type ArtistLayout } from '../components/ArtistListView';
@@ -19,8 +19,14 @@ export function ArtistListScreen({ layout = 'list' }: { layout?: ArtistLayout })
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleRefresh = useCallback(() => {
-    fetchAllArtists();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    const minDelay = new Promise((resolve) => setTimeout(resolve, 2000));
+    await fetchAllArtists();
+    await minDelay;
+    setRefreshing(false);
   }, [fetchAllArtists]);
 
   return (
@@ -31,7 +37,7 @@ export function ArtistListScreen({ layout = 'list' }: { layout?: ArtistLayout })
         loading={loading}
         error={error}
         onRefresh={handleRefresh}
-        refreshing={loading && artists.length > 0}
+        refreshing={refreshing}
         showAlphabetScroller={layout === 'list'}
       />
     </View>
