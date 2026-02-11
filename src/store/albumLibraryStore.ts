@@ -8,6 +8,7 @@ import {
   searchAllAlbums,
   type AlbumID3,
 } from '../services/subsonicService';
+import { layoutPreferencesStore } from './layoutPreferencesStore';
 
 export interface AlbumLibraryState {
   /** All albums in the user's library */
@@ -25,6 +26,8 @@ export interface AlbumLibraryState {
    * If the result set is empty, fall back to paginated getAlbumList2.
    */
   fetchAllAlbums: () => Promise<void>;
+  /** Re-sort the in-memory album list using the current sort preference. */
+  resortAlbums: () => void;
   /** Clear all album data */
   clearAlbums: () => void;
 }
@@ -55,9 +58,11 @@ export const albumLibraryStore = create<AlbumLibraryState>()(
             albums = await getAllAlbumsAlphabetical();
           }
 
-          // Ensure albums are sorted alphabetically by artist name
+          // Sort albums according to the user's preferred sort order
+          const sortOrder = layoutPreferencesStore.getState().albumSortOrder;
+          const sortKey = sortOrder === 'title' ? 'name' : 'artist';
           albums.sort((a, b) =>
-            (a.artist ?? '').localeCompare(b.artist ?? '', undefined, {
+            (a[sortKey] ?? '').localeCompare(b[sortKey] ?? '', undefined, {
               sensitivity: 'base',
             })
           );
@@ -73,6 +78,19 @@ export const albumLibraryStore = create<AlbumLibraryState>()(
             error: e instanceof Error ? e.message : 'Failed to load albums',
           });
         }
+      },
+
+      resortAlbums: () => {
+        const current = get().albums;
+        if (current.length === 0) return;
+        const sortOrder = layoutPreferencesStore.getState().albumSortOrder;
+        const sortKey = sortOrder === 'title' ? 'name' : 'artist';
+        const sorted = [...current].sort((a, b) =>
+          (a[sortKey] ?? '').localeCompare(b[sortKey] ?? '', undefined, {
+            sensitivity: 'base',
+          })
+        );
+        set({ albums: sorted });
       },
 
       clearAlbums: () =>

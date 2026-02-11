@@ -14,6 +14,7 @@ import { DEFAULT_PRIMARY_COLOR } from '../store/themeStore';
 import { authStore } from '../store/authStore';
 import {
   layoutPreferencesStore,
+  type AlbumSortOrder,
   type ItemLayout,
 } from '../store/layoutPreferencesStore';
 import { serverInfoStore } from '../store/serverInfoStore';
@@ -69,6 +70,11 @@ const FAV_LAYOUT_ROWS: { key: 'favSongLayout' | 'favAlbumLayout' | 'favArtistLay
   { key: 'favArtistLayout', label: 'Artists' },
 ];
 
+const ALBUM_SORT_OPTIONS: { value: AlbumSortOrder; label: string }[] = [
+  { value: 'artist', label: 'Artist name' },
+  { value: 'title', label: 'Album title' },
+];
+
 const ACCENT_COLORS: { label: string; hex: string }[] = [
   { label: 'Default', hex: '#1D9BF0' },
   { label: 'Red', hex: '#E91429' },
@@ -85,6 +91,7 @@ export function SettingsScreen() {
   const { colors, preference, primaryColor, setThemePreference, setPrimaryColor } = useTheme();
   const activePrimary = primaryColor ?? DEFAULT_PRIMARY_COLOR;
   const [accentOpen, setAccentOpen] = useState(false);
+  const [sortOrderOpen, setSortOrderOpen] = useState(false);
   const totalBytes = imageCacheStore((s) => s.totalBytes);
   const fileCount = imageCacheStore((s) => s.fileCount);
   const imageCount = getImageCount(fileCount);
@@ -114,6 +121,9 @@ export function SettingsScreen() {
   const setAlbumLayout = layoutPreferencesStore((s) => s.setAlbumLayout);
   const setArtistLayout = layoutPreferencesStore((s) => s.setArtistLayout);
   const setPlaylistLayout = layoutPreferencesStore((s) => s.setPlaylistLayout);
+
+  const albumSortOrder = layoutPreferencesStore((s) => s.albumSortOrder);
+  const setAlbumSortOrder = layoutPreferencesStore((s) => s.setAlbumSortOrder);
 
   const favSongLayout = layoutPreferencesStore((s) => s.favSongLayout);
   const favAlbumLayout = layoutPreferencesStore((s) => s.favAlbumLayout);
@@ -398,6 +408,56 @@ export function SettingsScreen() {
                   </Text>
                 </Pressable>
               )}
+            </View>
+          )}
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>Album sort order</Text>
+        <View style={[styles.accentDropdown, { backgroundColor: colors.card }]}>
+          <Pressable
+            onPress={() => setSortOrderOpen((prev) => !prev)}
+            style={({ pressed }) => [
+              styles.accentHeader,
+              pressed && styles.themeRowPressed,
+            ]}
+          >
+            <Text style={[styles.chipLabel, { color: colors.textPrimary }]}>
+              {ALBUM_SORT_OPTIONS.find((o) => o.value === albumSortOrder)?.label ?? 'Artist name'}
+            </Text>
+            <Ionicons
+              name={sortOrderOpen ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color={colors.textSecondary}
+            />
+          </Pressable>
+          {sortOrderOpen && (
+            <View style={[styles.accentList, { borderTopColor: colors.border }]}>
+              {ALBUM_SORT_OPTIONS.map((opt) => {
+                const isActive = albumSortOrder === opt.value;
+                return (
+                  <Pressable
+                    key={opt.value}
+                    onPress={() => {
+                      setAlbumSortOrder(opt.value);
+                      setSortOrderOpen(false);
+                    }}
+                    style={({ pressed }) => [
+                      styles.accentOption,
+                      { borderBottomColor: colors.border },
+                      pressed && styles.themeRowPressed,
+                    ]}
+                  >
+                    <Text style={[styles.chipLabel, { color: colors.textPrimary }]}>
+                      {opt.label}
+                    </Text>
+                    {isActive && (
+                      <Ionicons name="checkmark" size={20} color={colors.primary} />
+                    )}
+                  </Pressable>
+                );
+              })}
             </View>
           )}
         </View>

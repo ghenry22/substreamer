@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
 export type ItemLayout = 'list' | 'grid';
+export type AlbumSortOrder = 'artist' | 'title';
 
 export interface LayoutPreferencesState {
   albumLayout: ItemLayout;
@@ -11,12 +12,14 @@ export interface LayoutPreferencesState {
   favSongLayout: ItemLayout;
   favAlbumLayout: ItemLayout;
   favArtistLayout: ItemLayout;
+  albumSortOrder: AlbumSortOrder;
   setAlbumLayout: (layout: ItemLayout) => void;
   setArtistLayout: (layout: ItemLayout) => void;
   setPlaylistLayout: (layout: ItemLayout) => void;
   setFavSongLayout: (layout: ItemLayout) => void;
   setFavAlbumLayout: (layout: ItemLayout) => void;
   setFavArtistLayout: (layout: ItemLayout) => void;
+  setAlbumSortOrder: (order: AlbumSortOrder) => void;
 }
 
 const PERSIST_KEY = 'substreamer-layout-preferences';
@@ -30,12 +33,22 @@ export const layoutPreferencesStore = create<LayoutPreferencesState>()(
       favSongLayout: 'list',
       favAlbumLayout: 'list',
       favArtistLayout: 'list',
+      albumSortOrder: 'artist',
       setAlbumLayout: (albumLayout) => set({ albumLayout }),
       setArtistLayout: (artistLayout) => set({ artistLayout }),
       setPlaylistLayout: (playlistLayout) => set({ playlistLayout }),
       setFavSongLayout: (favSongLayout) => set({ favSongLayout }),
       setFavAlbumLayout: (favAlbumLayout) => set({ favAlbumLayout }),
       setFavArtistLayout: (favArtistLayout) => set({ favArtistLayout }),
+      setAlbumSortOrder: (albumSortOrder) => {
+        set({ albumSortOrder });
+        // Trigger re-sort of the album library without a re-fetch.
+        // Use setTimeout + require to avoid circular dependency.
+        setTimeout(() => {
+          const { albumLibraryStore } = require('./albumLibraryStore');
+          albumLibraryStore.getState().resortAlbums();
+        }, 0);
+      },
     }),
     {
       name: PERSIST_KEY,
@@ -47,6 +60,7 @@ export const layoutPreferencesStore = create<LayoutPreferencesState>()(
         favSongLayout: state.favSongLayout,
         favAlbumLayout: state.favAlbumLayout,
         favArtistLayout: state.favArtistLayout,
+        albumSortOrder: state.albumSortOrder,
       }),
     }
   )

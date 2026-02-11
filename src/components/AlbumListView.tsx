@@ -11,6 +11,7 @@ import {
 
 import { useTheme } from '../hooks/useTheme';
 import type { AlbumID3 } from '../services/subsonicService';
+import { layoutPreferencesStore } from '../store/layoutPreferencesStore';
 import { AlbumCard } from './AlbumCard';
 import { AlbumRow, ROW_HEIGHT } from './AlbumRow';
 import { AlphabetScroller } from './AlphabetScroller';
@@ -127,24 +128,30 @@ export function AlbumListView({
   /* ---- Alphabet scroller support ---- */
   const isList = layout === 'list';
   const scrollerVisible = showAlphabetScroller && isList && albums.length > 0;
+  const albumSortOrder = layoutPreferencesStore((s) => s.albumSortOrder);
+
+  /** Return the field the list is currently sorted by for a given album. */
+  const getSortField = useCallback(
+    (a: AlbumID3) => (albumSortOrder === 'title' ? a.name : (a.artist ?? a.name)),
+    [albumSortOrder]
+  );
 
   const activeLetters = useMemo(() => {
     if (!scrollerVisible) return new Set<string>();
-    return new Set(albums.map((a) => getFirstLetter(a.artist ?? a.name)));
-  }, [albums, scrollerVisible]);
+    return new Set(albums.map((a) => getFirstLetter(getSortField(a))));
+  }, [albums, scrollerVisible, getSortField]);
 
   const handleLetterChange = useCallback(
     (letter: string) => {
       const idx = albums.findIndex((a) => {
-        const first = getFirstLetter(a.artist ?? a.name);
-        if (letter === '#') return first === '#';
-        return first === letter;
+        const first = getFirstLetter(getSortField(a));
+        return letter === '#' ? first === '#' : first === letter;
       });
       if (idx >= 0) {
         flatListRef.current?.scrollToIndex({ index: idx, animated: false });
       }
     },
-    [albums]
+    [albums, getSortField]
   );
 
   if (loading && albums.length === 0) {
