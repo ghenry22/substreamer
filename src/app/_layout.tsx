@@ -1,8 +1,8 @@
 import * as SplashScreen from 'expo-splash-screen';
-import { Redirect, Stack } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { StyleSheet } from 'react-native';
 
 import AnimatedSplashScreen from '../components/AnimatedSplashScreen';
 import { useTheme } from '../hooks/useTheme';
@@ -21,7 +21,10 @@ export default function RootLayout() {
   const rehydrated = authStore((s) => s.rehydrated);
   const isLoggedIn = authStore((s) => s.isLoggedIn);
   const { theme, colors } = useTheme();
+  const router = useRouter();
+  const segments = useSegments();
 
+  // --- Rehydrate auth from AsyncStorage ---
   useEffect(() => {
     (async () => {
       await clearPersistedData();
@@ -37,6 +40,7 @@ export default function RootLayout() {
     })();
   }, []);
 
+  // --- Pre-fetch server data when logged in ---
   useEffect(() => {
     if (!rehydrated || !isLoggedIn) return;
     fetchServerInfo().then((info) => {
@@ -45,33 +49,29 @@ export default function RootLayout() {
     albumListsStore.getState().refreshAll();
   }, [rehydrated, isLoggedIn]);
 
-  // Native splash is already hidden by AnimatedSplashScreen on mount.
-  // This callback fires after the fade-out animation completes.
-  const handleSplashFinish = () => {
+  // --- Auth-based navigation ---
+  // Use router.replace inside useEffect instead of <Redirect> so the
+  // Stack navigator stays mounted and expo-router can render the target screen.
+  useEffect(() => {
+    if (!rehydrated || splashVisible) return;
+
+    const onLoginScreen = segments[0] === 'login';
+
+    if (!isLoggedIn && !onLoginScreen) {
+      router.replace('/login');
+    } else if (isLoggedIn && onLoginScreen) {
+      router.replace('/');
+    }
+  }, [rehydrated, isLoggedIn, splashVisible, segments, router]);
+
+  const handleSplashFinish = useCallback(() => {
     setSplashVisible(false);
-  };
-
-  if (splashVisible) {
-    return <AnimatedSplashScreen onFinish={handleSplashFinish} />;
-  }
-
-  if (!rehydrated) {
-    return (
-      <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
-
-  if (!isLoggedIn) {
-    return <Redirect href="/login" />;
-  }
+  }, []);
 
   return (
     <>
       <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
       <Stack
-        initialRouteName="(tabs)"
         screenOptions={{
           headerStyle: { backgroundColor: colors.background },
           headerTintColor: colors.textPrimary,
@@ -79,6 +79,7 @@ export default function RootLayout() {
           contentStyle: { backgroundColor: colors.background },
         }}
       >
+        <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen
           name="album-list"
@@ -115,6 +116,12 @@ export default function RootLayout() {
           }}
         />
       </Stack>
+
+      {/* Animated splash renders as an overlay on top of the Stack so the
+          navigator is always mounted and ready for auth-based navigation. */}
+      {splashVisible && (
+        <AnimatedSplashScreen onFinish={handleSplashFinish} />
+      )}
     </>
   );
 }

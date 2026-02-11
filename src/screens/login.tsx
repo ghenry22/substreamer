@@ -11,14 +11,15 @@ import {
   View,
 } from 'react-native';
 
-import { useTheme } from '../hooks/useTheme';
+import WaveformLogo from '../components/WaveformLogo';
 import { fetchServerInfo, login as subsonicLogin } from '../services/subsonicService';
 import { authStore } from '../store/authStore';
 import { serverInfoStore } from '../store/serverInfoStore';
 
+const PRIMARY = '#1D9BF0';
+
 export function LoginScreen() {
   const router = useRouter();
-  const { colors } = useTheme();
   const isLoggedIn = authStore((s) => s.isLoggedIn);
   const setSession = authStore((s) => s.setSession);
 
@@ -60,85 +61,84 @@ export function LoginScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={styles.container}
     >
       <View style={styles.inner}>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>Substreamer</Text>
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+        {/* Logo */}
+        <View style={styles.logoContainer}>
+          <WaveformLogo size={80} color="#FFFFFF" />
+        </View>
+
+        <Text style={styles.title}>substreamer</Text>
+        <Text style={styles.subtitle}>
           Sign in to your Subsonic server
         </Text>
 
-        <TextInput
-          style={[
-            styles.input,
-            { backgroundColor: colors.inputBg, color: colors.textPrimary },
-          ]}
-          placeholder="Server address (e.g. https://demo.navidrome.org)"
-          placeholderTextColor={colors.textSecondary}
-          value={serverUrl}
-          onChangeText={(t) => {
-            setServerUrl(t);
-            setError(null);
-          }}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-          editable={!loading}
-        />
-        <TextInput
-          style={[
-            styles.input,
-            { backgroundColor: colors.inputBg, color: colors.textPrimary },
-          ]}
-          placeholder="Username"
-          placeholderTextColor={colors.textSecondary}
-          value={username}
-          onChangeText={(t) => {
-            setUsername(t);
-            setError(null);
-          }}
-          autoCapitalize="none"
-          autoCorrect={false}
-          editable={!loading}
-        />
-        <TextInput
-          style={[
-            styles.input,
-            { backgroundColor: colors.inputBg, color: colors.textPrimary },
-          ]}
-          placeholder="Password"
-          placeholderTextColor={colors.textSecondary}
-          value={password}
-          onChangeText={(t) => {
-            setPassword(t);
-            setError(null);
-          }}
-          secureTextEntry
-          editable={!loading}
-          returnKeyType="go"
-          onSubmitEditing={handleSubmit}
-        />
+        {/* Form */}
+        <View>
+          <TextInput
+            style={styles.input}
+            placeholder="Server address (e.g. https://demo.navidrome.org)"
+            placeholderTextColor="rgba(255,255,255,0.85)"
+            value={serverUrl}
+            onChangeText={(t) => {
+              setServerUrl(t);
+              setError(null);
+            }}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            editable={!loading}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Username"
+            placeholderTextColor="rgba(255,255,255,0.85)"
+            value={username}
+            onChangeText={(t) => {
+              setUsername(t);
+              setError(null);
+            }}
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!loading}
+          />
+          <TextInput
+            style={[styles.input, styles.inputLast]}
+            placeholder="Password"
+            placeholderTextColor="rgba(255,255,255,0.85)"
+            value={password}
+            onChangeText={(t) => {
+              setPassword(t);
+              setError(null);
+            }}
+            secureTextEntry
+            editable={!loading}
+            returnKeyType="go"
+            onSubmitEditing={handleSubmit}
+          />
 
-        {error ? (
-          <Text style={[styles.error, { color: colors.red }]}>{error}</Text>
-        ) : null}
+          {error ? (
+            <Text style={styles.error}>{error}</Text>
+          ) : null}
 
-        <Pressable
-          style={({ pressed }) => [
-            styles.button,
-            { backgroundColor: colors.primary },
-            loading && styles.buttonDisabled,
-            pressed && !loading && styles.buttonPressed,
-          ]}
-          onPress={handleSubmit}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#000" />
-          ) : (
-            <Text style={styles.buttonText}>Log in</Text>
-          )}
-        </Pressable>
+          {/* Submit button */}
+          <Pressable
+            style={({ pressed }) => [
+              styles.button,
+              loading && styles.buttonDisabled,
+              pressed && !loading && styles.buttonPressed,
+            ]}
+            onPress={handleSubmit}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color={PRIMARY} />
+            ) : (
+              <Text style={styles.buttonText}>Log in</Text>
+            )}
+          </Pressable>
+        </View>
       </View>
     </KeyboardAvoidingView>
   );
@@ -147,40 +147,55 @@ export function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: PRIMARY,
     justifyContent: 'center',
   },
   inner: {
-    padding: 24,
+    paddingHorizontal: 24,
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 24,
   },
   title: {
-    fontSize: 32,
+    fontSize: 30,
     fontWeight: '700',
-    marginBottom: 8,
+    color: '#FFFFFF',
     textAlign: 'center',
+    marginBottom: 6,
   },
   subtitle: {
-    fontSize: 16,
-    marginBottom: 32,
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.7)',
     textAlign: 'center',
+    marginBottom: 28,
   },
   input: {
-    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 10,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
+    color: '#FFFFFF',
     marginBottom: 12,
+  },
+  inputLast: {
+    marginBottom: 4,
   },
   error: {
     fontSize: 14,
-    marginBottom: 12,
+    color: '#FFEB3B',
+    marginTop: 8,
+    marginBottom: 4,
   },
   button: {
+    backgroundColor: '#FFFFFF',
     borderRadius: 24,
     paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 48,
-    marginTop: 8,
+    marginTop: 24,
   },
   buttonDisabled: {
     opacity: 0.7,
@@ -189,7 +204,7 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   buttonText: {
-    color: '#000',
+    color: PRIMARY,
     fontSize: 16,
     fontWeight: '700',
   },
