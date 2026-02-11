@@ -367,3 +367,28 @@ export async function getStarred2(): Promise<{
     songs: starred?.song ?? [],
   };
 }
+
+/**
+ * Search for albums, artists, and songs using the search3 API.
+ * Returns up to 20 results per category.
+ */
+export async function search3(query: string): Promise<{
+  albums: AlbumID3[];
+  artists: ArtistID3[];
+  songs: Child[];
+}> {
+  const api = getApi();
+  if (!api || !query.trim()) return { albums: [], artists: [], songs: [] };
+  const response = await api.search3({
+    query: query.trim(),
+    albumCount: 20,
+    artistCount: 20,
+    songCount: 20,
+  });
+  const r = response.searchResult3;
+  return {
+    albums: r?.album ?? [],
+    artists: r?.artist ?? [],
+    songs: r?.song ?? [],
+  };
+}
