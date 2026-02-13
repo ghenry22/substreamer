@@ -74,6 +74,19 @@ let isAutoAdvancing = false;
  * mark ensures the UI and seek logic never regress.
  */
 let maxBufferedSeen = 0;
+/**
+ * Set to true when we detect that the native player has finished downloading
+ * the entire stream.  Detection: playback position advances past the stalled
+ * `buffered` value for several consecutive polls while the player stays in
+ * Playing state — the data must be available even though it isn't reported.
+ * When true, the effective buffered value is set to the metadata duration so
+ * the UI shows 100 % and seeking is unrestricted.
+ */
+let isFullyBuffered = false;
+/** The last raw `buffered` value from RNTP, used to detect stalls. */
+let lastRawBuffered = 0;
+/** How many consecutive polls position has exceeded the stalled buffered value. */
+let positionPastBufferCount = 0;
 
 /* ------------------------------------------------------------------ */
 /*  Progress polling                                                   */
@@ -85,10 +98,35 @@ function startProgressPolling() {
   progressInterval = setInterval(async () => {
     try {
       const { position, duration, buffered } = await TrackPlayer.getProgress();
-      // The native player may report a stale buffered value — if playback
-      // has advanced past it the data is clearly available.  Track the
-      // high-water mark so the value never regresses.
-      maxBufferedSeen = Math.max(maxBufferedSeen, buffered, position);
+
+      // --- Detect when the entire stream has been downloaded --------
+      if (!isFullyBuffered) {
+        if (buffered > lastRawBuffered + 0.5) {
+          // Buffer is still growing — reset the stall counter.
+          lastRawBuffered = buffered;
+          positionPastBufferCount = 0;
+        } else if (position > lastRawBuffered + 1) {
+          // Position has advanced well past the stalled buffer value
+          // while playback hasn't stalled — data must be available.
+          positionPastBufferCount++;
+          // After ~1 s (4 × 250 ms) of this, declare fully buffered.
+          if (positionPastBufferCount >= 4) {
+            isFullyBuffered = true;
+          }
+        }
+      }
+
+      // --- Compute effective buffered value -------------------------
+      if (isFullyBuffered) {
+        const metaDuration =
+          playerStore.getState().currentTrack?.duration ?? 0;
+        maxBufferedSeen = metaDuration > 0
+          ? metaDuration
+          : Math.max(maxBufferedSeen, buffered, position);
+      } else {
+        maxBufferedSeen = Math.max(maxBufferedSeen, buffered, position);
+      }
+
       playerStore.getState().setProgress(position, duration, maxBufferedSeen);
     } catch {
       /* player not ready */
@@ -192,6 +230,9 @@ export async function initPlayer(): Promise<void> {
 
   TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, ({ track }) => {
     maxBufferedSeen = 0;
+    isFullyBuffered = false;
+    lastRawBuffered = 0;
+    positionPastBufferCount = 0;
     if (track != null && track.id) {
       const child = currentChildQueue.find((c) => c.id === track.id) ?? null;
       playerStore.getState().setCurrentTrack(child);
@@ -229,7 +270,15 @@ async function syncStoreFromNative(): Promise<void> {
     }
 
     const { position, duration, buffered } = await TrackPlayer.getProgress();
-    maxBufferedSeen = Math.max(maxBufferedSeen, buffered, position);
+    if (isFullyBuffered) {
+      const metaDuration =
+        playerStore.getState().currentTrack?.duration ?? 0;
+      maxBufferedSeen = metaDuration > 0
+        ? metaDuration
+        : Math.max(maxBufferedSeen, buffered, position);
+    } else {
+      maxBufferedSeen = Math.max(maxBufferedSeen, buffered, position);
+    }
     playerStore.getState().setProgress(position, duration, maxBufferedSeen);
 
     if (
@@ -305,6 +354,13 @@ export async function skipToPrevious(): Promise<void> {
  * close as possible without the seek silently failing.
  */
 export async function seekTo(position: number): Promise<void> {
+  // If the entire stream has been downloaded, seek freely — all data is
+  // available even if the native player doesn't report it.
+  if (isFullyBuffered) {
+    await TrackPlayer.seekTo(position);
+    return;
+  }
+
   const { duration, buffered, position: currentPos } = await TrackPlayer.getProgress();
   // Use the high-water mark so we never clamp tighter than what was
   // previously known to be available.
