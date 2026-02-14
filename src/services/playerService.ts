@@ -120,32 +120,15 @@ function startProgressPolling() {
     try {
       const { position, duration, buffered } = await TrackPlayer.getProgress();
 
-      // --- Transcoded stream: detect approaching buffer underrun ---
-      // When duration === 0 (transcoded stream without native duration),
-      // the native player cannot use Range requests to resume from the
-      // current position.  If the buffer stalls and position catches up,
-      // the native player will re-fetch the URL and the server will
-      // transcode from second 0, causing the audio to restart.
-      //
-      // To prevent this we proactively reload the track with a
-      // `timeOffset` parameter so the server resumes from the right spot.
+      // --- Track buffer stall for transcoded stream recovery ----------
+      // The native player sometimes stops reporting buffer growth even
+      // though data is available.  We track the stall duration here so
+      // the PlaybackState Buffering handler can distinguish a real
+      // buffer underrun from a normal mid-stream rebuffer.
       const bufferGrowing = buffered > lastRawBuffered + 0.5;
 
-      if (duration === 0 && buffered > 10 && position > 5 && !isRecoveringStream) {
-        if (!bufferGrowing) {
-          bufferStallPollCount++;
-        } else {
-          bufferStallPollCount = 0;
-        }
-
-        // Buffer stalled for ≥3 s (12 × 250 ms) and position within 8 s
-        // of the buffer edge → recover before the native player runs out.
-        if (bufferStallPollCount >= 12 && position > buffered - 8) {
-          const adjustedPos = position + positionOffset;
-          isRecoveringStream = true;
-          recoverTranscodedStream(adjustedPos);
-          return; // Skip the rest of this poll cycle.
-        }
+      if (duration === 0 && buffered > 0 && !bufferGrowing) {
+        bufferStallPollCount++;
       } else if (bufferGrowing) {
         bufferStallPollCount = 0;
       }
@@ -160,11 +143,8 @@ function startProgressPolling() {
           // Position has advanced well past the stalled buffer value
           // while playback hasn't stalled — data must be available.
           positionPastBufferCount++;
-          // After ~1 s (4 × 250 ms) of this, declare fully buffered —
-          // but ONLY when the native player reports a real duration.
-          // When duration === 0 (transcoded), position exceeding the
-          // buffer means a buffer underrun, not full buffering.
-          if (positionPastBufferCount >= 4 && duration > 0) {
+          // After ~1 s (4 × 250 ms) of this, declare fully buffered.
+          if (positionPastBufferCount >= 4) {
             isFullyBuffered = true;
           }
         }
@@ -307,20 +287,39 @@ export async function initPlayer(): Promise<void> {
       // Keep polling during buffering so the UI can show buffer progress.
       startProgressPolling();
 
-      // Detect end-of-track stalls for transcoded streams.
-      // When the server sends an estimated Content-Length that exceeds the
-      // real audio data, the native player stalls in Buffering instead of
-      // firing State.Ended.  If the current position is at or past the
-      // metadata duration we treat it as track-complete and skip forward.
       if (state === State.Buffering && !isAutoAdvancing && !isRecoveringStream) {
         try {
           const { position, duration } = await TrackPlayer.getProgress();
           const adjustedPos = position + positionOffset;
           const metadataDuration = store.currentTrack?.duration ?? 0;
-          // Use native duration when available, otherwise fall back to metadata.
           const effectiveDuration =
             duration > 0 ? duration : metadataDuration;
 
+          // --- Transcoded stream buffer underrun recovery ---------------
+          // When the native player enters Buffering on a transcoded stream
+          // (duration === 0) whose buffer has been stalled and position has
+          // caught up, it will re-fetch the URL and the server will
+          // transcode from second 0.  Recover with timeOffset so the
+          // server resumes from the correct position.
+          if (
+            duration === 0 &&
+            position > 5 &&
+            lastRawBuffered > 10 &&
+            bufferStallPollCount >= 12 &&
+            position >= lastRawBuffered - 2 &&
+            adjustedPos < effectiveDuration - 5
+          ) {
+            isRecoveringStream = true;
+            recoverTranscodedStream(adjustedPos);
+            return;
+          }
+
+          // --- End-of-track stall detection -----------------------------
+          // When the server sends an estimated Content-Length that exceeds
+          // the real audio data, the native player stalls in Buffering
+          // instead of firing State.Ended.  If the current position is at
+          // or past the metadata duration we treat it as track-complete
+          // and skip forward.
           if (effectiveDuration > 0 && adjustedPos >= effectiveDuration - 2) {
             isAutoAdvancing = true;
             await TrackPlayer.skipToNext().catch(() => {
