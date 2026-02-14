@@ -1,0 +1,1 @@
+{"version":3,"file":"PlaybackProgressUpdatedEvent.d.ts","sourceRoot":"","sources":["../../../../../src/interfaces/events/PlaybackProgressUpdatedEvent.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,QAAQ,EAAE,MAAM,aAAa,CAAC;AAE5C,MAAM,WAAW,4BAA6B,SAAQ,QAAQ;IAC5D,KAAK,EAAE,MAAM,CAAC;CACf"}

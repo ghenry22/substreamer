@@ -34,12 +34,15 @@
       [
         "expo-splash-screen",
         {
+          "image": "./src/assets/splash-icon.png",
           "backgroundColor": "#1D9BF0"
         }
       ],
       "./plugins/silence-hermes-warning",
+      "./plugins/fix-jvm-target",
       "expo-sqlite",
-      "./modules/expo-ssl-trust/plugin"
+      "./modules/expo-ssl-trust/plugin",
+      "./modules/react-native-track-player/plugin"
     ]
   }
 }

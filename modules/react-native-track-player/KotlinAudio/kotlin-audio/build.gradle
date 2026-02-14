@@ -1,0 +1,102 @@
+plugins {
+    id 'com.android.library'
+    id 'kotlin-android'
+    id 'maven-publish'
+    id 'de.mannodermaus.android-junit5'
+}
+
+def versionNumber = '2.0.0'
+
+group = 'com.github.doublesymmetry'
+version = versionNumber
+
+android {
+    namespace = "com.doublesymmetry.kotlinaudio"
+
+    compileSdk 34
+
+    defaultConfig {
+        minSdk 21
+        targetSdk 34
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunnerArguments["runnerBuilder"] = "de.mannodermaus.junit5.AndroidJUnit5Builder"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+    kotlinOptions {
+        jvmTarget = '11'
+    }
+}
+
+dependencies {
+    implementation 'io.coil-kt:coil:2.2.0'
+    implementation 'androidx.media:media:1.6.0'
+    api 'com.google.android.exoplayer:exoplayer:2.19.0'
+    api 'com.google.android.exoplayer:extension-mediasession:2.19.0'
+    api 'com.jakewharton.timber:timber:5.0.1'
+
+    implementation 'androidx.test:rules:1.4.0'
+
+    // Asynchronous Testing
+    androidTestImplementation('org.awaitility:awaitility:4.2.0') {
+        transitive = false
+    }
+    androidTestImplementation('org.awaitility:awaitility-kotlin:4.2.0') {
+        transitive = false
+    }
+
+    // (Required) Writing and executing Unit Tests on the JUnit Platform
+    androidTestImplementation("androidx.test:runner:1.4.0")
+    androidTestImplementation("org.junit.jupiter:junit-jupiter-api:5.8.2")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.8.2")
+
+    // (Optional) If you need "Parameterized Tests"
+    testImplementation("org.junit.jupiter:junit-jupiter-params:5.8.2")
+
+    // The instrumentation test companion libraries
+    androidTestImplementation("de.mannodermaus.junit5:android-test-core:1.3.0")
+    androidTestRuntimeOnly("de.mannodermaus.junit5:android-test-runner:1.3.0")
+}
+
+afterEvaluate {
+    publishing {
+        publications {
+            // Creates a Maven publication called "release".
+            release(MavenPublication) {
+                // Applies the component for the release build variant.
+                from components.release
+                artifact sourcesJar
+
+                // You can then customize attributes of the publication as shown below.
+                groupId = 'com.github.doublesymmetry'
+                artifactId = 'kotlin-audio'
+                version = versionNumber
+            }
+//            // Creates a Maven publication called “debug”.
+//            debug(MavenPublication) {
+//                // Applies the component for the debug build variant.
+//                from components.debug
+//
+//                groupId = 'com.github.doublesymmetry'
+//                artifactId = 'kotlin-audio-debug'
+//                version = versionNumber
+//            }
+
+        }
+    }
+}
+
+task sourcesJar(type: Jar) {
+    archiveClassifier.set('sources')
+    from android.sourceSets.main.java.srcDirs
+}

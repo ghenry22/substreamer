@@ -28,7 +28,7 @@
     "react-native-image-colors": "^2.5.1",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
-    "react-native-track-player": "github:ghenry22/react-native-track-player#feature/playback-diagnostics",
+    "react-native-track-player": "file:./modules/react-native-track-player",
     "subsonic-api": "^3.2.0",
     "zustand": "^5.0.11"
   },

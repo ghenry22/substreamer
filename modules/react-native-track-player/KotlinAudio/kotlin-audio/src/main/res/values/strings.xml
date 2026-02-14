@@ -1,0 +1,5 @@
+<resources>
+    <string name="play">Play</string>
+    <string name="playback_channel_name">Now Playing</string>
+    <string name="pause">Pause</string>
+</resources>

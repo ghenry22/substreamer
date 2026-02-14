@@ -1,0 +1,3 @@
+rootProject.name = "KotlinAudio"
+include ':kotlin-audio'
+include ':kotlin-audio-example'

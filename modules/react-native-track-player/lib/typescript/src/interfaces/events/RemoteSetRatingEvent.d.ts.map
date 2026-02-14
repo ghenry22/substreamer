@@ -1,0 +1,1 @@
+{"version":3,"file":"RemoteSetRatingEvent.d.ts","sourceRoot":"","sources":["../../../../../src/interfaces/events/RemoteSetRatingEvent.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,UAAU,EAAE,MAAM,iBAAiB,CAAC;AAElD,MAAM,WAAW,oBAAoB;IACnC,MAAM,EAAE,UAAU,CAAC;CACpB"}

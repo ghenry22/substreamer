@@ -1,0 +1,1 @@
+{"version":3,"names":["module","require","default","Constants","exports","getConstants","_default"],"sourceRoot":"../../src","sources":["NativeTrackPlayer.web.ts"],"mappings":";;;;;;AAAA,MAAMA,OAAM,GAAGC,OAAO,CAAC,QAAQ,CAAC,CAACC,OAAO;AACjC,MAAMC,SAAS,GAAAC,OAAA,CAAAD,SAAA,GAAGH,OAAM,EAAEK,YAAY,CAAC,CAAC;AAAC,IAAAC,QAAA,GAAAF,OAAA,CAAAF,OAAA,GACjCF,OAAM","ignoreList":[]}

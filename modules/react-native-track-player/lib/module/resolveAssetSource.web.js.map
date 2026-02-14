@@ -1,0 +1,1 @@
+{"version":3,"names":["resolveAssetResource","base64","test"],"sourceRoot":"../../src","sources":["resolveAssetSource.web.ts"],"mappings":";;AAAA,MAAMA,oBAAoB,GAAIC,MAAe,IAAK;EAChD,IAAI,cAAc,CAACC,IAAI,CAACD,MAAgB,CAAC,EAAE;IACzC,OAAOA,MAAM;EACf;;EAEA;EACA,OAAOA,MAAM;AACf,CAAC;AAED,eAAeD,oBAAoB","ignoreList":[]}

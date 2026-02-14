@@ -1,0 +1,1 @@
+{"version":3,"names":["_reactNative","require","resolve","Image","resolveAssetSource","_default","exports","default"],"sourceRoot":"../../src","sources":["resolveAssetSource.ts"],"mappings":";;;;;;AAAA,IAAAA,YAAA,GAAAC,OAAA;AACA,MAAMC,OAAO,GAAGC,kBAAK,CAACC,kBAAkB;AAAC,IAAAC,QAAA,GAAAC,OAAA,CAAAC,OAAA,GAC1BL,OAAO","ignoreList":[]}

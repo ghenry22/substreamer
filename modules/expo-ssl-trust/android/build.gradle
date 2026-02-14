@@ -1,6 +1,5 @@
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
-apply plugin: 'org.jetbrains.kotlin.plugin.serialization'
 
 group = 'expo.modules.ssltrust'
 version = '1.0.0'
@@ -14,11 +13,11 @@ if (expoModulesCorePlugin.exists()) {
 android {
   namespace "expo.modules.ssltrust"
 
-  compileSdkVersion safeExtGet("compileSdkVersion", 35)
+  compileSdk rootProject.ext.has("compileSdkVersion") ? rootProject.ext.get("compileSdkVersion") : 35
 
   defaultConfig {
-    minSdkVersion safeExtGet("minSdkVersion", 24)
-    targetSdkVersion safeExtGet("targetSdkVersion", 35)
+    minSdk rootProject.ext.has("minSdkVersion") ? rootProject.ext.get("minSdkVersion") : 24
+    targetSdk rootProject.ext.has("targetSdkVersion") ? rootProject.ext.get("targetSdkVersion") : 35
   }
 
   compileOptions {
@@ -33,6 +32,5 @@ android {
 
 dependencies {
   implementation project(':expo-modules-core')
-  implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:${getKotlinVersion()}"
   implementation "com.squareup.okhttp3:okhttp:4.12.0"
 }

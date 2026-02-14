@@ -1,0 +1,1 @@
+{"version":3,"file":"PlaybackErrorEvent.d.ts","sourceRoot":"","sources":["../../../../../src/interfaces/events/PlaybackErrorEvent.ts"],"names":[],"mappings":"AAAA,MAAM,WAAW,kBAAkB;IACjC,qBAAqB;IACrB,IAAI,EAAE,MAAM,CAAC;IACb,wBAAwB;IACxB,OAAO,EAAE,MAAM,CAAC;IAChB,iEAAiE;IACjE,QAAQ,CAAC,EAAE,MAAM,CAAC;CACnB"}

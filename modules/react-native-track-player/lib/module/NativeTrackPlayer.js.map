@@ -1,0 +1,1 @@
+{"version":3,"names":["TurboModuleRegistry","module","getEnforcing","Constants","getConstants"],"sourceRoot":"../../src","sources":["NativeTrackPlayer.ts"],"mappings":";;AAAA,SAA2BA,mBAAmB,QAAQ,cAAc;AAwGpE,MAAMC,MAAM,GAAGD,mBAAmB,CAACE,YAAY,CAAO,aAAa,CAAC;AACpE,OAAO,MAAMC,SAAS,GAAGF,MAAM,EAAEG,YAAY,CAAC,CAAC;AAC/C,eAAeH,MAAM","ignoreList":[]}

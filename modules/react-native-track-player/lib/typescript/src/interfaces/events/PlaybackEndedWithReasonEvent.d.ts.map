@@ -1,0 +1,1 @@
+{"version":3,"file":"PlaybackEndedWithReasonEvent.d.ts","sourceRoot":"","sources":["../../../../../src/interfaces/events/PlaybackEndedWithReasonEvent.ts"],"names":[],"mappings":"AAAA,MAAM,WAAW,4BAA4B;IAC3C;;;;;OAKG;IACH,MAAM,EAAE,MAAM,CAAC;IACf,8CAA8C;IAC9C,KAAK,EAAE,MAAM,CAAC;IACd,6DAA6D;IAC7D,QAAQ,EAAE,MAAM,CAAC;CAClB"}

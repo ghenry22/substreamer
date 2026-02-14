@@ -1,0 +1,1 @@
+{"version":3,"file":"NowPlayingMetadata.d.ts","sourceRoot":"","sources":["../../../../src/interfaces/NowPlayingMetadata.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,iBAAiB,EAAE,MAAM,qBAAqB,CAAC;AAE7D,MAAM,WAAW,kBAAmB,SAAQ,iBAAiB;IAC3D,WAAW,CAAC,EAAE,MAAM,CAAC;CACtB"}

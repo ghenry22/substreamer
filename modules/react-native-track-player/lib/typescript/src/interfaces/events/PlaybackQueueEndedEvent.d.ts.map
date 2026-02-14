@@ -1,0 +1,1 @@
+{"version":3,"file":"PlaybackQueueEndedEvent.d.ts","sourceRoot":"","sources":["../../../../../src/interfaces/events/PlaybackQueueEndedEvent.ts"],"names":[],"mappings":"AAAA,MAAM,WAAW,uBAAuB;IACtC,mEAAmE;IACnE,KAAK,EAAE,MAAM,CAAC;IACd;;;QAGI;IACJ,QAAQ,EAAE,MAAM,CAAC;CAClB"}
