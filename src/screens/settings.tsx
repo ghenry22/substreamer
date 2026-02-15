@@ -1,251 +1,36 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
-import { useShallow } from 'zustand/react/shallow';
+import { useMemo } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useTheme } from '../hooks/useTheme';
-import { clearImageCache } from '../services/imageCacheService';
-import {
-  fetchScanStatus,
-  startScan as startLibraryScan,
-  stopPolling,
-} from '../services/scanService';
-import { imageCacheStore, getImageCount } from '../store/imageCacheStore';
+import { stopPolling } from '../services/scanService';
 import { clearApiCache } from '../services/subsonicService';
-import type { ThemePreference } from '../store/themeStore';
-import { DEFAULT_PRIMARY_COLOR } from '../store/themeStore';
 import { authStore } from '../store/authStore';
-import {
-  layoutPreferencesStore,
-  type AlbumSortOrder,
-  type ArtistAlbumSortOrder,
-  type ItemLayout,
-} from '../store/layoutPreferencesStore';
-import {
-  playbackSettingsStore,
-  type MaxBitRate,
-  type StreamFormat,
-} from '../store/playbackSettingsStore';
 import { scanStatusStore } from '../store/scanStatusStore';
 import { serverInfoStore } from '../store/serverInfoStore';
-import { albumDetailStore } from '../store/albumDetailStore';
-import { artistDetailStore } from '../store/artistDetailStore';
-import { playlistDetailStore } from '../store/playlistDetailStore';
-import { completedScrobbleStore } from '../store/completedScrobbleStore';
-import { pendingScrobbleStore } from '../store/pendingScrobbleStore';
-import { sslCertStore, type TrustedCertEntry } from '../store/sslCertStore';
 import { sqliteStorage } from '../store/sqliteStorage';
-import { removeTrustForHost } from '../services/sslTrustService';
 
 const AUTH_PERSIST_KEY = 'substreamer-auth';
 const SERVER_INFO_PERSIST_KEY = 'substreamer-server-info';
 const SCAN_STATUS_PERSIST_KEY = 'substreamer-scan-status';
 
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  const value = bytes / Math.pow(1024, i);
-  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[i]}`;
-}
-
-function InfoRow({
-  label,
-  value,
-  labelColor,
-  valueColor,
-  borderColor,
-}: {
+const SETTINGS_LINKS: {
+  route: string;
   label: string;
-  value: string | null;
-  labelColor: string;
-  valueColor: string;
-  borderColor: string;
-}) {
-  if (value == null || value === '') return null;
-  return (
-    <View style={[styles.infoRow, { borderBottomColor: borderColor }]}>
-      <Text style={[styles.infoLabel, { color: labelColor }]}>{label}</Text>
-      <Text style={[styles.infoValue, { color: valueColor }]}>{value}</Text>
-    </View>
-  );
-}
-
-const THEME_OPTIONS: { value: ThemePreference; label: string; icon: 'phone-portrait-outline' | 'sunny-outline' | 'moon-outline' }[] = [
-  { value: 'system', label: 'System', icon: 'phone-portrait-outline' },
-  { value: 'light', label: 'Light', icon: 'sunny-outline' },
-  { value: 'dark', label: 'Dark', icon: 'moon-outline' },
-];
-
-const LAYOUT_ROWS: { key: 'albumLayout' | 'artistLayout' | 'playlistLayout'; label: string }[] = [
-  { key: 'albumLayout', label: 'Albums' },
-  { key: 'artistLayout', label: 'Artists' },
-  { key: 'playlistLayout', label: 'Playlists' },
-];
-
-const FAV_LAYOUT_ROWS: { key: 'favSongLayout' | 'favAlbumLayout' | 'favArtistLayout'; label: string }[] = [
-  { key: 'favSongLayout', label: 'Songs' },
-  { key: 'favAlbumLayout', label: 'Albums' },
-  { key: 'favArtistLayout', label: 'Artists' },
-];
-
-const ALBUM_SORT_OPTIONS: { value: AlbumSortOrder; label: string }[] = [
-  { value: 'artist', label: 'Artist name' },
-  { value: 'title', label: 'Album title' },
-];
-
-const ARTIST_ALBUM_SORT_OPTIONS: { value: ArtistAlbumSortOrder; label: string }[] = [
-  { value: 'newest', label: 'Newest first' },
-  { value: 'oldest', label: 'Oldest first' },
-];
-
-const BITRATE_OPTIONS: { value: MaxBitRate; label: string }[] = [
-  { value: 64, label: '64 kbps' },
-  { value: 128, label: '128 kbps' },
-  { value: 256, label: '256 kbps' },
-  { value: 320, label: '320 kbps' },
-  { value: null, label: 'No limit' },
-];
-
-const FORMAT_OPTIONS: { value: StreamFormat; label: string }[] = [
-  { value: 'raw', label: 'Original' },
-  { value: 'mp3', label: 'MP3' },
-];
-
-const ACCENT_COLORS: { label: string; hex: string }[] = [
-  { label: 'Default', hex: '#1D9BF0' },
-  { label: 'Red', hex: '#E91429' },
-  { label: 'Green', hex: '#00BA7C' },
-  { label: 'Orange', hex: '#FF6F00' },
-  { label: 'Purple', hex: '#7B61FF' },
-  { label: 'Pink', hex: '#F91880' },
-  { label: 'Teal', hex: '#00BCD4' },
-  { label: 'Yellow', hex: '#FFD600' },
+  subtitle: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}[] = [
+  { route: '/settings-server', label: 'Server Management', subtitle: 'Server info, library scanning', icon: 'server-outline' },
+  { route: '/settings-appearance', label: 'Appearance & Layout', subtitle: 'Theme, accent color, sort order, grid/list views', icon: 'color-palette-outline' },
+  { route: '/settings-media-formats', label: 'Media Formats', subtitle: 'Bitrate, streaming format, transcoding, caching format', icon: 'musical-notes-outline' },
+  { route: '/settings-connectivity', label: 'Connectivity', subtitle: 'Trusted SSL certificates', icon: 'globe-outline' },
+  { route: '/settings-storage', label: 'Storage & Data', subtitle: 'Image cache, metadata cache, scrobbles', icon: 'folder-outline' },
 ];
 
 export function SettingsScreen() {
   const router = useRouter();
-  const { colors, preference, primaryColor, setThemePreference, setPrimaryColor } = useTheme();
-  const activePrimary = primaryColor ?? DEFAULT_PRIMARY_COLOR;
-  const [accentOpen, setAccentOpen] = useState(false);
-  const [sortOrderOpen, setSortOrderOpen] = useState(false);
-  const [artistAlbumSortOpen, setArtistAlbumSortOpen] = useState(false);
-  const [bitrateOpen, setBitrateOpen] = useState(false);
-  const [formatOpen, setFormatOpen] = useState(false);
-  const maxBitRate = playbackSettingsStore((s) => s.maxBitRate);
-  const streamFormat = playbackSettingsStore((s) => s.streamFormat);
-  const estimateContentLength = playbackSettingsStore((s) => s.estimateContentLength);
-  const setMaxBitRate = playbackSettingsStore((s) => s.setMaxBitRate);
-  const setStreamFormat = playbackSettingsStore((s) => s.setStreamFormat);
-  const setEstimateContentLength = playbackSettingsStore((s) => s.setEstimateContentLength);
-  const totalBytes = imageCacheStore((s) => s.totalBytes);
-  const fileCount = imageCacheStore((s) => s.fileCount);
-  const imageCount = getImageCount(fileCount);
-  const cachedAlbumCount = albumDetailStore((s) => Object.keys(s.albums).length);
-  const cachedArtistCount = artistDetailStore((s) => Object.keys(s.artists).length);
-  const cachedPlaylistCount = playlistDetailStore((s) => Object.keys(s.playlists).length);
-  const totalMetadataCount = cachedAlbumCount + cachedArtistCount + cachedPlaylistCount;
-  const pendingScrobbleCount = pendingScrobbleStore((s) => s.pendingScrobbles.length);
-  const completedScrobbleCount = completedScrobbleStore((s) => s.completedScrobbles.length);
-  const activeAccentLabel = ACCENT_COLORS.find((c) => c.hex === activePrimary)?.label ?? 'Custom';
-  const trustedCerts = sslCertStore((s) => s.trustedCerts);
-  const trustedCertEntries = Object.entries(trustedCerts) as [string, TrustedCertEntry][];
-
-  const handleAccentSelect = useCallback(
-    (hex: string) => {
-      setPrimaryColor(hex === DEFAULT_PRIMARY_COLOR ? null : hex);
-      setAccentOpen(false);
-    },
-    [setPrimaryColor]
-  );
-  const serverInfo = serverInfoStore(
-    useShallow((s) => ({
-      serverType: s.serverType,
-      serverVersion: s.serverVersion,
-      apiVersion: s.apiVersion,
-      openSubsonic: s.openSubsonic,
-      extensions: s.extensions,
-      lastFetchedAt: s.lastFetchedAt,
-    }))
-  );
-
-  const scanScanning = scanStatusStore((s) => s.scanning);
-  const scanCount = scanStatusStore((s) => s.count);
-  const scanLastScan = scanStatusStore((s) => s.lastScan);
-  const scanFolderCount = scanStatusStore((s) => s.folderCount);
-  const scanLoading = scanStatusStore((s) => s.loading);
-
-  const isNavidrome = serverInfo.serverType?.toLowerCase() === 'navidrome';
-
-  useEffect(() => {
-    fetchScanStatus();
-  }, []);
-
-  const handleStartScan = useCallback(() => {
-    startLibraryScan();
-  }, []);
-
-  const handleFullScan = useCallback(() => {
-    Alert.alert(
-      'Full Scan',
-      'Full scans re-read all files and may take a long time. Continue?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Start', onPress: () => startLibraryScan(true) },
-      ],
-    );
-  }, []);
-
-  const albumLayout = layoutPreferencesStore((s) => s.albumLayout);
-  const artistLayout = layoutPreferencesStore((s) => s.artistLayout);
-  const playlistLayout = layoutPreferencesStore((s) => s.playlistLayout);
-  const setAlbumLayout = layoutPreferencesStore((s) => s.setAlbumLayout);
-  const setArtistLayout = layoutPreferencesStore((s) => s.setArtistLayout);
-  const setPlaylistLayout = layoutPreferencesStore((s) => s.setPlaylistLayout);
-
-  const albumSortOrder = layoutPreferencesStore((s) => s.albumSortOrder);
-  const setAlbumSortOrder = layoutPreferencesStore((s) => s.setAlbumSortOrder);
-
-  const artistAlbumSortOrder = layoutPreferencesStore((s) => s.artistAlbumSortOrder);
-  const setArtistAlbumSortOrder = layoutPreferencesStore((s) => s.setArtistAlbumSortOrder);
-
-  const favSongLayout = layoutPreferencesStore((s) => s.favSongLayout);
-  const favAlbumLayout = layoutPreferencesStore((s) => s.favAlbumLayout);
-  const favArtistLayout = layoutPreferencesStore((s) => s.favArtistLayout);
-  const setFavSongLayout = layoutPreferencesStore((s) => s.setFavSongLayout);
-  const setFavAlbumLayout = layoutPreferencesStore((s) => s.setFavAlbumLayout);
-  const setFavArtistLayout = layoutPreferencesStore((s) => s.setFavArtistLayout);
-
-  const layoutValues: Record<string, ItemLayout> = {
-    albumLayout,
-    artistLayout,
-    playlistLayout,
-  };
-
-  const layoutSetters: Record<string, (l: ItemLayout) => void> = {
-    albumLayout: setAlbumLayout,
-    artistLayout: setArtistLayout,
-    playlistLayout: setPlaylistLayout,
-  };
-
-  const favLayoutValues: Record<string, ItemLayout> = {
-    favSongLayout,
-    favAlbumLayout,
-    favArtistLayout,
-  };
-
-  const favLayoutSetters: Record<string, (l: ItemLayout) => void> = {
-    favSongLayout: setFavSongLayout,
-    favAlbumLayout: setFavAlbumLayout,
-    favArtistLayout: setFavArtistLayout,
-  };
-
-  const hasAnyInfo =
-    serverInfo.serverType != null ||
-    serverInfo.serverVersion != null ||
-    serverInfo.apiVersion != null ||
-    serverInfo.extensions.length > 0;
+  const { colors } = useTheme();
 
   const handleLogout = async () => {
     stopPolling();
@@ -259,75 +44,13 @@ export function SettingsScreen() {
     router.replace('/login');
   };
 
-  const handleClearCache = useCallback(() => {
-    Alert.alert(
-      'Clear Image Cache',
-      `This will remove ${formatBytes(totalBytes)} of cached images. Continue?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Clear',
-          style: 'destructive',
-          onPress: () => {
-            clearImageCache();
-          },
-        },
-      ],
-    );
-  }, [totalBytes]);
-
-  const handleRemoveTrustedCert = useCallback((hostname: string) => {
-    Alert.alert(
-      'Remove Trusted Certificate',
-      `Remove the trusted certificate for ${hostname}? You will need to re-accept the certificate on next connection.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: () => {
-            removeTrustForHost(hostname).catch(() => {
-              // Best-effort removal
-            });
-          },
-        },
-      ],
-    );
-  }, []);
-
-  const handleClearMetadataCache = useCallback(() => {
-    Alert.alert(
-      'Clear Metadata Cache',
-      `This will remove ${totalMetadataCount} cached ${totalMetadataCount === 1 ? 'item' : 'items'}. Continue?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Clear',
-          style: 'destructive',
-          onPress: () => {
-            albumDetailStore.getState().clearAlbums();
-            artistDetailStore.getState().clearArtists();
-            playlistDetailStore.getState().clearPlaylists();
-          },
-        },
-      ],
-    );
-  }, [totalMetadataCount]);
-
   const dynamicStyles = useMemo(
     () =>
       StyleSheet.create({
         container: { backgroundColor: colors.background },
         sectionTitle: { color: colors.label },
-        card: { backgroundColor: colors.card },
-        placeholder: { color: colors.textSecondary },
         logoutButton: { borderColor: colors.red },
         logoutButtonText: { color: colors.red },
-        themeRow: { backgroundColor: colors.card, borderColor: colors.border },
-        themeRowText: { color: colors.textPrimary },
-        themeRowSubtext: { color: colors.textSecondary },
-        layoutRow: { backgroundColor: colors.card, borderColor: colors.border },
-        layoutRowLabel: { color: colors.textPrimary },
       }),
     [colors]
   );
@@ -335,722 +58,42 @@ export function SettingsScreen() {
   return (
     <ScrollView
       style={[styles.container, dynamicStyles.container]}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, styles.contentGrow]}
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>Server information</Text>
-        {hasAnyInfo ? (
-          <View style={[styles.card, dynamicStyles.card]}>
-            <InfoRow
-              label="Server type"
-              value={serverInfo.serverType ?? (serverInfo.apiVersion != null ? 'Subsonic' : null)}
-              labelColor={colors.textPrimary}
-              valueColor={colors.textSecondary}
-              borderColor={colors.border}
-            />
-            <InfoRow
-              label="Server version"
-              value={serverInfo.serverVersion}
-              labelColor={colors.textPrimary}
-              valueColor={colors.textSecondary}
-              borderColor={colors.border}
-            />
-            <InfoRow
-              label="API version"
-              value={serverInfo.apiVersion}
-              labelColor={colors.textPrimary}
-              valueColor={colors.textSecondary}
-              borderColor={colors.border}
-            />
-            <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
-              <Text style={[styles.infoLabel, { color: colors.textPrimary }]}>OpenSubsonic</Text>
-              <Text style={[styles.infoValue, { color: colors.textSecondary }]}>
-                {serverInfo.openSubsonic ? 'Yes' : 'No'}
-              </Text>
-            </View>
-            {serverInfo.extensions.length > 0 && (
-              <View style={[styles.extensionsBlock, { borderTopColor: colors.border }]}>
-                <Text style={[styles.extensionsTitle, { color: colors.label }]}>
-                  Supported extensions
-                </Text>
-                {serverInfo.extensions.map((ext) => (
-                  <View key={ext.name} style={styles.extensionRow}>
-                    <Text style={[styles.extensionName, { color: colors.textPrimary }]}>
-                      {ext.name}
-                    </Text>
-                    <Text style={[styles.extensionVersions, { color: colors.textSecondary }]}>
-                      v{ext.versions?.join(', ') ?? '—'}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            )}
-          </View>
-        ) : (
-          <Text style={[styles.placeholder, dynamicStyles.placeholder]}>
-            No server information available. Log in to see details.
-          </Text>
-        )}
-      </View>
-
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>Library scan</Text>
-        <View style={[styles.card, dynamicStyles.card]}>
-          <InfoRow
-            label="Status"
-            value={
-              scanScanning
-                ? scanCount > 0
-                  ? `Scanning\u2026 (${scanCount.toLocaleString()} items)`
-                  : 'Scanning\u2026'
-                : 'Idle'
-            }
-            labelColor={colors.textPrimary}
-            valueColor={scanScanning ? colors.primary : colors.textSecondary}
-            borderColor={colors.border}
-          />
-          {scanCount > 0 && (
-            <InfoRow
-              label="Track count"
-              value={scanCount.toLocaleString()}
-              labelColor={colors.textPrimary}
-              valueColor={colors.textSecondary}
-              borderColor={colors.border}
-            />
-          )}
-          {scanLastScan != null && (
-            <InfoRow
-              label="Last scan"
-              value={new Date(scanLastScan).toLocaleString()}
-              labelColor={colors.textPrimary}
-              valueColor={colors.textSecondary}
-              borderColor={colors.border}
-            />
-          )}
-          {scanFolderCount != null && (
-            <InfoRow
-              label="Media folders"
-              value={String(scanFolderCount)}
-              labelColor={colors.textPrimary}
-              valueColor={colors.textSecondary}
-              borderColor={colors.border}
-            />
-          )}
-          <View style={[styles.scanButtons, { borderTopColor: colors.border }]}>
+        <View style={[styles.navCard, { backgroundColor: colors.card }]}>
+          {SETTINGS_LINKS.map((link, index) => (
             <Pressable
-              onPress={handleStartScan}
-              disabled={scanScanning || scanLoading}
+              key={link.route}
+              onPress={() => router.push(link.route as never)}
               style={({ pressed }) => [
-                styles.scanButton,
-                pressed && styles.themeRowPressed,
-                (scanScanning || scanLoading) && styles.scanButtonDisabled,
+                styles.navRow,
+                index < SETTINGS_LINKS.length - 1 && {
+                  borderBottomWidth: StyleSheet.hairlineWidth,
+                  borderBottomColor: colors.border,
+                },
+                pressed && styles.pressed,
               ]}
             >
-              {scanLoading ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <Ionicons name="refresh-outline" size={18} color={scanScanning ? colors.textSecondary : colors.primary} />
-              )}
-              <Text
-                style={[
-                  styles.scanButtonText,
-                  { color: scanScanning ? colors.textSecondary : colors.primary },
-                ]}
-              >
-                Quick Scan
-              </Text>
+              <View style={styles.navRowLeft}>
+                <Ionicons name={link.icon} size={20} color={colors.primary} style={styles.navRowIcon} />
+                <View style={styles.navRowText}>
+                  <Text style={[styles.navRowLabel, { color: colors.textPrimary }]}>
+                    {link.label}
+                  </Text>
+                  <Text style={[styles.navRowSubtitle, { color: colors.textSecondary }]}>
+                    {link.subtitle}
+                  </Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
             </Pressable>
-            {isNavidrome && (
-              <Pressable
-                onPress={handleFullScan}
-                disabled={scanScanning || scanLoading}
-                style={({ pressed }) => [
-                  styles.scanButton,
-                  pressed && styles.themeRowPressed,
-                  (scanScanning || scanLoading) && styles.scanButtonDisabled,
-                ]}
-              >
-                {scanLoading ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : (
-                  <Ionicons name="search-outline" size={18} color={scanScanning ? colors.textSecondary : colors.primary} />
-                )}
-                <Text
-                  style={[
-                    styles.scanButtonText,
-                    { color: scanScanning ? colors.textSecondary : colors.primary },
-                  ]}
-                >
-                  Full Scan
-                </Text>
-              </Pressable>
-            )}
-          </View>
+          ))}
         </View>
       </View>
 
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>Storage</Text>
-        <View style={[styles.card, dynamicStyles.card]}>
-          <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.infoLabel, { color: colors.textPrimary }]}>Cached images</Text>
-            <Text style={[styles.infoValue, { color: colors.textSecondary }]}>
-              {imageCount} {imageCount === 1 ? 'image' : 'images'}
-            </Text>
-          </View>
-          <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.infoLabel, { color: colors.textPrimary }]}>Disk usage</Text>
-            <Text style={[styles.infoValue, { color: colors.textSecondary }]}>
-              {formatBytes(totalBytes)}
-            </Text>
-          </View>
-          <Pressable
-            onPress={() => router.push('/image-cache-browser')}
-            style={({ pressed }) => [
-              styles.browseCacheButton,
-              { borderTopColor: colors.border },
-              pressed && styles.themeRowPressed,
-            ]}
-          >
-            <View style={styles.browseCacheLeft}>
-              <Ionicons name="images-outline" size={18} color={colors.textPrimary} />
-              <Text style={[styles.browseCacheText, { color: colors.textPrimary }]}>Browse Image Cache</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-          </Pressable>
-          <Pressable
-            onPress={handleClearCache}
-            style={({ pressed }) => [
-              styles.clearCacheButton,
-              pressed && styles.themeRowPressed,
-            ]}
-          >
-            <Ionicons name="trash-outline" size={18} color={colors.red} />
-            <Text style={[styles.clearCacheText, { color: colors.red }]}>Clear Image Cache</Text>
-          </Pressable>
-        </View>
-
-        <View style={[styles.card, dynamicStyles.card, styles.metadataCard]}>
-          <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.infoLabel, { color: colors.textPrimary }]}>Cached albums</Text>
-            <Text style={[styles.infoValue, { color: colors.textSecondary }]}>
-              {cachedAlbumCount}
-            </Text>
-          </View>
-          <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.infoLabel, { color: colors.textPrimary }]}>Cached artists</Text>
-            <Text style={[styles.infoValue, { color: colors.textSecondary }]}>
-              {cachedArtistCount}
-            </Text>
-          </View>
-          <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.infoLabel, { color: colors.textPrimary }]}>Cached playlists</Text>
-            <Text style={[styles.infoValue, { color: colors.textSecondary }]}>
-              {cachedPlaylistCount}
-            </Text>
-          </View>
-          <Pressable
-            onPress={() => router.push('/metadata-cache-browser')}
-            style={({ pressed }) => [
-              styles.browseCacheButton,
-              { borderTopColor: colors.border },
-              pressed && styles.themeRowPressed,
-            ]}
-          >
-            <View style={styles.browseCacheLeft}>
-              <Ionicons name="library-outline" size={18} color={colors.textPrimary} />
-              <Text style={[styles.browseCacheText, { color: colors.textPrimary }]}>Browse Metadata Cache</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-          </Pressable>
-          <Pressable
-            onPress={handleClearMetadataCache}
-            style={({ pressed }) => [
-              styles.clearCacheButton,
-              pressed && styles.themeRowPressed,
-            ]}
-          >
-            <Ionicons name="trash-outline" size={18} color={colors.red} />
-            <Text style={[styles.clearCacheText, { color: colors.red }]}>Clear Metadata Cache</Text>
-          </Pressable>
-        </View>
-
-        <View style={[styles.card, dynamicStyles.card, styles.metadataCard]}>
-          <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.infoLabel, { color: colors.textPrimary }]}>Pending scrobbles</Text>
-            <Text style={[styles.infoValue, { color: colors.textSecondary }]}>
-              {pendingScrobbleCount}
-            </Text>
-          </View>
-          <View style={[styles.infoRow, { borderBottomWidth: 0 }]}>
-            <Text style={[styles.infoLabel, { color: colors.textPrimary }]}>Completed scrobbles</Text>
-            <Text style={[styles.infoValue, { color: colors.textSecondary }]}>
-              {completedScrobbleCount}
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>Appearance</Text>
-        <View style={styles.themeCard}>
-          {THEME_OPTIONS.map((opt) => {
-            const isSelected = preference === opt.value;
-            return (
-              <Pressable
-                key={opt.value}
-                style={({ pressed }) => [
-                  styles.themeRow,
-                  dynamicStyles.themeRow,
-                  isSelected && styles.themeRowSelected,
-                  pressed && styles.themeRowPressed,
-                ]}
-                onPress={() => setThemePreference(opt.value)}
-              >
-                <View style={styles.themeRowContent}>
-                  <Ionicons
-                    name={opt.icon}
-                    size={22}
-                    color={isSelected ? colors.primary : colors.textSecondary}
-                  />
-                  <Text style={[styles.themeRowLabel, dynamicStyles.themeRowText]}>
-                    {opt.label}
-                  </Text>
-                </View>
-                {isSelected && (
-                  <Ionicons name="checkmark-circle" size={24} color={colors.primary} />
-                )}
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>Accent color</Text>
-        <View style={[styles.accentDropdown, { backgroundColor: colors.card }]}>
-          <Pressable
-            onPress={() => setAccentOpen((prev) => !prev)}
-            style={({ pressed }) => [
-              styles.accentHeader,
-              pressed && styles.themeRowPressed,
-            ]}
-          >
-            <View style={styles.accentChip}>
-              <View style={[styles.chipDot, { backgroundColor: activePrimary }]} />
-              <Text style={[styles.chipLabel, { color: colors.textPrimary }]}>
-                {activeAccentLabel}
-              </Text>
-            </View>
-            <Ionicons
-              name={accentOpen ? 'chevron-up' : 'chevron-down'}
-              size={20}
-              color={colors.textSecondary}
-            />
-          </Pressable>
-          {accentOpen && (
-            <View style={[styles.accentList, { borderTopColor: colors.border }]}>
-              {ACCENT_COLORS.map((c) => {
-                const isActive = activePrimary === c.hex;
-                return (
-                  <Pressable
-                    key={c.hex}
-                    onPress={() => handleAccentSelect(c.hex)}
-                    style={({ pressed }) => [
-                      styles.accentOption,
-                      { borderBottomColor: colors.border },
-                      pressed && styles.themeRowPressed,
-                    ]}
-                  >
-                    <View style={styles.accentChip}>
-                      <View style={[styles.chipDot, { backgroundColor: c.hex }]} />
-                      <Text style={[styles.chipLabel, { color: colors.textPrimary }]}>
-                        {c.label}
-                      </Text>
-                    </View>
-                    {isActive && (
-                      <Ionicons name="checkmark" size={20} color={colors.primary} />
-                    )}
-                  </Pressable>
-                );
-              })}
-              {primaryColor != null && (
-                <Pressable
-                  onPress={() => {
-                    setPrimaryColor(null);
-                    setAccentOpen(false);
-                  }}
-                  style={({ pressed }) => [
-                    styles.resetButton,
-                    pressed && styles.themeRowPressed,
-                  ]}
-                >
-                  <Text style={[styles.resetButtonText, { color: colors.textSecondary }]}>
-                    Reset to default
-                  </Text>
-                </Pressable>
-              )}
-            </View>
-          )}
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>Album sort order</Text>
-        <View style={[styles.accentDropdown, { backgroundColor: colors.card }]}>
-          <Pressable
-            onPress={() => setSortOrderOpen((prev) => !prev)}
-            style={({ pressed }) => [
-              styles.accentHeader,
-              pressed && styles.themeRowPressed,
-            ]}
-          >
-            <Text style={[styles.chipLabel, { color: colors.textPrimary }]}>
-              {ALBUM_SORT_OPTIONS.find((o) => o.value === albumSortOrder)?.label ?? 'Artist name'}
-            </Text>
-            <Ionicons
-              name={sortOrderOpen ? 'chevron-up' : 'chevron-down'}
-              size={20}
-              color={colors.textSecondary}
-            />
-          </Pressable>
-          {sortOrderOpen && (
-            <View style={[styles.accentList, { borderTopColor: colors.border }]}>
-              {ALBUM_SORT_OPTIONS.map((opt) => {
-                const isActive = albumSortOrder === opt.value;
-                return (
-                  <Pressable
-                    key={opt.value}
-                    onPress={() => {
-                      setAlbumSortOrder(opt.value);
-                      setSortOrderOpen(false);
-                    }}
-                    style={({ pressed }) => [
-                      styles.accentOption,
-                      { borderBottomColor: colors.border },
-                      pressed && styles.themeRowPressed,
-                    ]}
-                  >
-                    <Text style={[styles.chipLabel, { color: colors.textPrimary }]}>
-                      {opt.label}
-                    </Text>
-                    {isActive && (
-                      <Ionicons name="checkmark" size={20} color={colors.primary} />
-                    )}
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>Artist album sort order</Text>
-        <View style={[styles.accentDropdown, { backgroundColor: colors.card }]}>
-          <Pressable
-            onPress={() => setArtistAlbumSortOpen((prev) => !prev)}
-            style={({ pressed }) => [
-              styles.accentHeader,
-              pressed && styles.themeRowPressed,
-            ]}
-          >
-            <Text style={[styles.chipLabel, { color: colors.textPrimary }]}>
-              {ARTIST_ALBUM_SORT_OPTIONS.find((o) => o.value === artistAlbumSortOrder)?.label ?? 'Newest first'}
-            </Text>
-            <Ionicons
-              name={artistAlbumSortOpen ? 'chevron-up' : 'chevron-down'}
-              size={20}
-              color={colors.textSecondary}
-            />
-          </Pressable>
-          {artistAlbumSortOpen && (
-            <View style={[styles.accentList, { borderTopColor: colors.border }]}>
-              {ARTIST_ALBUM_SORT_OPTIONS.map((opt) => {
-                const isActive = artistAlbumSortOrder === opt.value;
-                return (
-                  <Pressable
-                    key={opt.value}
-                    onPress={() => {
-                      setArtistAlbumSortOrder(opt.value);
-                      setArtistAlbumSortOpen(false);
-                    }}
-                    style={({ pressed }) => [
-                      styles.accentOption,
-                      { borderBottomColor: colors.border },
-                      pressed && styles.themeRowPressed,
-                    ]}
-                  >
-                    <Text style={[styles.chipLabel, { color: colors.textPrimary }]}>
-                      {opt.label}
-                    </Text>
-                    {isActive && (
-                      <Ionicons name="checkmark" size={20} color={colors.primary} />
-                    )}
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>Playback</Text>
-        <View style={[styles.accentDropdown, { backgroundColor: colors.card }]}>
-          {/* Max bitrate dropdown */}
-          <Pressable
-            onPress={() => setBitrateOpen((prev) => !prev)}
-            style={({ pressed }) => [
-              styles.accentHeader,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && styles.themeRowPressed,
-            ]}
-          >
-            <Text style={[styles.chipLabel, { color: colors.textPrimary }]}>Max bitrate</Text>
-            <View style={styles.dropdownRight}>
-              <Text style={[styles.chipLabel, { color: colors.textSecondary }]}>
-                {BITRATE_OPTIONS.find((o) => o.value === maxBitRate)?.label ?? 'No limit'}
-              </Text>
-              <Ionicons
-                name={bitrateOpen ? 'chevron-up' : 'chevron-down'}
-                size={20}
-                color={colors.textSecondary}
-              />
-            </View>
-          </Pressable>
-          {bitrateOpen && (
-            <View style={[styles.accentList, { borderTopColor: colors.border }]}>
-              {BITRATE_OPTIONS.map((opt) => {
-                const isActive = maxBitRate === opt.value;
-                return (
-                  <Pressable
-                    key={String(opt.value)}
-                    onPress={() => {
-                      setMaxBitRate(opt.value);
-                      setBitrateOpen(false);
-                    }}
-                    style={({ pressed }) => [
-                      styles.accentOption,
-                      { borderBottomColor: colors.border },
-                      pressed && styles.themeRowPressed,
-                    ]}
-                  >
-                    <Text style={[styles.chipLabel, { color: colors.textPrimary }]}>
-                      {opt.label}
-                    </Text>
-                    {isActive && (
-                      <Ionicons name="checkmark" size={20} color={colors.primary} />
-                    )}
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
-
-          {/* Format dropdown */}
-          <Pressable
-            onPress={() => setFormatOpen((prev) => !prev)}
-            style={({ pressed }) => [
-              styles.accentHeader,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-              pressed && styles.themeRowPressed,
-            ]}
-          >
-            <Text style={[styles.chipLabel, { color: colors.textPrimary }]}>Format</Text>
-            <View style={styles.dropdownRight}>
-              <Text style={[styles.chipLabel, { color: colors.textSecondary }]}>
-                {FORMAT_OPTIONS.find((o) => o.value === streamFormat)?.label ?? 'Original'}
-              </Text>
-              <Ionicons
-                name={formatOpen ? 'chevron-up' : 'chevron-down'}
-                size={20}
-                color={colors.textSecondary}
-              />
-            </View>
-          </Pressable>
-          {formatOpen && (
-            <View style={[styles.accentList, { borderTopColor: colors.border }]}>
-              {FORMAT_OPTIONS.map((opt) => {
-                const isActive = streamFormat === opt.value;
-                return (
-                  <Pressable
-                    key={opt.value}
-                    onPress={() => {
-                      setStreamFormat(opt.value);
-                      setFormatOpen(false);
-                    }}
-                    style={({ pressed }) => [
-                      styles.accentOption,
-                      { borderBottomColor: colors.border },
-                      pressed && styles.themeRowPressed,
-                    ]}
-                  >
-                    <Text style={[styles.chipLabel, { color: colors.textPrimary }]}>
-                      {opt.label}
-                    </Text>
-                    {isActive && (
-                      <Ionicons name="checkmark" size={20} color={colors.primary} />
-                    )}
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
-
-          {/* Estimate content length toggle */}
-          <View style={[styles.toggleRow, { borderBottomColor: colors.border }]}>
-            <View style={styles.toggleTextWrap}>
-              <Text style={[styles.chipLabel, { color: colors.textPrimary }]}>
-                Estimate content length
-              </Text>
-              <Text style={[styles.toggleHint, { color: colors.textSecondary }]}>
-                Enables the server to set the Content-Length header, which may improve compatibility with some players and casting devices.
-              </Text>
-            </View>
-            <Switch
-              value={estimateContentLength}
-              onValueChange={setEstimateContentLength}
-              trackColor={{ false: colors.border, true: colors.primary }}
-            />
-          </View>
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>Library layout</Text>
-        <View style={styles.themeCard}>
-          {LAYOUT_ROWS.map((row) => {
-            const currentValue = layoutValues[row.key];
-            return (
-              <View
-                key={row.key}
-                style={[styles.layoutRow, dynamicStyles.layoutRow]}
-              >
-                <Text style={[styles.layoutRowLabel, dynamicStyles.layoutRowLabel]}>
-                  {row.label}
-                </Text>
-                <View style={styles.layoutIcons}>
-                  <Pressable
-                    onPress={() => layoutSetters[row.key]('list')}
-                    hitSlop={6}
-                    style={({ pressed }) => pressed && styles.themeRowPressed}
-                  >
-                    <Ionicons
-                      name="list-outline"
-                      size={22}
-                      color={currentValue === 'list' ? colors.primary : colors.textSecondary}
-                    />
-                  </Pressable>
-                  <Pressable
-                    onPress={() => layoutSetters[row.key]('grid')}
-                    hitSlop={6}
-                    style={({ pressed }) => pressed && styles.themeRowPressed}
-                  >
-                    <Ionicons
-                      name="grid-outline"
-                      size={22}
-                      color={currentValue === 'grid' ? colors.primary : colors.textSecondary}
-                    />
-                  </Pressable>
-                </View>
-              </View>
-            );
-          })}
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>Favorites layout</Text>
-        <View style={styles.themeCard}>
-          {FAV_LAYOUT_ROWS.map((row) => {
-            const currentValue = favLayoutValues[row.key];
-            return (
-              <View
-                key={row.key}
-                style={[styles.layoutRow, dynamicStyles.layoutRow]}
-              >
-                <Text style={[styles.layoutRowLabel, dynamicStyles.layoutRowLabel]}>
-                  {row.label}
-                </Text>
-                <View style={styles.layoutIcons}>
-                  <Pressable
-                    onPress={() => favLayoutSetters[row.key]('list')}
-                    hitSlop={6}
-                    style={({ pressed }) => pressed && styles.themeRowPressed}
-                  >
-                    <Ionicons
-                      name="list-outline"
-                      size={22}
-                      color={currentValue === 'list' ? colors.primary : colors.textSecondary}
-                    />
-                  </Pressable>
-                  <Pressable
-                    onPress={() => favLayoutSetters[row.key]('grid')}
-                    hitSlop={6}
-                    style={({ pressed }) => pressed && styles.themeRowPressed}
-                  >
-                    <Ionicons
-                      name="grid-outline"
-                      size={22}
-                      color={currentValue === 'grid' ? colors.primary : colors.textSecondary}
-                    />
-                  </Pressable>
-                </View>
-              </View>
-            );
-          })}
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>Trusted certificates</Text>
-        <View style={[styles.card, dynamicStyles.card]}>
-          {trustedCertEntries.length > 0 ? (
-            trustedCertEntries.map(([hostname, entry], index) => (
-              <View
-                key={hostname}
-                style={[
-                  styles.trustedCertRow,
-                  index < trustedCertEntries.length - 1 && {
-                    borderBottomWidth: StyleSheet.hairlineWidth,
-                    borderBottomColor: colors.border,
-                  },
-                ]}
-              >
-                <View style={styles.trustedCertInfo}>
-                  <View style={styles.trustedCertHeader}>
-                    <Ionicons name="shield-checkmark-outline" size={16} color={colors.primary} />
-                    <Text style={[styles.trustedCertHostname, { color: colors.textPrimary }]}>
-                      {hostname}
-                    </Text>
-                  </View>
-                  <Text style={[styles.trustedCertFingerprint, { color: colors.textSecondary }]} numberOfLines={1}>
-                    {entry.sha256.substring(0, 23)}...
-                  </Text>
-                  <Text style={[styles.trustedCertDate, { color: colors.textSecondary }]}>
-                    Trusted {new Date(entry.acceptedAt).toLocaleDateString()}
-                  </Text>
-                </View>
-                <Pressable
-                  onPress={() => handleRemoveTrustedCert(hostname)}
-                  hitSlop={8}
-                  style={({ pressed }) => [pressed && styles.themeRowPressed]}
-                >
-                  <Ionicons name="close-circle-outline" size={22} color={colors.red} />
-                </Pressable>
-              </View>
-            ))
-          ) : (
-            <Text style={[styles.placeholder, dynamicStyles.placeholder]}>
-              No trusted certificates. Self-signed certificates accepted during login will appear here.
-            </Text>
-          )}
-        </View>
-      </View>
-
-      <View style={styles.section}>
+      <View style={styles.accountSection}>
         <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>Account</Text>
         <Pressable
           style={({ pressed }) => [
@@ -1075,8 +118,14 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 32,
   },
+  contentGrow: {
+    flexGrow: 1,
+  },
   section: {
     marginBottom: 24,
+  },
+  accountSection: {
+    marginTop: 'auto',
   },
   sectionTitle: {
     fontSize: 13,
@@ -1086,238 +135,40 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginLeft: 4,
   },
-  themeCard: {
+  navCard: {
     borderRadius: 12,
     overflow: 'hidden',
   },
-  themeRow: {
+  navRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 14,
     paddingHorizontal: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  themeRowSelected: {
-    // selected state handled by checkmark
+  navRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
   },
-  themeRowPressed: {
+  navRowIcon: {
+    marginTop: 2,
+    alignSelf: 'flex-start',
+  },
+  navRowText: {
+    flex: 1,
+  },
+  navRowLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  navRowSubtitle: {
+    fontSize: 13,
+    marginTop: 2,
+  },
+  pressed: {
     opacity: 0.8,
-  },
-  themeRowContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  themeRowLabel: {
-    fontSize: 16,
-  },
-  card: {
-    borderRadius: 12,
-    padding: 16,
-    overflow: 'hidden',
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  infoLabel: {
-    fontSize: 15,
-    flex: 1,
-  },
-  infoValue: {
-    fontSize: 15,
-    fontWeight: '500',
-    marginLeft: 12,
-  },
-  extensionsBlock: {
-    marginTop: 8,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  extensionsTitle: {
-    fontSize: 13,
-    marginBottom: 8,
-  },
-  extensionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 6,
-  },
-  extensionName: {
-    fontSize: 14,
-  },
-  extensionVersions: {
-    fontSize: 13,
-  },
-  placeholder: {
-    fontSize: 15,
-    fontStyle: 'italic',
-    padding: 16,
-  },
-  accentDropdown: {
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  accentHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-  },
-  accentList: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  accentOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  accentChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  chipDot: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-  },
-  chipLabel: {
-    fontSize: 16,
-  },
-  resetButton: {
-    alignSelf: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-  },
-  resetButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  layoutRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  layoutRowLabel: {
-    fontSize: 16,
-  },
-  layoutIcons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  browseCacheButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  browseCacheLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  browseCacheText: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  clearCacheButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    gap: 8,
-  },
-  clearCacheText: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  scanButtons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    gap: 24,
-  },
-  scanButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  scanButtonDisabled: {
-    opacity: 0.5,
-  },
-  scanButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  metadataCard: {
-    marginTop: 12,
-  },
-  dropdownRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    gap: 12,
-  },
-  toggleTextWrap: {
-    flex: 1,
-  },
-  toggleHint: {
-    fontSize: 12,
-    marginTop: 4,
-    lineHeight: 16,
-  },
-  trustedCertRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    gap: 12,
-  },
-  trustedCertInfo: {
-    flex: 1,
-  },
-  trustedCertHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 2,
-  },
-  trustedCertHostname: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  trustedCertFingerprint: {
-    fontSize: 12,
-    fontFamily: 'monospace',
-    marginBottom: 2,
-  },
-  trustedCertDate: {
-    fontSize: 12,
   },
   logoutButton: {
     backgroundColor: 'transparent',

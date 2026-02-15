@@ -144,6 +144,26 @@ export default function RootLayout() {
           name="metadata-cache-browser"
           options={{ title: 'Metadata Cache', headerBackTitle: 'Back' }}
         />
+        <Stack.Screen
+          name="settings-server"
+          options={{ title: 'Server Management', headerBackTitle: 'Settings' }}
+        />
+        <Stack.Screen
+          name="settings-appearance"
+          options={{ title: 'Appearance & Layout', headerBackTitle: 'Settings' }}
+        />
+        <Stack.Screen
+          name="settings-connectivity"
+          options={{ title: 'Connectivity', headerBackTitle: 'Settings' }}
+        />
+        <Stack.Screen
+          name="settings-storage"
+          options={{ title: 'Storage & Data', headerBackTitle: 'Settings' }}
+        />
+        <Stack.Screen
+          name="settings-media-formats"
+          options={{ title: 'Media Formats', headerBackTitle: 'Settings' }}
+        />
       </Stack>
 
       {/* Animated splash renders as an overlay on top of the Stack so the

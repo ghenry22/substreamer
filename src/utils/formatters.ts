@@ -31,3 +31,15 @@ export function formatTrackDuration(seconds: number): string {
 export function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, '').trim();
 }
+
+/**
+ * Format a byte count into a compact human-readable string.
+ * Examples: "0 B", "4.2 KB", "128 MB", "1 GB".
+ */
+export function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / Math.pow(1024, i);
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[i]}`;
+}
