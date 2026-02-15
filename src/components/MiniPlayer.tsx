@@ -13,11 +13,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { CachedImage } from './CachedImage';
+import { MarqueeText } from './MarqueeText';
 import WaveformLogo from './WaveformLogo';
 import { useCachedCoverArt } from '../hooks/useCachedCoverArt';
 import { useTheme } from '../hooks/useTheme';
 import { PlayerView } from '../screens/player-view';
 import { togglePlayPause } from '../services/playerService';
+import { layoutPreferencesStore } from '../store/layoutPreferencesStore';
 import { playerStore } from '../store/playerStore';
 import { getProminentColor, type ExtractedColors } from '../utils/colors';
 
@@ -33,6 +35,7 @@ export function MiniPlayer() {
   const position = playerStore((s) => s.position);
   const duration = playerStore((s) => s.duration);
   const queueLoading = playerStore((s) => s.queueLoading);
+  const marqueeScrolling = layoutPreferencesStore((s) => s.marqueeScrolling);
 
   const progress = duration > 0 ? position / duration : 0;
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -172,9 +175,15 @@ export function MiniPlayer() {
 
         {/* Track info */}
         <View style={styles.info}>
-          <Text style={[styles.title, { color: queueLoading ? colors.textSecondary : colors.textPrimary }]} numberOfLines={1}>
-            {queueLoading ? 'Loading...' : currentTrack.title}
-          </Text>
+          {marqueeScrolling ? (
+            <MarqueeText style={[styles.title, { color: queueLoading ? colors.textSecondary : colors.textPrimary }]}>
+              {queueLoading ? 'Loading...' : currentTrack.title}
+            </MarqueeText>
+          ) : (
+            <Text style={[styles.title, { color: queueLoading ? colors.textSecondary : colors.textPrimary }]} numberOfLines={1}>
+              {queueLoading ? 'Loading...' : currentTrack.title}
+            </Text>
+          )}
           {!queueLoading && (
             <Text style={[styles.artist, { color: colors.textSecondary }]} numberOfLines={1}>
               {currentTrack.artist ?? 'Unknown Artist'}

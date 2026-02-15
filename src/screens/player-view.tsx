@@ -21,6 +21,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CachedImage } from '../components/CachedImage';
+import { MarqueeText } from '../components/MarqueeText';
 import { PlayerProgressBar } from '../components/PlayerProgressBar';
 import { useColorExtraction } from '../hooks/useColorExtraction';
 import { useTheme } from '../hooks/useTheme';
@@ -33,6 +34,7 @@ import {
   togglePlayPause,
 } from '../services/playerService';
 import { type Child } from '../services/subsonicService';
+import { layoutPreferencesStore } from '../store/layoutPreferencesStore';
 import { playerStore } from '../store/playerStore';
 import { formatTrackDuration } from '../utils/formatters';
 
@@ -56,6 +58,7 @@ export function PlayerView({ onClose }: PlayerViewProps) {
   const error = playerStore((s) => s.error);
   const retrying = playerStore((s) => s.retrying);
   const queueLoading = playerStore((s) => s.queueLoading);
+  const marqueeScrolling = layoutPreferencesStore((s) => s.marqueeScrolling);
 
   const isPlaying =
     playbackState === 'playing' || playbackState === 'buffering';
@@ -148,12 +151,20 @@ export function PlayerView({ onClose }: PlayerViewProps) {
 
             {/* Track info */}
             <View style={styles.trackInfo}>
-              <Text
-                style={[styles.trackTitle, { color: colors.textPrimary }]}
-                numberOfLines={1}
-              >
-                {currentTrack.title}
-              </Text>
+              {marqueeScrolling ? (
+                <MarqueeText
+                  style={[styles.trackTitle, { color: colors.textPrimary }]}
+                >
+                  {currentTrack.title}
+                </MarqueeText>
+              ) : (
+                <Text
+                  style={[styles.trackTitle, { color: colors.textPrimary }]}
+                  numberOfLines={1}
+                >
+                  {currentTrack.title}
+                </Text>
+              )}
               <Text
                 style={[styles.trackArtist, { color: colors.textSecondary }]}
                 numberOfLines={1}

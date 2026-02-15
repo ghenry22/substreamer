@@ -16,6 +16,7 @@ export interface LayoutPreferencesState {
   favArtistLayout: ItemLayout;
   albumSortOrder: AlbumSortOrder;
   artistAlbumSortOrder: ArtistAlbumSortOrder;
+  marqueeScrolling: boolean;
   setAlbumLayout: (layout: ItemLayout) => void;
   setArtistLayout: (layout: ItemLayout) => void;
   setPlaylistLayout: (layout: ItemLayout) => void;
@@ -24,6 +25,7 @@ export interface LayoutPreferencesState {
   setFavArtistLayout: (layout: ItemLayout) => void;
   setAlbumSortOrder: (order: AlbumSortOrder) => void;
   setArtistAlbumSortOrder: (order: ArtistAlbumSortOrder) => void;
+  setMarqueeScrolling: (enabled: boolean) => void;
 }
 
 const PERSIST_KEY = 'substreamer-layout-preferences';
@@ -39,6 +41,7 @@ export const layoutPreferencesStore = create<LayoutPreferencesState>()(
       favArtistLayout: 'list',
       albumSortOrder: 'artist',
       artistAlbumSortOrder: 'newest',
+      marqueeScrolling: true,
       setAlbumLayout: (albumLayout) => set({ albumLayout }),
       setArtistLayout: (artistLayout) => set({ artistLayout }),
       setPlaylistLayout: (playlistLayout) => set({ playlistLayout }),
@@ -56,6 +59,7 @@ export const layoutPreferencesStore = create<LayoutPreferencesState>()(
       },
       setArtistAlbumSortOrder: (artistAlbumSortOrder) =>
         set({ artistAlbumSortOrder }),
+      setMarqueeScrolling: (marqueeScrolling) => set({ marqueeScrolling }),
     }),
     {
       name: PERSIST_KEY,
@@ -69,6 +73,7 @@ export const layoutPreferencesStore = create<LayoutPreferencesState>()(
         favArtistLayout: state.favArtistLayout,
         albumSortOrder: state.albumSortOrder,
         artistAlbumSortOrder: state.artistAlbumSortOrder,
+        marqueeScrolling: state.marqueeScrolling,
       }),
     }
   )
