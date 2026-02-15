@@ -14,7 +14,11 @@
       "infoPlist": {
         "UIBackgroundModes": [
           "audio"
-        ]
+        ],
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        },
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -42,7 +46,15 @@
       "./plugins/fix-jvm-target",
       "expo-sqlite",
       "./modules/expo-ssl-trust/plugin",
-      "./modules/react-native-track-player/plugin"
+      "./modules/react-native-track-player/plugin",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
     ]
   }
 }

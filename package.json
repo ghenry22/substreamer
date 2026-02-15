@@ -13,6 +13,7 @@
     "@expo/vector-icons": "^15.0.3",
     "@shopify/flash-list": "^2.2.2",
     "expo": "~54.0.33",
+    "expo-build-properties": "~1.0.10",
     "expo-constants": "~18.0.13",
     "expo-crypto": "~15.0.8",
     "expo-file-system": "~19.0.21",
