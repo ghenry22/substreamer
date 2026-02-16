@@ -7,11 +7,17 @@ import { AppState, type AppStateStatus } from 'react-native';
 import TrackPlayer, {
   Capability,
   Event,
+  RepeatMode,
   State,
   type Track,
 } from 'react-native-track-player';
 
-import { playbackSettingsStore } from '../store/playbackSettingsStore';
+import {
+  PLAYBACK_RATES,
+  playbackSettingsStore,
+  type PlaybackRate,
+  type RepeatModeSetting,
+} from '../store/playbackSettingsStore';
 import { playerStore, type PlaybackStatus } from '../store/playerStore';
 import { serverInfoStore } from '../store/serverInfoStore';
 import { addCompletedScrobble, sendNowPlaying } from './scrobbleService';
@@ -25,6 +31,18 @@ import {
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
+
+/** Map our RepeatModeSetting to RNTP's RepeatMode enum. */
+function mapRepeatMode(mode: RepeatModeSetting): RepeatMode {
+  switch (mode) {
+    case 'all':
+      return RepeatMode.Queue;
+    case 'one':
+      return RepeatMode.Track;
+    default:
+      return RepeatMode.Off;
+  }
+}
 
 /** Map RNTP State enum to our simplified PlaybackStatus. */
 function mapState(state: State): PlaybackStatus {
@@ -228,6 +246,11 @@ export async function initPlayer(): Promise<void> {
     ],
     // compactCapabilities removed in RNTP v5
   });
+
+  // Apply persisted playback settings to the native player.
+  const settings = playbackSettingsStore.getState();
+  await TrackPlayer.setRepeatMode(mapRepeatMode(settings.repeatMode));
+  await TrackPlayer.setRate(settings.playbackRate);
 
   // --- Event listeners that push state into the Zustand store ---
 
@@ -592,4 +615,33 @@ export async function clearQueue(): Promise<void> {
   store.setProgress(0, 0, 0);
   store.setError(null);
   store.setRetrying(false);
+}
+
+/**
+ * Cycle the repeat mode: off → all → one → off.
+ *
+ * Updates both the persisted store and the native RNTP player.
+ */
+export async function cycleRepeatMode(): Promise<void> {
+  const current = playbackSettingsStore.getState().repeatMode;
+  const next: RepeatModeSetting =
+    current === 'off' ? 'all' : current === 'all' ? 'one' : 'off';
+  playbackSettingsStore.getState().setRepeatMode(next);
+  await TrackPlayer.setRepeatMode(mapRepeatMode(next));
+}
+
+/**
+ * Cycle the playback rate through the predefined steps.
+ *
+ * 0.5 → 0.75 → 1 → 1.25 → 1.5 → 2 → 0.5 …
+ *
+ * Updates both the persisted store and the native RNTP player.
+ */
+export async function cyclePlaybackRate(): Promise<void> {
+  const current = playbackSettingsStore.getState().playbackRate;
+  const currentIndex = PLAYBACK_RATES.indexOf(current);
+  const nextIndex = (currentIndex + 1) % PLAYBACK_RATES.length;
+  const next: PlaybackRate = PLAYBACK_RATES[nextIndex];
+  playbackSettingsStore.getState().setPlaybackRate(next);
+  await TrackPlayer.setRate(next);
 }

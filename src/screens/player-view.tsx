@@ -23,7 +23,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CachedImage } from '../components/CachedImage';
 import { MarqueeText } from '../components/MarqueeText';
+import { PlaybackRateButton } from '../components/PlaybackRateButton';
 import { PlayerProgressBar } from '../components/PlayerProgressBar';
+import { RepeatButton } from '../components/RepeatButton';
 import { useColorExtraction } from '../hooks/useColorExtraction';
 import { useTheme } from '../hooks/useTheme';
 import {
@@ -328,49 +330,62 @@ const PlayerListHeader = memo(function PlayerListHeader({
 
           {/* Playback controls */}
           <View style={styles.controls}>
-            <Pressable
-              onPress={skipToPrevious}
-              hitSlop={12}
-              style={({ pressed }) => pressed && styles.pressed}
-            >
-              <Ionicons
-                name="play-back"
-                size={32}
-                color={colors.textPrimary}
-              />
-            </Pressable>
+            {/* Playback rate toggle */}
+            <View style={styles.controlSideLeft}>
+              <PlaybackRateButton />
+            </View>
 
-            <Pressable
-              onPress={togglePlayPause}
-              style={({ pressed }) => [
-                styles.playPauseButton,
-                { backgroundColor: colors.textPrimary },
-                pressed && styles.playPausePressed,
-              ]}
-            >
-              {isBuffering ? (
-                <ActivityIndicator size="small" color={colors.background} />
-              ) : (
+            {/* Transport controls */}
+            <View style={styles.transportControls}>
+              <Pressable
+                onPress={skipToPrevious}
+                hitSlop={12}
+                style={({ pressed }) => pressed && styles.pressed}
+              >
                 <Ionicons
-                  name={isPlaying ? 'pause' : 'play'}
+                  name="play-back"
                   size={32}
-                  color={colors.background}
-                  style={!isPlaying ? styles.playIcon : undefined}
+                  color={colors.textPrimary}
                 />
-              )}
-            </Pressable>
+              </Pressable>
 
-            <Pressable
-              onPress={skipToNext}
-              hitSlop={12}
-              style={({ pressed }) => pressed && styles.pressed}
-            >
-              <Ionicons
-                name="play-forward"
-                size={32}
-                color={colors.textPrimary}
-              />
-            </Pressable>
+              <Pressable
+                onPress={togglePlayPause}
+                style={({ pressed }) => [
+                  styles.playPauseButton,
+                  { backgroundColor: colors.textPrimary },
+                  pressed && styles.playPausePressed,
+                ]}
+              >
+                {isBuffering ? (
+                  <ActivityIndicator size="small" color={colors.background} />
+                ) : (
+                  <Ionicons
+                    name={isPlaying ? 'pause' : 'play'}
+                    size={32}
+                    color={colors.background}
+                    style={!isPlaying ? styles.playIcon : undefined}
+                  />
+                )}
+              </Pressable>
+
+              <Pressable
+                onPress={skipToNext}
+                hitSlop={12}
+                style={({ pressed }) => pressed && styles.pressed}
+              >
+                <Ionicons
+                  name="play-forward"
+                  size={32}
+                  color={colors.textPrimary}
+                />
+              </Pressable>
+            </View>
+
+            {/* Repeat toggle */}
+            <View style={styles.controlSideRight}>
+              <RepeatButton />
+            </View>
           </View>
 
           {/* Queue section header */}
@@ -569,9 +584,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 40,
     paddingVertical: 8,
+    paddingHorizontal: HERO_PADDING,
     marginBottom: 32,
+  },
+  controlSideLeft: {
+    flex: 1,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  controlSideRight: {
+    flex: 1,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  transportControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 28,
   },
   playPauseButton: {
     width: 64,
