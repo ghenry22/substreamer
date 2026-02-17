@@ -1,5 +1,5 @@
 import { useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Animated,
   ActivityIndicator,
@@ -7,12 +7,12 @@ import {
   Platform,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { FlashList } from '@shopify/flash-list';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -26,7 +26,7 @@ import { playTrack } from '../services/playerService';
 import { playlistDetailStore } from '../store/playlistDetailStore';
 import { formatCompactDuration } from '../utils/formatters';
 
-import { type PlaylistWithSongs } from '../services/subsonicService';
+import { type Child, type PlaylistWithSongs } from '../services/subsonicService';
 
 const HERO_PADDING = 24;
 const HERO_COVER_SIZE = 600;
@@ -91,66 +91,31 @@ export function PlaylistDetailScreen() {
 
   const onRefresh = useCallback(() => fetchData(true), [fetchData]);
 
-  const gradientStart = coverBackgroundColor ?? colors.background;
+  const tracks = useMemo(() => playlist?.entry ?? [], [playlist?.entry]);
 
-  if (loading || !transitionComplete) {
-    return (
-      <View style={[styles.centered, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
-
-  if (error || !playlist) {
-    return (
-      <View style={[styles.centered, { backgroundColor: colors.background }]}>
-        <Text style={[styles.errorText, { color: colors.textSecondary }]}>
-          {error ?? 'Playlist not found'}
-        </Text>
-      </View>
-    );
-  }
-
-  const gradientEnd = colors.background;
-  const tracks = playlist.entry ?? [];
-
-  const gradientFillStyle = [
-    StyleSheet.absoluteFillObject,
-    { top: -insets.top, left: 0, right: 0, bottom: 0 },
-  ];
-
-  return (
-    <View style={styles.container}>
-      <View style={[gradientFillStyle, { backgroundColor: colors.background }]} />
-      <Animated.View
-        style={[gradientFillStyle, { opacity: gradientOpacity }]}
-        pointerEvents="none"
-      >
-        <LinearGradient
-          colors={[gradientStart, gradientEnd]}
-          locations={[0, 0.5]}
-          style={StyleSheet.absoluteFillObject}
+  const renderItem = useCallback(
+    ({ item, index }: { item: Child; index: number }) => (
+      <View style={styles.trackItemWrap}>
+        <TrackRow
+          track={item}
+          trackNumber={`${index + 1}. `}
+          colors={colors}
+          onPress={() => playTrack(item, tracks)}
         />
-      </Animated.View>
-      <ScrollView
-        style={styles.scrollView}
-        onScrollBeginDrag={closeOpenRow}
-        contentContainerStyle={[
-          styles.content,
-          Platform.OS !== 'ios' && { paddingTop: insets.top + HEADER_BAR_HEIGHT },
-        ]}
-        contentInset={Platform.OS === 'ios' ? { top: insets.top + HEADER_BAR_HEIGHT } : undefined}
-        contentOffset={Platform.OS === 'ios' ? { x: 0, y: -(insets.top + HEADER_BAR_HEIGHT) } : undefined}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.primary}
-            progressViewOffset={insets.top + HEADER_BAR_HEIGHT}
-          />
-        }
-      >
+      </View>
+    ),
+    [colors, tracks],
+  );
+
+  const keyExtractor = useCallback(
+    (item: Child, index: number) => `${item.id}-${index}`,
+    [],
+  );
+
+  const listHeader = useMemo(() => {
+    if (!playlist) return null;
+    return (
+      <>
         <View style={styles.hero}>
           <View style={styles.heroImageWrap}>
             <CachedImage
@@ -201,25 +166,83 @@ export function PlaylistDetailScreen() {
             </Pressable>
           )}
         </View>
+        <View style={styles.trackListSpacer} />
+      </>
+    );
+  }, [playlist, colors, tracks]);
 
-        {tracks.length === 0 ? (
-          <Text style={[styles.emptyTracks, { color: colors.textSecondary }]}>
-            No tracks
-          </Text>
-        ) : (
-          <View style={styles.trackList}>
-            {tracks.map((track, index) => (
-              <TrackRow
-                key={`${track.id}-${index}`}
-                track={track}
-                trackNumber={`${index + 1}. `}
-                colors={colors}
-                onPress={() => playTrack(track, tracks)}
-              />
-            ))}
-          </View>
-        )}
-      </ScrollView>
+  const listEmpty = useMemo(
+    () => (
+      <Text style={[styles.emptyTracks, { color: colors.textSecondary }]}>
+        No tracks
+      </Text>
+    ),
+    [colors.textSecondary],
+  );
+
+  const gradientStart = coverBackgroundColor ?? colors.background;
+
+  if (loading || !transitionComplete) {
+    return (
+      <View style={[styles.centered, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (error || !playlist) {
+    return (
+      <View style={[styles.centered, { backgroundColor: colors.background }]}>
+        <Text style={[styles.errorText, { color: colors.textSecondary }]}>
+          {error ?? 'Playlist not found'}
+        </Text>
+      </View>
+    );
+  }
+
+  const gradientEnd = colors.background;
+
+  const gradientFillStyle = [
+    StyleSheet.absoluteFillObject,
+    { top: -insets.top, left: 0, right: 0, bottom: 0 },
+  ];
+
+  return (
+    <View style={styles.container}>
+      <View style={[gradientFillStyle, { backgroundColor: colors.background }]} />
+      <Animated.View
+        style={[gradientFillStyle, { opacity: gradientOpacity }]}
+        pointerEvents="none"
+      >
+        <LinearGradient
+          colors={[gradientStart, gradientEnd]}
+          locations={[0, 0.5]}
+          style={StyleSheet.absoluteFillObject}
+        />
+      </Animated.View>
+      <FlashList
+        data={tracks}
+        renderItem={renderItem}
+        keyExtractor={keyExtractor}
+        ListHeaderComponent={listHeader}
+        ListEmptyComponent={listEmpty}
+        onScrollBeginDrag={closeOpenRow}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          paddingBottom: 32,
+          ...(Platform.OS !== 'ios' ? { paddingTop: insets.top + HEADER_BAR_HEIGHT } : undefined),
+        }}
+        contentInset={Platform.OS === 'ios' ? { top: insets.top + HEADER_BAR_HEIGHT } : undefined}
+        contentOffset={Platform.OS === 'ios' ? { x: 0, y: -(insets.top + HEADER_BAR_HEIGHT) } : undefined}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            progressViewOffset={insets.top + HEADER_BAR_HEIGHT}
+          />
+        }
+      />
     </View>
   );
 }
@@ -227,13 +250,6 @@ export function PlaylistDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-    backgroundColor: 'transparent',
-  },
-  content: {
-    paddingBottom: 32,
   },
   centered: {
     flex: 1,
@@ -308,9 +324,11 @@ const styles = StyleSheet.create({
   metaSpacer: {
     width: 14,
   },
-  trackList: {
+  trackItemWrap: {
     paddingHorizontal: 16,
-    paddingTop: 16,
+  },
+  trackListSpacer: {
+    height: 16,
   },
   emptyTracks: {
     fontSize: 16,
