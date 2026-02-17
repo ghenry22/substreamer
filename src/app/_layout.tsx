@@ -160,6 +160,13 @@ export default function RootLayout() {
           options={{ title: 'Storage & Data', headerBackTitle: 'Settings' }}
         />
         <Stack.Screen
+          name="player"
+          options={{
+            headerShown: false,
+            animation: 'slide_from_bottom',
+          }}
+        />
+        <Stack.Screen
           name="settings-media-formats"
           options={{ title: 'Media Formats', headerBackTitle: 'Settings' }}
         />

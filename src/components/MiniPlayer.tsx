@@ -9,15 +9,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { CachedImage } from './CachedImage';
 import { MarqueeText } from './MarqueeText';
 import WaveformLogo from './WaveformLogo';
 import { useCachedCoverArt } from '../hooks/useCachedCoverArt';
 import { useTheme } from '../hooks/useTheme';
-import { PlayerView } from '../screens/player-view';
 import { togglePlayPause } from '../services/playerService';
 import { layoutPreferencesStore } from '../store/layoutPreferencesStore';
 import { playerStore } from '../store/playerStore';
@@ -108,10 +108,9 @@ export function MiniPlayer() {
     }
   }, [bgColor, gradientOpacity]);
 
-  // --- Full player modal ---
-  const [playerVisible, setPlayerVisible] = useState(false);
-  const openPlayer = useCallback(() => setPlayerVisible(true), []);
-  const closePlayer = useCallback(() => setPlayerVisible(false), []);
+  // --- Full player navigation ---
+  const router = useRouter();
+  const openPlayer = useCallback(() => router.push('/player'), [router]);
 
   if (!currentTrack) return null;
 
@@ -209,15 +208,6 @@ export function MiniPlayer() {
         )}
       </Pressable>
 
-      {/* Full player modal */}
-      <Modal
-        visible={playerVisible}
-        animationType="slide"
-        presentationStyle="fullScreen"
-        onRequestClose={closePlayer}
-      >
-        <PlayerView onClose={closePlayer} />
-      </Modal>
     </View>
   );
 }
