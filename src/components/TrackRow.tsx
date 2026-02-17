@@ -9,7 +9,7 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useMemo } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { SwipeableRow, type SwipeAction } from './SwipeableRow';
@@ -30,7 +30,7 @@ export interface TrackRowProps {
   onPress?: () => void;
 }
 
-export function TrackRow({ track, trackNumber, colors, onPress }: TrackRowProps) {
+export const TrackRow = memo(function TrackRow({ track, trackNumber, colors, onPress }: TrackRowProps) {
   const duration = track.duration != null ? formatTrackDuration(track.duration) : '—';
   const starred = useIsStarred('song', track.id);
   const rating = track.userRating;
@@ -111,7 +111,7 @@ export function TrackRow({ track, trackNumber, colors, onPress }: TrackRowProps)
       </View>
     </SwipeableRow>
   );
-}
+});
 
 const styles = StyleSheet.create({
   trackRow: {

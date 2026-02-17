@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   Animated,
   ActivityIndicator,
+  InteractionManager,
   Platform,
   Pressable,
   RefreshControl,
@@ -40,6 +41,14 @@ export function PlaylistDetailScreen() {
   const [loading, setLoading] = useState(!cachedEntry);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [transitionComplete, setTransitionComplete] = useState(false);
+
+  useEffect(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
+      setTransitionComplete(true);
+    });
+    return () => handle.cancel();
+  }, []);
 
   const { coverBackgroundColor, gradientOpacity } = useColorExtraction(
     playlist?.coverArt,
@@ -84,7 +93,7 @@ export function PlaylistDetailScreen() {
 
   const gradientStart = coverBackgroundColor ?? colors.background;
 
-  if (loading) {
+  if (loading || !transitionComplete) {
     return (
       <View style={[styles.centered, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.primary} />

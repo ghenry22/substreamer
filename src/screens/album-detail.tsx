@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Animated,
   ActivityIndicator,
+  InteractionManager,
   Platform,
   Pressable,
   RefreshControl,
@@ -59,6 +60,15 @@ export function AlbumDetailScreen() {
   const [loading, setLoading] = useState(!cachedEntry);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [transitionComplete, setTransitionComplete] = useState(false);
+
+  useEffect(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
+      setTransitionComplete(true);
+    });
+    return () => handle.cancel();
+  }, []);
+
   const { coverBackgroundColor, gradientOpacity } = useColorExtraction(
     album?.coverArt,
     colors.background,
@@ -124,7 +134,7 @@ export function AlbumDetailScreen() {
 
   const gradientStart = coverBackgroundColor ?? colors.background;
 
-  if (loading) {
+  if (loading || !transitionComplete) {
     return (
       <View style={[styles.centered, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.primary} />
