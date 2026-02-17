@@ -307,7 +307,6 @@ export function ArtistDetailScreen() {
                     onPress={() => setAlbumSortDesc((prev) => !prev)}
                     style={({ pressed }) => [
                       styles.sortButton,
-                      { backgroundColor: colors.card },
                       pressed && styles.pressed,
                     ]}
                     hitSlop={8}
@@ -317,7 +316,7 @@ export function ArtistDetailScreen() {
                       size={14}
                       color={colors.primary}
                     />
-                    <Text style={[styles.sortLabel, { color: colors.textSecondary }]}>
+                    <Text style={[styles.sortLabel, { color: colors.textPrimary }]}>
                       {albumSortDesc ? 'Newest' : 'Oldest'}
                     </Text>
                   </Pressable>
@@ -419,13 +418,12 @@ const styles = StyleSheet.create({
   sortButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 14,
+    padding: 4,
+    marginBottom: 10,
     gap: 4,
   },
   sortLabel: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
   },
   albumList: {
