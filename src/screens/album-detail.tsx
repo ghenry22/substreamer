@@ -151,6 +151,7 @@ export function AlbumDetailScreen() {
       if (item.type === 'disc-header') {
         return (
           <View style={[styles.discHeaderWrap, index > 0 && styles.discHeaderGap]}>
+            <Ionicons name="disc-outline" size={16} color={colors.primary} style={styles.discIcon} />
             <Text style={[styles.discTitle, { color: colors.label }]}>
               Disc {item.discNumber}
             </Text>
@@ -374,7 +375,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   discHeaderWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  discIcon: {
+    marginRight: 6,
   },
   discHeaderGap: {
     marginTop: 24,
@@ -383,11 +390,10 @@ const styles = StyleSheet.create({
     height: 16,
   },
   discTitle: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 8,
   },
   emptyTracks: {
     fontSize: 16,
