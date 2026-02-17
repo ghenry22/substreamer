@@ -4,6 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { CachedImage } from './CachedImage';
 import { SwipeableRow, type SwipeAction } from './SwipeableRow';
+import { useIsStarred } from '../hooks/useIsStarred';
 import { removeItemFromQueue, toggleStar } from '../services/moreOptionsService';
 import { type Child } from '../services/subsonicService';
 import { formatTrackDuration } from '../utils/formatters';
@@ -46,13 +47,15 @@ export const QueueItemRow = memo(function QueueItemRow({
     onPress(index);
   }, [index, onPress]);
 
+  const starred = useIsStarred('song', track.id);
+
   const handleRemove = useCallback(() => {
     removeItemFromQueue(index);
   }, [index]);
 
   const handleToggleStar = useCallback(() => {
-    toggleStar('song', track.id, Boolean(track.starred));
-  }, [track.id, track.starred]);
+    toggleStar('song', track.id);
+  }, [track.id]);
 
   const titleColor = isActive ? colors.primary : colors.textPrimary;
   const subtitleColor = isActive ? colors.primary : colors.textSecondary;
@@ -75,13 +78,13 @@ export const QueueItemRow = memo(function QueueItemRow({
   const leftActions: SwipeAction[] = useMemo(
     () => [
       {
-        icon: track.starred ? 'heart' : 'heart-outline',
+        icon: starred ? 'heart' : 'heart-outline',
         color: colors.red,
-        label: 'Favorite',
+        label: starred ? 'Remove' : 'Add',
         onPress: handleToggleStar,
       },
     ],
-    [track.starred, colors.red, handleToggleStar],
+    [starred, colors.red, handleToggleStar],
   );
 
   return (

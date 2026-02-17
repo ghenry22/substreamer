@@ -5,6 +5,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { CachedImage } from './CachedImage';
 import { SwipeableRow, type SwipeAction } from './SwipeableRow';
+import { useIsStarred } from '../hooks/useIsStarred';
 import { useTheme } from '../hooks/useTheme';
 import { addAlbumToQueue, toggleStar } from '../services/moreOptionsService';
 import { type AlbumID3 } from '../services/subsonicService';
@@ -19,6 +20,7 @@ export const ROW_HEIGHT = 80;
 export const AlbumRow = memo(function AlbumRow({ album }: { album: AlbumID3 }) {
   const { colors } = useTheme();
   const router = useRouter();
+  const starred = useIsStarred('album', album.id);
 
   const onPress = useCallback(() => {
     router.push(`/album/${album.id}`);
@@ -29,8 +31,8 @@ export const AlbumRow = memo(function AlbumRow({ album }: { album: AlbumID3 }) {
   }, [album]);
 
   const handleToggleStar = useCallback(() => {
-    toggleStar('album', album.id, Boolean(album.starred));
-  }, [album.id, album.starred]);
+    toggleStar('album', album.id);
+  }, [album.id]);
 
   const handleLongPress = useCallback(() => {
     moreOptionsStore.getState().show({ type: 'album', item: album });
@@ -44,13 +46,13 @@ export const AlbumRow = memo(function AlbumRow({ album }: { album: AlbumID3 }) {
   const leftActions: SwipeAction[] = useMemo(
     () => [
       {
-        icon: album.starred ? 'heart' : 'heart-outline',
+        icon: starred ? 'heart' : 'heart-outline',
         color: colors.red,
-        label: 'Favorite',
+        label: starred ? 'Remove' : 'Add',
         onPress: handleToggleStar,
       },
     ],
-    [album.starred, colors.red, handleToggleStar],
+    [starred, colors.red, handleToggleStar],
   );
 
   return (

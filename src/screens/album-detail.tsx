@@ -27,7 +27,7 @@ import { playTrack } from '../services/playerService';
 import { albumDetailStore } from '../store/albumDetailStore';
 import { moreOptionsStore } from '../store/moreOptionsStore';
 
-import { type AlbumWithSongsID3, type Child } from '../services/subsonicService';
+import type { AlbumWithSongsID3, Child } from '../services/subsonicService';
 
 const HERO_PADDING = 24;
 const HERO_COVER_SIZE = 600;
@@ -64,26 +64,6 @@ export function AlbumDetailScreen() {
     colors.background,
   );
 
-  const handleStarChanged = useCallback(
-    (albumId: string, starred: boolean) => {
-      setAlbum((prev) => {
-        if (!prev) return prev;
-        const updated = { ...prev, starred: starred ? new Date() : undefined };
-        const entry = albumDetailStore.getState().albums[albumId];
-        if (entry) {
-          albumDetailStore.setState({
-            albums: {
-              ...albumDetailStore.getState().albums,
-              [albumId]: { ...entry, album: updated },
-            },
-          });
-        }
-        return updated;
-      });
-    },
-    []
-  );
-
   /* ---- Header right: more options button ---- */
   useEffect(() => {
     if (!album) return;
@@ -91,15 +71,13 @@ export function AlbumDetailScreen() {
       headerRight: () => (
         <MoreOptionsButton
           onPress={() =>
-            moreOptionsStore
-              .getState()
-              .show({ type: 'album', item: album }, handleStarChanged)
+            moreOptionsStore.getState().show({ type: 'album', item: album })
           }
           color={colors.textPrimary}
         />
       ),
     });
-  }, [album, navigation, colors.textPrimary, handleStarChanged]);
+  }, [album, navigation, colors.textPrimary]);
 
   /* ---- Data fetching ---- */
   const { fetchAlbum } = albumDetailStore.getState();

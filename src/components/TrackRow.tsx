@@ -13,6 +13,7 @@ import { useCallback, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { SwipeableRow, type SwipeAction } from './SwipeableRow';
+import { useIsStarred } from '../hooks/useIsStarred';
 import { addSongToQueue, toggleStar } from '../services/moreOptionsService';
 import { moreOptionsStore } from '../store/moreOptionsStore';
 import { formatTrackDuration } from '../utils/formatters';
@@ -33,7 +34,7 @@ export interface TrackRowProps {
 
 export function TrackRow({ track, trackNumber, showArtist, colors, onPress }: TrackRowProps) {
   const duration = track.duration != null ? formatTrackDuration(track.duration) : '—';
-  const starred = Boolean(track.starred);
+  const starred = useIsStarred('song', track.id);
   const rating = track.userRating;
 
   const handleAddToQueue = useCallback(() => {
@@ -41,8 +42,8 @@ export function TrackRow({ track, trackNumber, showArtist, colors, onPress }: Tr
   }, [track]);
 
   const handleToggleStar = useCallback(() => {
-    toggleStar('song', track.id, starred);
-  }, [track.id, starred]);
+    toggleStar('song', track.id);
+  }, [track.id]);
 
   const handleLongPress = useCallback(() => {
     moreOptionsStore.getState().show({ type: 'song', item: track });
@@ -58,7 +59,7 @@ export function TrackRow({ track, trackNumber, showArtist, colors, onPress }: Tr
       {
         icon: starred ? 'heart' : 'heart-outline',
         color: colors.red,
-        label: 'Favorite',
+        label: starred ? 'Remove' : 'Add',
         onPress: handleToggleStar,
       },
     ],

@@ -31,31 +31,57 @@ export type StarrableType = 'song' | 'album' | 'artist';
  * Toggle the starred (favorite) state for an item and refresh the
  * favorites store so all views stay in sync.
  *
+ * Reads current starred state from `favoritesStore` (the single source of
+ * truth) and applies an optimistic override for instant UI feedback before
+ * the server round-trip completes.
+ *
  * Returns the new starred state (`true` = now starred).
  */
 export async function toggleStar(
   type: StarrableType,
   id: string,
-  currentlyStarred: boolean,
 ): Promise<boolean> {
+  const state = favoritesStore.getState();
+
+  const currentlyStarred = (() => {
+    if (id in state.overrides) return state.overrides[id];
+    switch (type) {
+      case 'song':
+        return state.songs.some((s) => s.id === id);
+      case 'album':
+        return state.albums.some((a) => a.id === id);
+      case 'artist':
+        return state.artists.some((a) => a.id === id);
+    }
+  })();
+
   const starred = !currentlyStarred;
 
-  switch (type) {
-    case 'song':
-      if (starred) await starSong(id);
-      else await unstarSong(id);
-      break;
-    case 'album':
-      if (starred) await starAlbum(id);
-      else await unstarAlbum(id);
-      break;
-    case 'artist':
-      if (starred) await starArtist(id);
-      else await unstarArtist(id);
-      break;
-  }
+  // Optimistic update – UI reflects the change immediately
+  state.setOverride(id, starred);
 
-  favoritesStore.getState().fetchStarred();
+  try {
+    switch (type) {
+      case 'song':
+        if (starred) await starSong(id);
+        else await unstarSong(id);
+        break;
+      case 'album':
+        if (starred) await starAlbum(id);
+        else await unstarAlbum(id);
+        break;
+      case 'artist':
+        if (starred) await starArtist(id);
+        else await unstarArtist(id);
+        break;
+    }
+
+    // Refresh from server (clears overrides on success)
+    favoritesStore.getState().fetchStarred();
+  } catch {
+    // Revert optimistic update on failure
+    state.setOverride(id, currentlyStarred);
+  }
 
   return starred;
 }

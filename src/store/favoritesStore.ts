@@ -24,9 +24,18 @@ export interface FavoritesState {
   error: string | null;
   /** Timestamp of the last successful fetch */
   lastFetchedAt: number | null;
+  /**
+   * Optimistic overrides keyed by item ID.
+   * When present, `useIsStarred` reads from here instead of the arrays,
+   * giving instant UI feedback before `fetchStarred` completes.
+   * Cleared automatically when `fetchStarred` succeeds.
+   */
+  overrides: Record<string, boolean>;
 
   /** Fetch all starred items from the server via getStarred2. */
   fetchStarred: () => Promise<void>;
+  /** Set an optimistic override for a single item. */
+  setOverride: (id: string, starred: boolean) => void;
   /** Clear all favorites data */
   clearFavorites: () => void;
 }
@@ -42,6 +51,7 @@ export const favoritesStore = create<FavoritesState>()(
       loading: false,
       error: null,
       lastFetchedAt: null,
+      overrides: {},
 
       fetchStarred: async () => {
         // Prevent duplicate fetches
@@ -58,6 +68,7 @@ export const favoritesStore = create<FavoritesState>()(
             artists,
             loading: false,
             lastFetchedAt: Date.now(),
+            overrides: {},
           });
         } catch (e) {
           set({
@@ -67,6 +78,9 @@ export const favoritesStore = create<FavoritesState>()(
         }
       },
 
+      setOverride: (id: string, starred: boolean) =>
+        set((s) => ({ overrides: { ...s.overrides, [id]: starred } })),
+
       clearFavorites: () =>
         set({
           songs: [],
@@ -75,6 +89,7 @@ export const favoritesStore = create<FavoritesState>()(
           loading: false,
           error: null,
           lastFetchedAt: null,
+          overrides: {},
         }),
     }),
     {

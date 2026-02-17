@@ -27,23 +27,16 @@ export type MoreOptionsEntity =
 export interface MoreOptionsState {
   visible: boolean;
   entity: MoreOptionsEntity | null;
-  /** Called after a star change so the originating component can update its local state. */
-  onStarChanged: ((id: string, starred: boolean) => void) | null;
 
-  show: (
-    entity: MoreOptionsEntity,
-    onStarChanged?: (id: string, starred: boolean) => void,
-  ) => void;
+  show: (entity: MoreOptionsEntity) => void;
   hide: () => void;
 }
 
 export const moreOptionsStore = create<MoreOptionsState>()((set) => ({
   visible: false,
   entity: null,
-  onStarChanged: null,
 
-  show: (entity, onStarChanged) =>
-    set({ visible: true, entity, onStarChanged: onStarChanged ?? null }),
+  show: (entity) => set({ visible: true, entity }),
 
-  hide: () => set({ visible: false, entity: null, onStarChanged: null }),
+  hide: () => set({ visible: false, entity: null }),
 }));

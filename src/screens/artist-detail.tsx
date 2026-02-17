@@ -69,26 +69,6 @@ export function ArtistDetailScreen() {
     colors.background,
   );
 
-  const handleStarChanged = useCallback(
-    (artistId: string, starred: boolean) => {
-      setArtist((prev) => {
-        if (!prev) return prev;
-        const updated = { ...prev, starred: starred ? new Date() : undefined };
-        const entry = artistDetailStore.getState().artists[artistId];
-        if (entry) {
-          artistDetailStore.setState({
-            artists: {
-              ...artistDetailStore.getState().artists,
-              [artistId]: { ...entry, artist: updated },
-            },
-          });
-        }
-        return updated;
-      });
-    },
-    []
-  );
-
   /* ---- Header right: more options button ---- */
   useEffect(() => {
     if (!artist) return;
@@ -96,15 +76,13 @@ export function ArtistDetailScreen() {
       headerRight: () => (
         <MoreOptionsButton
           onPress={() =>
-            moreOptionsStore
-              .getState()
-              .show({ type: 'artist', item: artist }, handleStarChanged)
+            moreOptionsStore.getState().show({ type: 'artist', item: artist })
           }
           color={colors.textPrimary}
         />
       ),
     });
-  }, [artist, navigation, colors.textPrimary, handleStarChanged]);
+  }, [artist, navigation, colors.textPrimary]);
 
   /* ---- Data fetching ---- */
   const { fetchArtist } = artistDetailStore.getState();

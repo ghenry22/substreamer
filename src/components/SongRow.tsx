@@ -4,6 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { CachedImage } from './CachedImage';
 import { SwipeableRow, type SwipeAction } from './SwipeableRow';
+import { useIsStarred } from '../hooks/useIsStarred';
 import { useTheme } from '../hooks/useTheme';
 import { addSongToQueue, toggleStar } from '../services/moreOptionsService';
 import { type Child } from '../services/subsonicService';
@@ -17,6 +18,7 @@ export const ROW_HEIGHT = 80;
 
 export const SongRow = memo(function SongRow({ song, onPress }: { song: Child; onPress?: () => void }) {
   const { colors } = useTheme();
+  const starred = useIsStarred('song', song.id);
   const duration =
     song.duration != null ? formatTrackDuration(song.duration) : '—';
 
@@ -25,8 +27,8 @@ export const SongRow = memo(function SongRow({ song, onPress }: { song: Child; o
   }, [song]);
 
   const handleToggleStar = useCallback(() => {
-    toggleStar('song', song.id, Boolean(song.starred));
-  }, [song.id, song.starred]);
+    toggleStar('song', song.id);
+  }, [song.id]);
 
   const handleLongPress = useCallback(() => {
     moreOptionsStore.getState().show({ type: 'song', item: song });
@@ -40,13 +42,13 @@ export const SongRow = memo(function SongRow({ song, onPress }: { song: Child; o
   const leftActions: SwipeAction[] = useMemo(
     () => [
       {
-        icon: song.starred ? 'heart' : 'heart-outline',
+        icon: starred ? 'heart' : 'heart-outline',
         color: colors.red,
-        label: 'Favorite',
+        label: starred ? 'Remove' : 'Add',
         onPress: handleToggleStar,
       },
     ],
-    [song.starred, colors.red, handleToggleStar],
+    [starred, colors.red, handleToggleStar],
   );
 
   return (

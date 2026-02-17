@@ -24,6 +24,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AlbumDetailsModal } from './AlbumDetailsModal';
+import { useIsStarred } from '../hooks/useIsStarred';
 import { useTheme } from '../hooks/useTheme';
 import {
   addAlbumToQueue,
@@ -33,7 +34,6 @@ import {
 } from '../services/moreOptionsService';
 import {
   type AlbumID3,
-  type ArtistID3,
   type Child,
   type Playlist,
 } from '../services/subsonicService';
@@ -76,11 +76,6 @@ function getSubtitle(entity: MoreOptionsEntity): string {
   }
 }
 
-function isStarred(entity: MoreOptionsEntity): boolean {
-  if (entity.type === 'playlist') return false;
-  return Boolean((entity.item as { starred?: unknown }).starred);
-}
-
 function isStarrable(entity: MoreOptionsEntity): boolean {
   return entity.type === 'song' || entity.type === 'album' || entity.type === 'artist';
 }
@@ -111,8 +106,11 @@ function hasAlbumDetails(entity: MoreOptionsEntity): boolean {
 export function MoreOptionsSheet() {
   const visible = moreOptionsStore((s) => s.visible);
   const entity = moreOptionsStore((s) => s.entity);
-  const onStarChanged = moreOptionsStore((s) => s.onStarChanged);
   const hide = moreOptionsStore((s) => s.hide);
+
+  const starType: 'song' | 'album' | 'artist' =
+    entity?.type === 'album' || entity?.type === 'artist' ? entity.type : 'song';
+  const starred = useIsStarred(starType, entity?.item.id ?? '');
 
   const { colors } = useTheme();
   const router = useRouter();
@@ -132,16 +130,14 @@ export function MoreOptionsSheet() {
     if (!isStarrable(entity)) return;
     setBusy(true);
     try {
-      const starType = entity.type as 'song' | 'album' | 'artist';
-      const newStarred = await toggleStar(starType, entity.item.id, isStarred(entity));
-      onStarChanged?.(entity.item.id, newStarred);
+      await toggleStar(entity.type as 'song' | 'album' | 'artist', entity.item.id);
     } catch {
       // Silently fail
     } finally {
       setBusy(false);
       handleClose();
     }
-  }, [entity, busy, onStarChanged, handleClose]);
+  }, [entity, busy, handleClose]);
 
   const handleAddToQueue = useCallback(async () => {
     if (!entity) return;
@@ -201,7 +197,6 @@ export function MoreOptionsSheet() {
     );
   }
 
-  const starred = isStarred(entity);
   const starrable = isStarrable(entity);
   const showArtistLink = hasArtistLink(entity);
   const showAlbumLink = hasAlbumLink(entity);

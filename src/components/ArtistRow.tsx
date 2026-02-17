@@ -5,6 +5,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { CachedImage } from './CachedImage';
 import { SwipeableRow, type SwipeAction } from './SwipeableRow';
+import { useIsStarred } from '../hooks/useIsStarred';
 import { useTheme } from '../hooks/useTheme';
 import { toggleStar } from '../services/moreOptionsService';
 import { type ArtistID3 } from '../services/subsonicService';
@@ -18,14 +19,15 @@ export const ROW_HEIGHT = 80;
 export const ArtistRow = memo(function ArtistRow({ artist }: { artist: ArtistID3 }) {
   const { colors } = useTheme();
   const router = useRouter();
+  const starred = useIsStarred('artist', artist.id);
 
   const onPress = useCallback(() => {
     router.push(`/artist/${artist.id}`);
   }, [artist.id, router]);
 
   const handleToggleStar = useCallback(() => {
-    toggleStar('artist', artist.id, Boolean(artist.starred));
-  }, [artist.id, artist.starred]);
+    toggleStar('artist', artist.id);
+  }, [artist.id]);
 
   const handleLongPress = useCallback(() => {
     moreOptionsStore.getState().show({ type: 'artist', item: artist });
@@ -34,13 +36,13 @@ export const ArtistRow = memo(function ArtistRow({ artist }: { artist: ArtistID3
   const leftActions: SwipeAction[] = useMemo(
     () => [
       {
-        icon: artist.starred ? 'heart' : 'heart-outline',
+        icon: starred ? 'heart' : 'heart-outline',
         color: colors.red,
-        label: 'Favorite',
+        label: starred ? 'Remove' : 'Add',
         onPress: handleToggleStar,
       },
     ],
-    [artist.starred, colors.red, handleToggleStar],
+    [starred, colors.red, handleToggleStar],
   );
 
   return (
