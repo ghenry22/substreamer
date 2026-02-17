@@ -172,8 +172,8 @@ export default function AnimatedSplashScreen({ onFinish }: Props) {
         )}
         <Text style={styles.migrationText}>
           {migrationPhase === 'done'
-            ? 'Update complete'
-            : 'Updating Substreamer\u2026'}
+            ? 'Migrations complete'
+            : 'Running migrations\u2026'}
         </Text>
       </Animated.View>
     </Animated.View>
