@@ -58,6 +58,7 @@ export function PlayerView({ onClose }: PlayerViewProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const currentTrack = playerStore((s) => s.currentTrack);
+  const currentTrackIndex = playerStore((s) => s.currentTrackIndex);
   const playbackState = playerStore((s) => s.playbackState);
   const position = playerStore((s) => s.position);
   const duration = playerStore((s) => s.duration);
@@ -155,12 +156,12 @@ export function PlayerView({ onClose }: PlayerViewProps) {
       <QueueItemRow
         track={item}
         index={index}
-        isActive={item.id === currentTrack?.id}
+        isActive={index === currentTrackIndex}
         colors={colors}
         onPress={handleQueueItemPress}
       />
     ),
-    [currentTrack?.id, colors, handleQueueItemPress],
+    [currentTrackIndex, colors, handleQueueItemPress],
   );
 
   const keyExtractor = useCallback(

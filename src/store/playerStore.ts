@@ -21,6 +21,8 @@ export type PlaybackStatus =
 export interface PlayerState {
   /** The currently active track, or null when nothing is loaded. */
   currentTrack: Child | null;
+  /** Index of the currently active track in the queue, or null when nothing is loaded. */
+  currentTrackIndex: number | null;
   /** High-level playback state. */
   playbackState: PlaybackStatus;
   /** The full queue of Child objects currently loaded. */
@@ -39,7 +41,7 @@ export interface PlayerState {
   queueLoading: boolean;
 
   /* ---- Setters (called by playerService) ---- */
-  setCurrentTrack: (track: Child | null) => void;
+  setCurrentTrack: (track: Child | null, index?: number | null) => void;
   setPlaybackState: (state: PlaybackStatus) => void;
   setQueue: (queue: Child[]) => void;
   setProgress: (position: number, duration: number, buffered: number) => void;
@@ -50,6 +52,7 @@ export interface PlayerState {
 
 export const playerStore = create<PlayerState>()((set) => ({
   currentTrack: null,
+  currentTrackIndex: null,
   playbackState: 'idle',
   queue: [],
   position: 0,
@@ -59,7 +62,7 @@ export const playerStore = create<PlayerState>()((set) => ({
   retrying: false,
   queueLoading: false,
 
-  setCurrentTrack: (track) => set({ currentTrack: track }),
+  setCurrentTrack: (track, index) => set({ currentTrack: track, currentTrackIndex: index ?? null }),
   setPlaybackState: (playbackState) => set({ playbackState }),
   setQueue: (queue) => set({ queue }),
   setProgress: (position, duration, buffered) =>

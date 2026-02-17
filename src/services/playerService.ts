@@ -381,7 +381,7 @@ export async function initPlayer(): Promise<void> {
     }
   });
 
-  TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, ({ track }) => {
+  TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, ({ track, index: activeIndex }) => {
     const sameTrack =
       previousActiveChild?.id != null && previousActiveChild?.id === track?.id;
 
@@ -414,12 +414,12 @@ export async function initPlayer(): Promise<void> {
     let resolvedChild: Child | null = null;
     if (track != null && track.id) {
       resolvedChild = currentChildQueue.find((c) => c.id === track.id) ?? null;
-      playerStore.getState().setCurrentTrack(resolvedChild);
+      playerStore.getState().setCurrentTrack(resolvedChild, activeIndex ?? null);
 
       // Scrobble: send "now playing" for the new track.
       sendNowPlaying(track.id);
     } else {
-      playerStore.getState().setCurrentTrack(null);
+      playerStore.getState().setCurrentTrack(null, null);
     }
 
     previousActiveChild = resolvedChild;
@@ -449,9 +449,10 @@ async function syncStoreFromNative(): Promise<void> {
     playerStore.getState().setPlaybackState(mapState(state.state));
 
     const activeTrack = await TrackPlayer.getActiveTrack();
+    const activeTrackIndex = await TrackPlayer.getActiveTrackIndex();
     if (activeTrack?.id) {
       const child = currentChildQueue.find((c) => c.id === activeTrack.id) ?? null;
-      playerStore.getState().setCurrentTrack(child);
+      playerStore.getState().setCurrentTrack(child, activeTrackIndex ?? null);
     }
 
     const { position, duration, buffered } = await TrackPlayer.getProgress();
