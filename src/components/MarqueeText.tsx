@@ -7,23 +7,15 @@
  * full content with pauses at each end.
  */
 
-import { memo, useCallback, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Animated,
   type LayoutChangeEvent,
   StyleSheet,
   Text,
   type TextProps,
   View,
 } from 'react-native';
-import Animated, {
-  cancelAnimation,
-  useAnimatedStyle,
-  useSharedValue,
-  withDelay,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
 
 export interface MarqueeTextProps extends TextProps {
   /** Scroll speed in pixels per second. @default 40 */
@@ -44,7 +36,8 @@ export const MarqueeText = memo(function MarqueeText({
 }: MarqueeTextProps) {
   const [containerWidth, setContainerWidth] = useState(0);
   const [textWidth, setTextWidth] = useState(0);
-  const translateX = useSharedValue(0);
+  const translateX = useRef(new Animated.Value(0)).current;
+  const animationRef = useRef<Animated.CompositeAnimation | null>(null);
 
   const shouldScroll = textWidth > 0 && containerWidth > 0 && textWidth > containerWidth;
   const scrollDistance = shouldScroll ? textWidth - containerWidth : 0;
@@ -61,45 +54,55 @@ export const MarqueeText = memo(function MarqueeText({
   const childrenKey = typeof children === 'string' ? children : JSON.stringify(children);
 
   // Snap back to the start position when content changes.
+  // NOTE: do NOT reset textWidth here – onLayout fires before this
+  // effect and would be clobbered, preventing the animation from
+  // ever starting on subsequent tracks.
   useEffect(() => {
-    translateX.value = 0;
+    translateX.setValue(0);
   }, [childrenKey, translateX]);
 
   // Run the ping-pong animation.
+  // Include childrenKey so the animation restarts for every new track,
+  // even if shouldScroll / scrollDistance happen to be identical.
   useEffect(() => {
     if (!shouldScroll) {
-      cancelAnimation(translateX);
-      translateX.value = 0;
+      translateX.setValue(0);
       return;
     }
 
     const scrollDuration = (scrollDistance / speed) * 1000;
 
-    translateX.value = withDelay(
-      initialDelay,
-      withRepeat(
-        withSequence(
-          withTiming(-scrollDistance, { duration: scrollDuration }),
-          withDelay(
-            pauseDuration,
-            withSequence(
-              withTiming(0, { duration: scrollDuration }),
-              withDelay(pauseDuration, withTiming(0, { duration: 0 })),
-            ),
-          ),
-        ),
-        -1,
-      ),
+    const loop = Animated.loop(
+      Animated.sequence([
+        // Initial pause
+        Animated.delay(initialDelay),
+        // Scroll left to reveal end
+        Animated.timing(translateX, {
+          toValue: -scrollDistance,
+          duration: scrollDuration,
+          useNativeDriver: true,
+        }),
+        // Pause at the end
+        Animated.delay(pauseDuration),
+        // Scroll back to start
+        Animated.timing(translateX, {
+          toValue: 0,
+          duration: scrollDuration,
+          useNativeDriver: true,
+        }),
+        // Pause at the start before repeating
+        Animated.delay(pauseDuration),
+      ]),
     );
 
+    animationRef.current = loop;
+    loop.start();
+
     return () => {
-      cancelAnimation(translateX);
+      loop.stop();
+      animationRef.current = null;
     };
   }, [shouldScroll, scrollDistance, speed, pauseDuration, initialDelay, translateX, childrenKey]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
-  }));
 
   // Use measured text width when available, otherwise a large value
   // so the text never wraps. This avoids a flash of "..." truncation
@@ -116,7 +119,7 @@ export const MarqueeText = memo(function MarqueeText({
       <Animated.View
         style={[
           { width: innerWidth },
-          shouldScroll ? animatedStyle : undefined,
+          shouldScroll ? { transform: [{ translateX }] } : undefined,
         ]}
       >
         <Text {...rest} style={style}>
