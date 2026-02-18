@@ -10,6 +10,7 @@ import { useTheme } from '../hooks/useTheme';
 import { getImageCacheStats, initImageCache } from '../services/imageCacheService';
 import { initPlayer } from '../services/playerService';
 import { fetchScanStatus } from '../services/scanService';
+import { startMonitoring, stopMonitoring } from '../services/connectivityService';
 import { initScrobbleService } from '../services/scrobbleService';
 import { initSslTrustStore } from '../services/sslTrustService';
 import { albumListsStore } from '../store/albumListsStore';
@@ -62,12 +63,14 @@ export default function RootLayout() {
     if (!rehydrated || !isLoggedIn) return;
     initPlayer();
     initScrobbleService();
+    startMonitoring();
     fetchServerInfo().then((info) => {
       if (info) serverInfoStore.getState().setServerInfo(info);
     });
     fetchScanStatus();
     albumListsStore.getState().refreshAll();
     favoritesStore.getState().fetchStarred();
+    return () => stopMonitoring();
   }, [rehydrated, isLoggedIn]);
 
   // --- Auth-based navigation ---

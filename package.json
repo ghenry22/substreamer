@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
+    "@react-native-community/netinfo": "^11.4.1",
     "@shopify/flash-list": "^2.2.2",
     "expo": "~54.0.33",
     "expo-build-properties": "~1.0.10",

@@ -4,6 +4,7 @@ import { Tabs } from 'expo-router';
 import { useCallback } from 'react';
 import { View } from 'react-native';
 
+import { ConnectivityBanner } from '../../components/ConnectivityBanner';
 import { MiniPlayer } from '../../components/MiniPlayer';
 import { SearchableHeader } from '../../components/SearchableHeader';
 import { SearchResultsOverlay } from '../../components/SearchResultsOverlay';
@@ -27,7 +28,12 @@ export default function TabLayout() {
       <Tabs
         tabBar={renderTabBar}
         screenOptions={{
-          header: (props) => <SearchableHeader {...props} />,
+          header: (props) => (
+            <>
+              <SearchableHeader {...props} />
+              <ConnectivityBanner />
+            </>
+          ),
           tabBarStyle: {
             backgroundColor: colors.background,
             borderTopColor: 'transparent',
