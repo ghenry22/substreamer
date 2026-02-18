@@ -74,20 +74,9 @@ export function PlayerView({ onClose }: PlayerViewProps) {
   const insets = useSafeAreaInsets();
   const currentTrack = playerStore((s) => s.currentTrack);
   const currentTrackIndex = playerStore((s) => s.currentTrackIndex);
-  const playbackState = playerStore((s) => s.playbackState);
-  const position = playerStore((s) => s.position);
-  const duration = playerStore((s) => s.duration);
-  const bufferedPosition = playerStore((s) => s.bufferedPosition);
   const queue = playerStore((s) => s.queue);
-  const error = playerStore((s) => s.error);
-  const retrying = playerStore((s) => s.retrying);
   const queueLoading = playerStore((s) => s.queueLoading);
   const marqueeScrolling = layoutPreferencesStore((s) => s.marqueeScrolling);
-
-  const isPlaying =
-    playbackState === 'playing' || playbackState === 'buffering';
-  const isBuffering =
-    playbackState === 'buffering' || playbackState === 'loading';
 
   const { coverBackgroundColor, gradientOpacity } = useColorExtraction(
     currentTrack?.coverArt,
@@ -157,7 +146,7 @@ export function PlayerView({ onClose }: PlayerViewProps) {
       -1,
     );
 
-    const MIN_DISPLAY = 1200;
+    const MIN_DISPLAY = 2000;
     await Promise.all([
       shuffleQueue(),
       new Promise<void>((r) => setTimeout(r, MIN_DISPLAY)),
@@ -204,13 +193,6 @@ export function PlayerView({ onClose }: PlayerViewProps) {
         onClose={onClose}
         queueLoading={queueLoading}
         marqueeScrolling={marqueeScrolling}
-        position={position}
-        duration={duration}
-        bufferedPosition={bufferedPosition}
-        isBuffering={isBuffering}
-        isPlaying={isPlaying}
-        error={error}
-        retrying={retrying}
         handleSeek={handleSeek}
         handleClearQueue={handleClearQueue}
         handleShuffle={handleShuffle}
@@ -226,13 +208,6 @@ export function PlayerView({ onClose }: PlayerViewProps) {
       onClose,
       queueLoading,
       marqueeScrolling,
-      position,
-      duration,
-      bufferedPosition,
-      isBuffering,
-      isPlaying,
-      error,
-      retrying,
       handleSeek,
       handleClearQueue,
       handleShuffle,
@@ -339,13 +314,6 @@ interface PlayerListHeaderProps {
   onClose: () => void;
   queueLoading: boolean;
   marqueeScrolling: boolean;
-  position: number;
-  duration: number;
-  bufferedPosition: number;
-  isBuffering: boolean;
-  isPlaying: boolean;
-  error: string | null;
-  retrying: boolean;
   handleSeek: (seconds: number) => void;
   handleClearQueue: () => void;
   handleShuffle: () => void;
@@ -361,13 +329,6 @@ const PlayerListHeader = memo(function PlayerListHeader({
   onClose,
   queueLoading,
   marqueeScrolling,
-  position,
-  duration,
-  bufferedPosition,
-  isBuffering,
-  isPlaying,
-  error,
-  retrying,
   handleSeek,
   handleClearQueue,
   handleShuffle,
@@ -375,6 +336,23 @@ const PlayerListHeader = memo(function PlayerListHeader({
   shuffling,
   queueLength,
 }: PlayerListHeaderProps) {
+  const playbackState = playerStore((s) => s.playbackState);
+  const position = playerStore((s) => s.position);
+  const duration = playerStore((s) => s.duration);
+  const bufferedPosition = playerStore((s) => s.bufferedPosition);
+  const error = playerStore((s) => s.error);
+  const retrying = playerStore((s) => s.retrying);
+
+  const isPlaying =
+    playbackState === 'playing' || playbackState === 'buffering';
+  const isBuffering =
+    playbackState === 'buffering' || playbackState === 'loading';
+
+  const marqueeStyle = useMemo(
+    () => [styles.trackTitle, { color: colors.textPrimary }],
+    [colors.textPrimary],
+  );
+
   if (!currentTrack) return null;
 
   return (
@@ -432,9 +410,7 @@ const PlayerListHeader = memo(function PlayerListHeader({
             <View style={styles.trackInfoRow}>
               <View style={styles.trackInfoText}>
                 {marqueeScrolling ? (
-                  <MarqueeText
-                    style={[styles.trackTitle, { color: colors.textPrimary }]}
-                  >
+                  <MarqueeText style={marqueeStyle}>
                     {currentTrack.title}
                   </MarqueeText>
                 ) : (

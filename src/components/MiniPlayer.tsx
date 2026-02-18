@@ -10,7 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Extrapolation,
@@ -54,6 +54,11 @@ export function MiniPlayer() {
   const error = playerStore((s) => s.error);
   const isPlaying = playbackState === 'playing' || playbackState === 'buffering';
   const isBuffering = playbackState === 'buffering' || playbackState === 'loading';
+
+  const marqueeStyle = useMemo(
+    () => [styles.title, { color: queueLoading ? colors.textSecondary : colors.textPrimary }],
+    [queueLoading, colors.textSecondary, colors.textPrimary],
+  );
 
   // --- Colour extraction ---
   const cachedUri = useCachedCoverArt(currentTrack?.coverArt, 50);
@@ -171,7 +176,7 @@ export function MiniPlayer() {
         {/* Track info */}
         <View style={styles.info}>
           {marqueeScrolling ? (
-            <MarqueeText style={[styles.title, { color: queueLoading ? colors.textSecondary : colors.textPrimary }]}>
+            <MarqueeText style={marqueeStyle}>
               {queueLoading ? 'Loading...' : currentTrack.title}
             </MarqueeText>
           ) : (

@@ -118,6 +118,12 @@ let positionOffset = 0;
 let isRecoveringStream = false;
 /** True while the queue is being shuffled, to guard event handlers. */
 let isShuffling = false;
+/**
+ * True during multi-step queue operations (playTrack, shuffleQueue) where
+ * multiple PlaybackActiveTrackChanged events fire for a single user action.
+ * Prevents intermediate tracks from being falsely scrobbled.
+ */
+let isSettingQueue = false;
 
 /* ------------------------------------------------------------------ */
 /*  Progress polling                                                   */
@@ -399,9 +405,9 @@ export async function initPlayer(): Promise<void> {
       return;
     }
 
-    // Scrobble: if the previous track finished naturally (not a user skip),
-    // record it as a completed scrobble.
-    if (previousActiveChild && !isUserSkipping) {
+    // Scrobble: if the previous track finished naturally (not a user skip
+    // and not a queue setup operation), record it as a completed scrobble.
+    if (previousActiveChild && !isUserSkipping && !isSettingQueue) {
       addCompletedScrobble(previousActiveChild);
     }
 
@@ -423,7 +429,12 @@ export async function initPlayer(): Promise<void> {
     }
 
     previousActiveChild = resolvedChild;
-    isUserSkipping = false;
+
+    // Only reset the skip flag outside of queue-setup operations, where
+    // multiple ActiveTrackChanged events fire for a single user action.
+    if (!isSettingQueue) {
+      isUserSkipping = false;
+    }
   });
 
   // --- AppState listener for background → foreground sync ---
@@ -495,6 +506,7 @@ async function syncStoreFromNative(): Promise<void> {
  */
 export async function playTrack(track: Child, queue: Child[]): Promise<void> {
   isUserSkipping = true;
+  isSettingQueue = true;
   positionOffset = 0;
   playerStore.getState().setQueueLoading(true);
 
@@ -516,6 +528,8 @@ export async function playTrack(track: Child, queue: Child[]): Promise<void> {
 
     await TrackPlayer.play();
   } finally {
+    isSettingQueue = false;
+    isUserSkipping = false;
     playerStore.getState().setQueueLoading(false);
   }
 }
@@ -722,6 +736,7 @@ export async function shuffleQueue(): Promise<void> {
   if (currentChildQueue.length < 2) return;
 
   isUserSkipping = true;
+  isSettingQueue = true;
   isShuffling = true;
   positionOffset = 0;
   maxBufferedSeen = 0;
@@ -745,6 +760,8 @@ export async function shuffleQueue(): Promise<void> {
     await TrackPlayer.skip(0);
     await TrackPlayer.play();
   } finally {
+    isSettingQueue = false;
+    isUserSkipping = false;
     isShuffling = false;
   }
 }

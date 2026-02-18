@@ -100,7 +100,7 @@ export const QueueItemRow = memo(function QueueItemRow({
         <View style={styles.coverWrap}>
           <CachedImage
             coverArtId={track.coverArt}
-            size={150}
+            size={50}
             style={styles.cover}
             resizeMode="cover"
           />
