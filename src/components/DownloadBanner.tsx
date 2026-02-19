@@ -12,8 +12,10 @@ import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
+  Easing,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withTiming,
 } from 'react-native-reanimated';
 
@@ -21,7 +23,11 @@ import { useTheme } from '../hooks/useTheme';
 import { musicCacheStore } from '../store/musicCacheStore';
 
 const BANNER_HEIGHT = 44;
-const ANIM_DURATION = 250;
+const EASING = Easing.out(Easing.cubic);
+const EXPAND_MS = 300;
+const COLLAPSE_MS = 280;
+const CONTENT_FADE_IN_MS = 200;
+const CONTENT_FADE_OUT_MS = 150;
 
 export function DownloadBanner() {
   const { colors } = useTheme();
@@ -34,16 +40,24 @@ export function DownloadBanner() {
   const visible = queueCount > 0;
 
   const height = useSharedValue(visible ? BANNER_HEIGHT : 0);
-  const opacity = useSharedValue(visible ? 1 : 0);
+  const contentOpacity = useSharedValue(visible ? 1 : 0);
 
   useEffect(() => {
-    height.value = withTiming(visible ? BANNER_HEIGHT : 0, { duration: ANIM_DURATION });
-    opacity.value = withTiming(visible ? 1 : 0, { duration: ANIM_DURATION });
-  }, [visible, height, opacity]);
+    if (visible) {
+      height.value = withTiming(BANNER_HEIGHT, { duration: EXPAND_MS, easing: EASING });
+      contentOpacity.value = withDelay(80, withTiming(1, { duration: CONTENT_FADE_IN_MS }));
+    } else {
+      contentOpacity.value = withTiming(0, { duration: CONTENT_FADE_OUT_MS });
+      height.value = withDelay(60, withTiming(0, { duration: COLLAPSE_MS, easing: EASING }));
+    }
+  }, [visible, height, contentOpacity]);
 
   const containerStyle = useAnimatedStyle(() => ({
     height: height.value,
-    opacity: opacity.value,
+  }));
+
+  const contentAnimStyle = useAnimatedStyle(() => ({
+    opacity: contentOpacity.value,
   }));
 
   const handlePress = useCallback(() => {
@@ -65,34 +79,36 @@ export function DownloadBanner() {
 
   return (
     <Animated.View style={[styles.container, { backgroundColor: colors.card }, containerStyle]}>
-      <Pressable
-        onPress={handlePress}
-        style={({ pressed }) => [styles.content, pressed && styles.pressed]}
-      >
-        <Ionicons
-          name="arrow-down-circle"
-          size={20}
-          color={colors.primary}
-          style={styles.icon}
-        />
-        <Text style={[styles.label, { color: colors.textPrimary }]} numberOfLines={1}>
-          {label}
-        </Text>
-        {trackText ? (
-          <Text style={[styles.trackCount, { color: colors.textSecondary }]}>
-            {trackText}
+      <Animated.View style={[styles.inner, contentAnimStyle]}>
+        <Pressable
+          onPress={handlePress}
+          style={({ pressed }) => [styles.content, pressed && styles.pressed]}
+        >
+          <Ionicons
+            name="arrow-down-circle"
+            size={20}
+            color={colors.primary}
+            style={styles.icon}
+          />
+          <Text style={[styles.label, { color: colors.textPrimary }]} numberOfLines={1}>
+            {label}
           </Text>
-        ) : null}
-        <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
-      </Pressable>
-      <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
-        <View
-          style={[
-            styles.progressFill,
-            { backgroundColor: colors.primary, width: `${Math.round(progress * 100)}%` },
-          ]}
-        />
-      </View>
+          {trackText ? (
+            <Text style={[styles.trackCount, { color: colors.textSecondary }]}>
+              {trackText}
+            </Text>
+          ) : null}
+          <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+        </Pressable>
+        <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
+          <View
+            style={[
+              styles.progressFill,
+              { backgroundColor: colors.primary, width: `${Math.round(progress * 100)}%` },
+            ]}
+          />
+        </View>
+      </Animated.View>
     </Animated.View>
   );
 }
@@ -100,6 +116,9 @@ export function DownloadBanner() {
 const styles = StyleSheet.create({
   container: {
     overflow: 'hidden',
+  },
+  inner: {
+    flex: 1,
   },
   content: {
     flex: 1,
@@ -124,7 +143,7 @@ const styles = StyleSheet.create({
   },
   progressTrack: {
     position: 'absolute',
-    bottom: 0,
+    top: 0,
     left: 0,
     right: 0,
     height: 2,
