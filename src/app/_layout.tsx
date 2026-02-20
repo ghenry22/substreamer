@@ -9,6 +9,7 @@ import { MoreOptionsSheet } from '../components/MoreOptionsSheet';
 import { useTheme } from '../hooks/useTheme';
 import { getImageCacheStats, initImageCache } from '../services/imageCacheService';
 import { getMusicCacheStats, initMusicCache } from '../services/musicCacheService';
+import { checkStorageLimit } from '../services/storageService';
 import { initPlayer } from '../services/playerService';
 import { fetchScanStatus } from '../services/scanService';
 import { startMonitoring, stopMonitoring } from '../services/connectivityService';
@@ -37,6 +38,9 @@ initSslTrustStore();
 // Reconcile persisted cache stats with the actual filesystem.
 imageCacheStore.getState().recalculate(getImageCacheStats());
 musicCacheStore.getState().recalculate(getMusicCacheStats());
+
+// Evaluate storage limit state on launch.
+checkStorageLimit();
 
 export default function RootLayout() {
   const [splashVisible, setSplashVisible] = useState(true);
@@ -182,8 +186,12 @@ export default function RootLayout() {
         <Stack.Screen
           name="player"
           options={{
-            headerShown: false,
+            title: 'Now Playing',
+            headerTransparent: true,
+            headerStyle: { backgroundColor: 'transparent' },
+            contentStyle: { backgroundColor: 'transparent' },
             animation: 'slide_from_bottom',
+            headerBackVisible: false,
           }}
         />
         <Stack.Screen

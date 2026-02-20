@@ -6,6 +6,7 @@ import { View } from 'react-native';
 
 import { ConnectivityBanner } from '../../components/ConnectivityBanner';
 import { DownloadBanner } from '../../components/DownloadBanner';
+import { StorageFullBanner } from '../../components/StorageFullBanner';
 import { MiniPlayer } from '../../components/MiniPlayer';
 import { SearchableHeader } from '../../components/SearchableHeader';
 import { SearchResultsOverlay } from '../../components/SearchResultsOverlay';
@@ -34,6 +35,7 @@ export default function TabLayout() {
             <>
               <SearchableHeader {...props} />
               <ConnectivityBanner />
+              <StorageFullBanner />
             </>
           ),
           tabBarStyle: {

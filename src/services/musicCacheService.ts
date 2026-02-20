@@ -16,7 +16,9 @@
 
 import { Directory, File, Paths } from 'expo-file-system';
 
+import { checkStorageLimit } from './storageService';
 import { albumDetailStore } from '../store/albumDetailStore';
+import { storageLimitStore } from '../store/storageLimitStore';
 import {
   musicCacheStore,
   type CachedMusicItem,
@@ -301,6 +303,8 @@ async function processQueue(): Promise<void> {
 
   try {
     while (true) {
+      if (checkStorageLimit()) break;
+
       const { downloadQueue } = musicCacheStore.getState();
       const next = downloadQueue.find((q) => q.status === 'queued');
       if (!next) break;
@@ -332,6 +336,11 @@ async function downloadItem(queueItem: DownloadQueueItemSnapshot): Promise<void>
         (q) => q.queueId === queueItem.queueId,
       );
       if (!current || current.status !== 'downloading') return;
+
+      if (checkStorageLimit()) {
+        musicCacheStore.getState().updateQueueItem(queueItem.queueId, { status: 'queued' });
+        return;
+      }
 
       const idx = trackIndex++;
       const track = queueItem.tracks[idx];
@@ -610,6 +619,7 @@ export function deleteCachedItem(itemId: string): void {
   }
 
   musicCacheStore.getState().removeCachedItem(itemId);
+  resumeIfSpaceAvailable();
 }
 
 /**
@@ -632,6 +642,30 @@ export function cancelDownload(queueId: string): void {
     trackUriMap.delete(track.id);
     trackToItems.get(track.id)?.delete(item.itemId);
   }
+}
+
+/**
+ * Cancel all queued and in-progress downloads, removing partial files.
+ * Completed (cached) items are not affected.
+ */
+export function clearDownloadQueue(): void {
+  const queue = [...musicCacheStore.getState().downloadQueue];
+  for (const item of queue) {
+    musicCacheStore.getState().removeFromQueue(item.queueId);
+
+    if (!(item.itemId in musicCacheStore.getState().cachedItems)) {
+      const subDir = new Directory(ensureCacheDir(), item.itemId);
+      if (subDir.exists) {
+        try { subDir.delete(); } catch { /* best-effort */ }
+      }
+    }
+
+    for (const track of item.tracks) {
+      trackUriMap.delete(track.id);
+      trackToItems.get(track.id)?.delete(item.itemId);
+    }
+  }
+  resumeIfSpaceAvailable();
 }
 
 /** Delete all cached music and recreate the cache directory. */
@@ -683,3 +717,30 @@ export function getMusicCacheStats(): MusicCacheStats {
 
   return { totalBytes, itemCount, totalFiles };
 }
+
+/* ------------------------------------------------------------------ */
+/*  Storage limit resume                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Re-evaluate the storage limit and resume the download queue if
+ * space has become available (e.g. after a cache clear or settings
+ * change).
+ */
+export function resumeIfSpaceAvailable(): void {
+  if (!checkStorageLimit()) {
+    processQueue();
+  }
+}
+
+storageLimitStore.subscribe((state, prev) => {
+  const settingsChanged =
+    state.limitMode !== prev.limitMode ||
+    state.maxCacheSizeGB !== prev.maxCacheSizeGB;
+
+  if (settingsChanged || (prev.isStorageFull && !state.isStorageFull)) {
+    if (!checkStorageLimit()) {
+      processQueue();
+    }
+  }
+});

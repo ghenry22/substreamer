@@ -314,11 +314,12 @@ export function SettingsAudioQualityScreen() {
           onPress={handleResetDefaults}
           style={({ pressed }) => [
             styles.resetButton,
+            { borderColor: colors.border },
             pressed && styles.pressed,
           ]}
         >
-          <Ionicons name="refresh-outline" size={16} color={colors.primary} />
-          <Text style={[styles.resetButtonText, { color: colors.primary }]}>
+          <Ionicons name="refresh-outline" size={16} color={colors.textPrimary} />
+          <Text style={[styles.resetButtonText, { color: colors.textPrimary }]}>
             Reset to defaults
           </Text>
         </Pressable>
@@ -398,13 +399,15 @@ const styles = StyleSheet.create({
   resetButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'center',
-    gap: 6,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginTop: 4,
   },
   resetButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

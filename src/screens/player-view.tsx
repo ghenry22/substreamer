@@ -8,11 +8,13 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
+import { useNavigation, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -32,6 +34,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CachedImage } from '../components/CachedImage';
 import { MarqueeText } from '../components/MarqueeText';
+import { MoreOptionsButton } from '../components/MoreOptionsButton';
 import { PlaybackRateButton } from '../components/PlaybackRateButton';
 import { PlayerProgressBar } from '../components/PlayerProgressBar';
 import { RepeatButton } from '../components/RepeatButton';
@@ -62,20 +65,20 @@ import { playerStore } from '../store/playerStore';
 
 const HERO_PADDING = 32;
 const HERO_COVER_SIZE = 600;
+const HEADER_BAR_HEIGHT = 44;
 
-export interface PlayerViewProps {
-  /** Called to dismiss the player view. */
-  onClose: () => void;
-}
-
-export function PlayerView({ onClose }: PlayerViewProps) {
+export function PlayerView() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
+  const router = useRouter();
   const currentTrack = playerStore((s) => s.currentTrack);
   const currentTrackIndex = playerStore((s) => s.currentTrackIndex);
   const queue = playerStore((s) => s.queue);
   const queueLoading = playerStore((s) => s.queueLoading);
   const marqueeScrolling = layoutPreferencesStore((s) => s.marqueeScrolling);
+
+  const onClose = useCallback(() => router.back(), [router]);
 
   const { coverBackgroundColor, gradientOpacity } = useColorExtraction(
     currentTrack?.coverArt,
@@ -84,6 +87,30 @@ export function PlayerView({ onClose }: PlayerViewProps) {
 
   const gradientStart = coverBackgroundColor ?? colors.background;
   const gradientEnd = colors.background;
+
+  /* ---- Header: dismiss button + more options ---- */
+  useEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => (
+        <Pressable
+          onPress={onClose}
+          hitSlop={12}
+          style={({ pressed }) => pressed && styles.pressed}
+        >
+          <Ionicons name="chevron-down" size={28} color={colors.textPrimary} />
+        </Pressable>
+      ),
+      headerRight: () =>
+        currentTrack ? (
+          <MoreOptionsButton
+            onPress={() =>
+              moreOptionsStore.getState().show({ type: 'song', item: currentTrack })
+            }
+            color={colors.textPrimary}
+          />
+        ) : null,
+    });
+  }, [currentTrack, navigation, onClose, colors.textPrimary]);
 
   const handleSeek = useCallback((seconds: number) => {
     seekTo(seconds);
@@ -188,8 +215,6 @@ export function PlayerView({ onClose }: PlayerViewProps) {
       <PlayerListHeader
         currentTrack={currentTrack}
         colors={colors}
-        insets={insets}
-        onClose={onClose}
         queueLoading={queueLoading}
         marqueeScrolling={marqueeScrolling}
         handleSeek={handleSeek}
@@ -203,8 +228,6 @@ export function PlayerView({ onClose }: PlayerViewProps) {
     [
       currentTrack,
       colors,
-      insets,
-      onClose,
       queueLoading,
       marqueeScrolling,
       handleSeek,
@@ -241,7 +264,12 @@ export function PlayerView({ onClose }: PlayerViewProps) {
         onScrollBeginDrag={closeOpenRow}
         drawDistance={200}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+        contentContainerStyle={{
+          paddingBottom: insets.bottom + 24,
+          ...(Platform.OS !== 'ios' ? { paddingTop: insets.top + HEADER_BAR_HEIGHT } : undefined),
+        }}
+        contentInset={Platform.OS === 'ios' ? { top: insets.top + HEADER_BAR_HEIGHT } : undefined}
+        contentOffset={Platform.OS === 'ios' ? { x: 0, y: -(insets.top + HEADER_BAR_HEIGHT) } : undefined}
       />
 
       {/* Shuffle overlay */}
@@ -309,8 +337,6 @@ const FavoriteButton = memo(function FavoriteButton({
 interface PlayerListHeaderProps {
   currentTrack: Child | null;
   colors: ThemeColors;
-  insets: { top: number; bottom: number };
-  onClose: () => void;
   queueLoading: boolean;
   marqueeScrolling: boolean;
   handleSeek: (seconds: number) => void;
@@ -324,8 +350,6 @@ interface PlayerListHeaderProps {
 const PlayerListHeader = memo(function PlayerListHeader({
   currentTrack,
   colors,
-  insets,
-  onClose,
   queueLoading,
   marqueeScrolling,
   handleSeek,
@@ -355,44 +379,7 @@ const PlayerListHeader = memo(function PlayerListHeader({
   if (!currentTrack) return null;
 
   return (
-    <View style={{ paddingTop: insets.top }}>
-      {/* Header bar */}
-      <View style={styles.header}>
-        <Pressable
-          onPress={onClose}
-          hitSlop={12}
-          style={({ pressed }) => [
-            styles.glassButton,
-            pressed && styles.pressed,
-          ]}
-        >
-          <Ionicons
-            name="chevron-down"
-            size={22}
-            color={colors.textPrimary}
-          />
-        </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
-          Now Playing
-        </Text>
-        <Pressable
-          onPress={() =>
-            moreOptionsStore.getState().show({ type: 'song', item: currentTrack })
-          }
-          hitSlop={12}
-          style={({ pressed }) => [
-            styles.glassButton,
-            pressed && styles.pressed,
-          ]}
-        >
-          <Ionicons
-            name="ellipsis-horizontal"
-            size={20}
-            color={colors.textPrimary}
-          />
-        </Pressable>
-      </View>
-
+    <View>
       {queueLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.textSecondary} />
@@ -578,27 +565,6 @@ const PlayerListHeader = memo(function PlayerListHeader({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    height: 48,
-  },
-  glassButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(120, 120, 128, 0.24)',
-  },
-  headerTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
   loadingContainer: {
     flex: 1,

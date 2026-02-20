@@ -175,27 +175,23 @@ export function SettingsServerScreen() {
               borderColor={colors.border}
             />
           )}
-          <View style={[styles.scanButtons, { borderTopColor: colors.border }]}>
+          <View style={styles.scanButtons}>
             <Pressable
               onPress={handleStartScan}
               disabled={scanScanning || scanLoading}
               style={({ pressed }) => [
                 styles.scanButton,
+                { backgroundColor: colors.primary },
                 pressed && styles.pressed,
                 (scanScanning || scanLoading) && styles.scanButtonDisabled,
               ]}
             >
               {scanLoading ? (
-                <ActivityIndicator size="small" color={colors.primary} />
+                <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <Ionicons name="refresh-outline" size={18} color={scanScanning ? colors.textSecondary : colors.primary} />
+                <Ionicons name="refresh-outline" size={18} color="#fff" />
               )}
-              <Text
-                style={[
-                  styles.scanButtonText,
-                  { color: scanScanning ? colors.textSecondary : colors.primary },
-                ]}
-              >
+              <Text style={styles.scanButtonText}>
                 Quick Scan
               </Text>
             </Pressable>
@@ -205,21 +201,17 @@ export function SettingsServerScreen() {
                 disabled={scanScanning || scanLoading}
                 style={({ pressed }) => [
                   styles.scanButton,
+                  { backgroundColor: colors.primary },
                   pressed && styles.pressed,
                   (scanScanning || scanLoading) && styles.scanButtonDisabled,
                 ]}
               >
                 {scanLoading ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
+                  <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Ionicons name="search-outline" size={18} color={scanScanning ? colors.textSecondary : colors.primary} />
+                  <Ionicons name="search-outline" size={18} color="#fff" />
                 )}
-                <Text
-                  style={[
-                    styles.scanButtonText,
-                    { color: scanScanning ? colors.textSecondary : colors.primary },
-                  ]}
-                >
+                <Text style={styles.scanButtonText}>
                   Full Scan
                 </Text>
               </Pressable>
@@ -299,22 +291,23 @@ const styles = StyleSheet.create({
   },
   scanButtons: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    gap: 24,
+    marginTop: 12,
+    gap: 10,
   },
   scanButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 10,
+    paddingVertical: 10,
     gap: 8,
   },
   scanButtonDisabled: {
     opacity: 0.5,
   },
   scanButtonText: {
+    color: '#fff',
     fontSize: 15,
     fontWeight: '600',
   },

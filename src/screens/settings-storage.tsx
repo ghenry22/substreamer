@@ -1,11 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
+import Slider from '@react-native-community/slider';
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { StorageUsageBar } from '../components/StorageUsageBar';
 import { useTheme } from '../hooks/useTheme';
 import { clearImageCache } from '../services/imageCacheService';
 import { clearMusicCache } from '../services/musicCacheService';
+import { checkStorageLimit, getFreeDiskSpace } from '../services/storageService';
 import { imageCacheStore, getImageCount } from '../store/imageCacheStore';
 import { albumDetailStore } from '../store/albumDetailStore';
 import { artistDetailStore } from '../store/artistDetailStore';
@@ -16,6 +20,7 @@ import {
 import { playlistDetailStore } from '../store/playlistDetailStore';
 import { completedScrobbleStore } from '../store/completedScrobbleStore';
 import { pendingScrobbleStore } from '../store/pendingScrobbleStore';
+import { storageLimitStore, type StorageLimitMode } from '../store/storageLimitStore';
 import { formatBytes } from '../utils/formatters';
 
 const CONCURRENT_OPTIONS: MaxConcurrentDownloads[] = [1, 3, 5];
@@ -23,6 +28,8 @@ const CONCURRENT_OPTIONS: MaxConcurrentDownloads[] = [1, 3, 5];
 export function SettingsStorageScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const [concurrentSheetVisible, setConcurrentSheetVisible] = useState(false);
 
   const totalBytes = imageCacheStore((s) => s.totalBytes);
   const fileCount = imageCacheStore((s) => s.fileCount);
@@ -40,6 +47,40 @@ export function SettingsStorageScreen() {
   const musicQueueCount = musicCacheStore((s) => s.downloadQueue.length);
   const maxConcurrentDownloads = musicCacheStore((s) => s.maxConcurrentDownloads);
 
+  const limitMode = storageLimitStore((s) => s.limitMode);
+  const maxCacheSizeGB = storageLimitStore((s) => s.maxCacheSizeGB);
+
+  const BYTES_PER_GB = 1024 ** 3;
+  const freeDisk = getFreeDiskSpace();
+  const currentCacheBytes = totalBytes + musicCacheBytes;
+  const availableGB = Math.floor((freeDisk + currentCacheBytes) / BYTES_PER_GB);
+  const maxSliderGB = Math.max(availableGB, 1);
+
+  const showSizeWarning =
+    limitMode === 'fixed' &&
+    maxCacheSizeGB > 0 &&
+    maxCacheSizeGB * BYTES_PER_GB > freeDisk + currentCacheBytes;
+
+  const availableForWarning = formatBytes(freeDisk + currentCacheBytes);
+
+  const handleToggleLimitMode = useCallback(() => {
+    const next: StorageLimitMode = limitMode === 'none' ? 'fixed' : 'none';
+    storageLimitStore.getState().setLimitMode(next);
+    if (next === 'fixed' && maxCacheSizeGB === 0) {
+      storageLimitStore.getState().setMaxCacheSizeGB(Math.max(availableGB, 1));
+    }
+    checkStorageLimit();
+  }, [limitMode, maxCacheSizeGB, availableGB]);
+
+  const handleCacheSizeChange = useCallback((value: number) => {
+    storageLimitStore.getState().setMaxCacheSizeGB(Math.round(value));
+  }, []);
+
+  const handleCacheSizeComplete = useCallback((value: number) => {
+    storageLimitStore.getState().setMaxCacheSizeGB(Math.round(value));
+    checkStorageLimit();
+  }, []);
+
   const handleClearCache = useCallback(() => {
     Alert.alert(
       'Clear Image Cache',
@@ -51,6 +92,7 @@ export function SettingsStorageScreen() {
           style: 'destructive',
           onPress: () => {
             clearImageCache();
+            checkStorageLimit();
           },
         },
       ],
@@ -85,17 +127,23 @@ export function SettingsStorageScreen() {
         {
           text: 'Clear',
           style: 'destructive',
-          onPress: () => { clearMusicCache(); },
+          onPress: () => {
+            clearMusicCache();
+            checkStorageLimit();
+          },
         },
       ],
     );
   }, [musicCacheBytes]);
 
-  const handleCycleConcurrentDownloads = useCallback(() => {
-    const currentIndex = CONCURRENT_OPTIONS.indexOf(maxConcurrentDownloads);
-    const nextIndex = (currentIndex + 1) % CONCURRENT_OPTIONS.length;
-    musicCacheStore.getState().setMaxConcurrentDownloads(CONCURRENT_OPTIONS[nextIndex]);
-  }, [maxConcurrentDownloads]);
+  const handleConcurrentPress = useCallback(() => {
+    setConcurrentSheetVisible(true);
+  }, []);
+
+  const handleConcurrentSelect = useCallback((value: MaxConcurrentDownloads) => {
+    musicCacheStore.getState().setMaxConcurrentDownloads(value);
+    setConcurrentSheetVisible(false);
+  }, []);
 
   const dynamicStyles = useMemo(
     () =>
@@ -108,11 +156,84 @@ export function SettingsStorageScreen() {
   );
 
   return (
+    <>
     <ScrollView
       style={[styles.container, dynamicStyles.container]}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>Storage usage</Text>
+        <View style={[styles.card, dynamicStyles.card]}>
+          <StorageUsageBar />
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>Storage limit</Text>
+        <View style={[styles.card, dynamicStyles.card]}>
+          <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.infoLabel, { color: colors.textPrimary }]}>Limit</Text>
+            <Switch
+              value={limitMode === 'fixed'}
+              onValueChange={handleToggleLimitMode}
+              trackColor={{ false: colors.border, true: colors.primary }}
+            />
+          </View>
+
+          {limitMode === 'fixed' && (
+            <>
+              <View style={styles.sliderSection}>
+                <Text style={[styles.sliderLabel, { color: colors.textPrimary }]}>
+                  Maximum cache size
+                </Text>
+                <Text style={[styles.sliderValue, { color: colors.primary }]}>
+                  {maxCacheSizeGB} GB
+                </Text>
+              </View>
+              <Slider
+                style={styles.slider}
+                minimumValue={1}
+                maximumValue={maxSliderGB}
+                step={1}
+                value={maxCacheSizeGB}
+                onValueChange={handleCacheSizeChange}
+                onSlidingComplete={handleCacheSizeComplete}
+                minimumTrackTintColor={colors.primary}
+                maximumTrackTintColor={colors.border}
+                thumbTintColor={colors.primary}
+              />
+              {showSizeWarning && (
+                <View style={styles.warningRow}>
+                  <Ionicons name="warning" size={16} color={colors.red} style={styles.warningIcon} />
+                  <Text style={[styles.warningText, { color: colors.red }]}>
+                    You've selected {maxCacheSizeGB} GB but only {availableForWarning} is available
+                  </Text>
+                </View>
+              )}
+            </>
+          )}
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>Scrobbles</Text>
+        <View style={[styles.card, dynamicStyles.card]}>
+          <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.infoLabel, { color: colors.textPrimary }]}>Pending scrobbles</Text>
+            <Text style={[styles.infoValue, { color: colors.textSecondary }]}>
+              {pendingScrobbleCount}
+            </Text>
+          </View>
+          <View style={[styles.infoRow, { borderBottomWidth: 0 }]}>
+            <Text style={[styles.infoLabel, { color: colors.textPrimary }]}>Completed scrobbles</Text>
+            <Text style={[styles.infoValue, { color: colors.textSecondary }]}>
+              {completedScrobbleCount}
+            </Text>
+          </View>
+        </View>
+      </View>
+
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>Image cache</Text>
         <View style={[styles.card, dynamicStyles.card]}>
@@ -146,6 +267,7 @@ export function SettingsStorageScreen() {
             onPress={handleClearCache}
             style={({ pressed }) => [
               styles.clearCacheButton,
+              { borderColor: colors.red },
               pressed && styles.pressed,
             ]}
           >
@@ -177,7 +299,7 @@ export function SettingsStorageScreen() {
             </Text>
           </View>
           <Pressable
-            onPress={handleCycleConcurrentDownloads}
+            onPress={handleConcurrentPress}
             style={({ pressed }) => [
               styles.infoRow,
               { borderBottomColor: colors.border },
@@ -224,6 +346,7 @@ export function SettingsStorageScreen() {
               onPress={handleClearMusicCache}
               style={({ pressed }) => [
                 styles.clearCacheButton,
+                { borderColor: colors.red },
                 pressed && styles.pressed,
               ]}
             >
@@ -273,6 +396,7 @@ export function SettingsStorageScreen() {
             onPress={handleClearMetadataCache}
             style={({ pressed }) => [
               styles.clearCacheButton,
+              { borderColor: colors.red },
               pressed && styles.pressed,
             ]}
           >
@@ -282,24 +406,51 @@ export function SettingsStorageScreen() {
         </View>
       </View>
 
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>Scrobbles</Text>
-        <View style={[styles.card, dynamicStyles.card]}>
-          <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.infoLabel, { color: colors.textPrimary }]}>Pending scrobbles</Text>
-            <Text style={[styles.infoValue, { color: colors.textSecondary }]}>
-              {pendingScrobbleCount}
-            </Text>
-          </View>
-          <View style={[styles.infoRow, { borderBottomWidth: 0 }]}>
-            <Text style={[styles.infoLabel, { color: colors.textPrimary }]}>Completed scrobbles</Text>
-            <Text style={[styles.infoValue, { color: colors.textSecondary }]}>
-              {completedScrobbleCount}
-            </Text>
-          </View>
-        </View>
-      </View>
     </ScrollView>
+
+    <Modal
+      visible={concurrentSheetVisible}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setConcurrentSheetVisible(false)}
+    >
+      <Pressable
+        style={styles.sheetBackdrop}
+        onPress={() => setConcurrentSheetVisible(false)}
+      />
+      <View
+        style={[
+          styles.sheet,
+          { backgroundColor: colors.card, paddingBottom: Math.max(insets.bottom, 16) },
+        ]}
+      >
+        <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
+        <Text style={[styles.sheetTitle, { color: colors.textPrimary }]}>
+          Concurrent Downloads
+        </Text>
+        <Text style={[styles.sheetSubtitle, { color: colors.textSecondary }]}>
+          Select how many tracks to download simultaneously.
+        </Text>
+        {CONCURRENT_OPTIONS.map((opt) => (
+          <Pressable
+            key={opt}
+            onPress={() => handleConcurrentSelect(opt)}
+            style={({ pressed }) => [
+              styles.sheetOption,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={[styles.sheetOptionLabel, { color: colors.textPrimary }]}>
+              {opt} {opt === 1 ? 'track' : 'tracks'}
+            </Text>
+            {maxConcurrentDownloads === opt && (
+              <Ionicons name="checkmark" size={22} color={colors.primary} />
+            )}
+          </Pressable>
+        ))}
+      </View>
+    </Modal>
+    </>
   );
 }
 
@@ -363,14 +514,91 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
+    paddingVertical: 10,
     gap: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginTop: 12,
   },
   clearCacheText: {
     fontSize: 15,
     fontWeight: '600',
   },
+  sliderSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 2,
+  },
+  sliderLabel: {
+    fontSize: 15,
+    flex: 1,
+  },
+  sliderValue: {
+    fontSize: 15,
+    fontWeight: '600',
+    marginLeft: 12,
+  },
+  slider: {
+    width: '100%',
+    height: 36,
+  },
+  warningRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 4,
+    paddingBottom: 8,
+  },
+  warningIcon: {
+    marginRight: 6,
+  },
+  warningText: {
+    fontSize: 13,
+    fontWeight: '500',
+    flex: 1,
+  },
   pressed: {
     opacity: 0.8,
+  },
+  sheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  sheet: {
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingTop: 12,
+    paddingHorizontal: 16,
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  sheetTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 2,
+    paddingHorizontal: 4,
+  },
+  sheetSubtitle: {
+    fontSize: 14,
+    fontWeight: '400',
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  sheetOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+  },
+  sheetOptionLabel: {
+    fontSize: 16,
+    fontWeight: '500',
   },
 });

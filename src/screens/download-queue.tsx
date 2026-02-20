@@ -1,21 +1,30 @@
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
-import { memo, useCallback, useMemo } from 'react';
+import { useNavigation } from 'expo-router';
+import { memo, useCallback, useEffect, useMemo } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { CachedImage } from '../components/CachedImage';
 import { useTheme } from '../hooks/useTheme';
-import { cancelDownload, retryDownload } from '../services/musicCacheService';
+import { cancelDownload, clearDownloadQueue, retryDownload } from '../services/musicCacheService';
 import {
   musicCacheStore,
   type DownloadQueueItem,
 } from '../store/musicCacheStore';
+
+const ANIMATE_MS = 400;
 
 /* ------------------------------------------------------------------ */
 /*  Queue Row                                                          */
@@ -44,18 +53,36 @@ const QueueRow = memo(function QueueRow({
   const isQueued = item.status === 'queued';
   const isError = item.status === 'error';
 
-  const overallProgress = item.totalTracks > 0
+  const progress = item.totalTracks > 0
     ? item.completedTracks / item.totalTracks
     : 0;
 
+  const fillFrac = useSharedValue(progress);
+  const freeFrac = useSharedValue(1 - progress);
+
+  useEffect(() => {
+    fillFrac.value = withTiming(progress, { duration: ANIMATE_MS });
+    freeFrac.value = withTiming(1 - progress, { duration: ANIMATE_MS });
+  }, [progress, fillFrac, freeFrac]);
+
+  const fillStyle = useAnimatedStyle(() => ({ flex: fillFrac.value }));
+  const freeStyle = useAnimatedStyle(() => ({ flex: freeFrac.value }));
+
   return (
     <View style={[styles.row, { borderBottomColor: colors.border }]}>
-      <CachedImage
-        coverArtId={item.coverArtId}
-        size={300}
-        style={[styles.thumb, { backgroundColor: colors.border }]}
-        resizeMode="cover"
-      />
+      <View style={styles.thumbWrap}>
+        <CachedImage
+          coverArtId={item.coverArtId}
+          size={300}
+          style={[styles.thumb, { backgroundColor: colors.border }]}
+          resizeMode="cover"
+        />
+        {isActive && (
+          <View style={styles.spinnerOverlay}>
+            <ActivityIndicator size="small" color={colors.primary} />
+          </View>
+        )}
+      </View>
       <View style={styles.rowContent}>
         <Text style={[styles.rowTitle, { color: colors.textPrimary }]} numberOfLines={1}>
           {item.name}
@@ -72,11 +99,13 @@ const QueueRow = memo(function QueueRow({
               {item.completedTracks} of {item.totalTracks} tracks
             </Text>
             <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
-              <View
-                style={[
-                  styles.progressFill,
-                  { backgroundColor: colors.primary, width: `${Math.round(overallProgress * 100)}%` },
-                ]}
+              {progress > 0 && (
+                <Animated.View
+                  style={[styles.progressSegment, { backgroundColor: colors.primary }, fillStyle]}
+                />
+              )}
+              <Animated.View
+                style={[styles.progressSegment, { backgroundColor: colors.inputBg }, freeStyle]}
               />
             </View>
           </View>
@@ -143,7 +172,41 @@ const QueueRow = memo(function QueueRow({
 
 export function DownloadQueueScreen() {
   const { colors } = useTheme();
+  const navigation = useNavigation();
   const downloadQueue = musicCacheStore((s) => s.downloadQueue);
+
+  const handleClearAll = useCallback(() => {
+    Alert.alert(
+      'Clear Download Queue',
+      'This will cancel all downloads and remove partially downloaded files. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear All',
+          style: 'destructive',
+          onPress: () => clearDownloadQueue(),
+        },
+      ],
+    );
+  }, []);
+
+  useEffect(() => {
+    if (downloadQueue.length === 0) {
+      navigation.setOptions({ headerRight: undefined });
+      return;
+    }
+    navigation.setOptions({
+      headerRight: () => (
+        <Pressable
+          onPress={handleClearAll}
+          hitSlop={8}
+          style={({ pressed }) => pressed && styles.pressed}
+        >
+          <Text style={[styles.clearAllText, { color: colors.red }]}>Clear All</Text>
+        </Pressable>
+      ),
+    });
+  }, [downloadQueue.length, navigation, handleClearAll, colors.red]);
 
   const handleMoveUp = useCallback((queueId: string) => {
     const queue = musicCacheStore.getState().downloadQueue;
@@ -259,9 +322,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  thumbWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
   thumb: {
     width: 56,
     height: 56,
+    borderRadius: 6,
+  },
+  spinnerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: 6,
   },
   rowContent: {
@@ -284,13 +360,13 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   progressBar: {
-    height: 3,
-    borderRadius: 1.5,
+    height: 10,
+    borderRadius: 5,
+    flexDirection: 'row',
     overflow: 'hidden',
   },
-  progressFill: {
+  progressSegment: {
     height: '100%',
-    borderRadius: 1.5,
   },
   statusText: {
     fontSize: 12,
@@ -301,6 +377,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     marginLeft: 12,
+  },
+  clearAllText: {
+    fontSize: 15,
+    fontWeight: '600',
   },
   pressed: {
     opacity: 0.6,
