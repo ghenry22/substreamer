@@ -39,3 +39,9 @@ offlineModeStore.subscribe((state, prevState) => {
   if (state.offlineMode === prevState.offlineMode) return;
   filterBarStore.getState().setDownloadedOnly(state.offlineMode);
 });
+
+// Sync initial state -- rehydration completes synchronously during create()
+// (sqliteStorage is sync), so the subscription above misses it.
+if (offlineModeStore.getState().offlineMode) {
+  filterBarStore.getState().setDownloadedOnly(true);
+}

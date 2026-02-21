@@ -13,6 +13,7 @@ import SubsonicAPI, {
 } from 'subsonic-api';
 
 import { authStore } from '../store/authStore';
+import { offlineModeStore } from '../store/offlineModeStore';
 import { playbackSettingsStore } from '../store/playbackSettingsStore';
 import type { ServerInfo } from '../store/serverInfoStore';
 
@@ -78,6 +79,7 @@ export async function login(
 }
 
 export function getApi(): SubsonicAPI | null {
+  if (offlineModeStore.getState().offlineMode) return null;
   const { isLoggedIn, serverUrl, username, password } = authStore.getState();
   if (!isLoggedIn || !serverUrl || !username || !password) {
     return null;

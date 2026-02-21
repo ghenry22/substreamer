@@ -117,6 +117,25 @@ layoutPreferencesStore.subscribe((state, prevState) => {
 
 Place the subscription after the store's `create()` call. The subscribing store imports the source store (not the other way around), keeping the dependency graph acyclic.
 
+## No Lazy `require()` Workarounds
+
+**Never** use `require()` inside a store action (or anywhere in TypeScript source) to work around circular dependencies. This is a code smell that masks an architectural problem.
+
+```typescript
+// BAD – lazy require to dodge circular import
+toggleDownloaded: () => {
+  const { otherStore } = require('./otherStore');
+  if (otherStore.getState().someFlag) return;
+  set((s) => ({ downloadedOnly: !s.downloadedOnly }));
+},
+```
+
+Instead, restructure to eliminate the cycle:
+
+1. **Move the guard to the UI layer.** If a store action needs to read another store's state before proceeding, have the calling component check the condition and skip the call. Components already have access to both stores via selectors.
+2. **Use cross-store subscriptions.** If store A needs to react to store B's changes, subscribe from store A's file (see above) rather than reading store B inside an action.
+3. **Extract shared logic to a service.** If two stores depend on each other's state, the shared concern likely belongs in a service module that imports both stores.
+
 ## Export Scoping
 
 Only export the store itself and types that are consumed by other modules. Keep internal interfaces and type aliases module-private:

@@ -9,6 +9,7 @@
 
 import { albumListsStore } from '../store/albumListsStore';
 import { completedScrobbleStore } from '../store/completedScrobbleStore';
+import { offlineModeStore } from '../store/offlineModeStore';
 import { pendingScrobbleStore } from '../store/pendingScrobbleStore';
 import { getApi, type Child } from './subsonicService';
 
@@ -42,6 +43,13 @@ export function initScrobbleService(): void {
 
   // Periodically retry pending scrobbles.
   timerHandle = setInterval(processScrobbles, PROCESS_INTERVAL_MS);
+
+  // Flush the pending queue when the user leaves offline mode.
+  offlineModeStore.subscribe((state, prev) => {
+    if (prev.offlineMode && !state.offlineMode) {
+      processScrobbles();
+    }
+  });
 }
 
 /**

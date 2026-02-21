@@ -69,6 +69,11 @@ export const FilterBar = memo(function FilterBar({
   const showInFilterBar = offlineModeStore((s) => s.showInFilterBar);
   const toggleOfflineMode = offlineModeStore((s) => s.toggleOfflineMode);
 
+  const handleToggleDownloaded = useCallback(() => {
+    if (offlineMode) return;
+    toggleDownloaded();
+  }, [offlineMode, toggleDownloaded]);
+
   const handleLayoutToggle = useCallback(() => {
     layoutToggle?.onToggle();
   }, [layoutToggle]);
@@ -97,7 +102,7 @@ export const FilterBar = memo(function FilterBar({
             icon="arrow-down-circle"
             active={downloadedOnly}
             locked={offlineMode}
-            onToggle={toggleDownloaded}
+            onToggle={handleToggleDownloaded}
             colors={colors}
           />
         )}

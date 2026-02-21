@@ -35,11 +35,7 @@ export interface FilterBarState {
 export const filterBarStore = create<FilterBarState>()((set) => ({
   downloadedOnly: false,
   favoritesOnly: false,
-  toggleDownloaded: () => {
-    const { offlineModeStore } = require('./offlineModeStore');
-    if (offlineModeStore.getState().offlineMode) return;
-    set((s) => ({ downloadedOnly: !s.downloadedOnly }));
-  },
+  toggleDownloaded: () => set((s) => ({ downloadedOnly: !s.downloadedOnly })),
   toggleFavorites: () => set((s) => ({ favoritesOnly: !s.favoritesOnly })),
   setDownloadedOnly: (downloadedOnly) => set({ downloadedOnly }),
 

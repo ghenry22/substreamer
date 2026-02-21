@@ -21,6 +21,7 @@ import { imageCacheStore } from '../store/imageCacheStore';
 import { musicCacheStore } from '../store/musicCacheStore';
 import { authStore, clearPersistedData } from '../store/authStore';
 import { favoritesStore } from '../store/favoritesStore';
+import { offlineModeStore } from '../store/offlineModeStore';
 import { fetchServerInfo } from '../services/subsonicService';
 import { serverInfoStore } from '../store/serverInfoStore';
 
@@ -72,14 +73,37 @@ export default function RootLayout() {
     if (!rehydrated || !isLoggedIn) return;
     initPlayer();
     initScrobbleService();
-    startMonitoring();
-    fetchServerInfo().then((info) => {
-      if (info) serverInfoStore.getState().setServerInfo(info);
+
+    const offline = offlineModeStore.getState().offlineMode;
+
+    if (!offline) {
+      startMonitoring();
+      fetchServerInfo().then((info) => {
+        if (info) serverInfoStore.getState().setServerInfo(info);
+      });
+      fetchScanStatus();
+      albumListsStore.getState().refreshAll();
+      favoritesStore.getState().fetchStarred();
+    }
+
+    const unsub = offlineModeStore.subscribe((state, prev) => {
+      if (prev.offlineMode && !state.offlineMode) {
+        startMonitoring();
+        fetchServerInfo().then((info) => {
+          if (info) serverInfoStore.getState().setServerInfo(info);
+        });
+        fetchScanStatus();
+        albumListsStore.getState().refreshAll();
+        favoritesStore.getState().fetchStarred();
+      } else if (!prev.offlineMode && state.offlineMode) {
+        stopMonitoring();
+      }
     });
-    fetchScanStatus();
-    albumListsStore.getState().refreshAll();
-    favoritesStore.getState().fetchStarred();
-    return () => stopMonitoring();
+
+    return () => {
+      unsub();
+      stopMonitoring();
+    };
   }, [rehydrated, isLoggedIn]);
 
   // --- Auth-based navigation ---
