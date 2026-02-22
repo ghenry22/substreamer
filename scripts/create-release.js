@@ -11,7 +11,8 @@ const CHANGELOG = path.join(ROOT, 'CHANGELOG.md');
 const CHANGELOG_HEADER = '# Changelog\n\nAll notable changes to this project will be documented in this file.\n';
 
 function run(cmd, opts = {}) {
-  return execSync(cmd, { cwd: ROOT, encoding: 'utf-8', ...opts }).trim();
+  const result = execSync(cmd, { cwd: ROOT, encoding: 'utf-8', ...opts });
+  return result == null ? '' : result.trim();
 }
 
 function fatal(msg) {
