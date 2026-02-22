@@ -78,11 +78,12 @@ export const FilterBar = memo(function FilterBar({
     layoutToggle?.onToggle();
   }, [layoutToggle]);
 
-  if (routeName === 'settings') return null;
-
+  const isSettings = routeName === 'settings';
   const showOfflineChip = showInFilterBar;
-  const showDownloadedChip = !hideDownloaded;
-  const showFavoritesChip = routeName !== 'favorites' && !hideFavorites;
+  const showDownloadedChip = !isSettings && !hideDownloaded;
+  const showFavoritesChip = !isSettings && routeName !== 'favorites' && !hideFavorites;
+
+  if (isSettings && !showOfflineChip) return null;
 
   return (
     <View style={styles.container}>
@@ -116,33 +117,35 @@ export const FilterBar = memo(function FilterBar({
           />
         )}
       </View>
-      <View style={styles.actions}>
-        {downloadButtonConfig && (
-          <DownloadButton
-            itemId={downloadButtonConfig.itemId}
-            type={downloadButtonConfig.type}
-            size={22}
-            onDownload={downloadButtonConfig.onDownload}
-            onDelete={downloadButtonConfig.onDelete}
-          />
-        )}
-        {layoutToggle && (
-          <Pressable
-            onPress={handleLayoutToggle}
-            style={({ pressed }) => [
-              styles.actionButton,
-              pressed && styles.actionButtonPressed,
-            ]}
-            hitSlop={8}
-          >
-            <Ionicons
-              name={layoutToggle.layout === 'list' ? 'grid-outline' : 'list-outline'}
+      {!isSettings && (
+        <View style={styles.actions}>
+          {downloadButtonConfig && (
+            <DownloadButton
+              itemId={downloadButtonConfig.itemId}
+              type={downloadButtonConfig.type}
               size={22}
-              color={colors.textPrimary}
+              onDownload={downloadButtonConfig.onDownload}
+              onDelete={downloadButtonConfig.onDelete}
             />
-          </Pressable>
-        )}
-      </View>
+          )}
+          {layoutToggle && (
+            <Pressable
+              onPress={handleLayoutToggle}
+              style={({ pressed }) => [
+                styles.actionButton,
+                pressed && styles.actionButtonPressed,
+              ]}
+              hitSlop={8}
+            >
+              <Ionicons
+                name={layoutToggle.layout === 'list' ? 'grid-outline' : 'list-outline'}
+                size={22}
+                color={colors.textPrimary}
+              />
+            </Pressable>
+          )}
+        </View>
+      )}
     </View>
   );
 });
