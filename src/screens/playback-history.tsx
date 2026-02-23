@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 
 import { ActivityHeatmap } from '../components/ActivityHeatmap';
 import { CachedImage } from '../components/CachedImage';
+import { EmptyState } from '../components/EmptyState';
 import { GenreChart } from '../components/GenreChart';
 import { MiniBarChart } from '../components/MiniBarChart';
 import { SectionTitle } from '../components/SectionTitle';
@@ -82,17 +83,17 @@ export function PlaybackHistoryScreen() {
 
   if (isEmpty) {
     return (
-      <View style={[styles.emptyContainer, { backgroundColor: colors.background }]}>
-        <Ionicons name="musical-notes-outline" size={64} color={colors.textSecondary} />
-        <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No playback history yet</Text>
-        <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-          Listen to some music and check back soon to see your personal stats, top tracks, and
-          listening trends.
-        </Text>
-        <Text style={[styles.emptyDisclaimer, { color: colors.textSecondary }]}>
-          Listening history is tracked locally on this device and is not synced to your server or
-          other devices.
-        </Text>
+      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+        <EmptyState
+          icon="musical-notes-outline"
+          title="No playback history yet"
+          subtitle="Listen to some music and check back soon to see your personal stats, top tracks, and listening trends."
+        >
+          <Text style={[styles.emptyDisclaimer, { color: colors.textSecondary }]}>
+            Listening history is tracked locally on this device and is not synced to your server or
+            other devices.
+          </Text>
+        </EmptyState>
       </View>
     );
   }
@@ -376,22 +377,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 12,
-    padding: 32,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 20,
   },
   emptyDisclaimer: {
     fontSize: 12,
