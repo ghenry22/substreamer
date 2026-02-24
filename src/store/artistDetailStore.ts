@@ -16,7 +16,7 @@ import {
   getArtistBiography,
   searchArtistMBID,
 } from '../services/musicbrainzService';
-import { stripHtml } from '../utils/formatters';
+import { sanitizeBiographyText } from '../utils/formatters';
 
 export interface ArtistDetailEntry {
   artist: ArtistWithAlbumsID3;
@@ -63,7 +63,7 @@ export const artistDetailStore = create<ArtistDetailState>()(
 
         // Resolve biography: prefer Subsonic, fall back to MusicBrainz
         let biography: string | null = null;
-        const subsonicBio = infoData?.biography ? stripHtml(infoData.biography) : null;
+        const subsonicBio = infoData?.biography ? sanitizeBiographyText(infoData.biography) : null;
         if (subsonicBio && subsonicBio.length > 0) {
           biography = subsonicBio;
         } else {
@@ -71,7 +71,7 @@ export const artistDetailStore = create<ArtistDetailState>()(
             const mbid = infoData?.musicBrainzId || (await searchArtistMBID(artistData.name));
             if (mbid) {
               const mbBio = await getArtistBiography(mbid);
-              if (mbBio) biography = stripHtml(mbBio);
+              if (mbBio) biography = sanitizeBiographyText(mbBio);
             }
           } catch {
             /* non-critical */
