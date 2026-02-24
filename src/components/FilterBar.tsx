@@ -156,6 +156,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     height: 44,
+    gap: 12,
   },
   chips: {
     flex: 1,
@@ -182,6 +183,8 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 0,
+    gap: 8,
   },
   actionButton: {
     padding: 4,
