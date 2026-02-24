@@ -125,7 +125,7 @@ export const QueueItemRow = memo(function QueueItemRow({
           />
           {isActive && (
             <View style={styles.activeOverlay}>
-              <Ionicons name="play" size={22} color={colors.primary} />
+              <Ionicons name="play" size={22} color={colors.primary} style={{ opacity: 1 }} />
             </View>
           )}
         </View>

@@ -80,7 +80,7 @@ const QueueRow = memo(function QueueRow({
         />
         {isActive && (
           <View style={styles.spinnerOverlay}>
-            <ActivityIndicator size="small" color={colors.primary} />
+            <ActivityIndicator size="small" color={colors.primary} style={{ opacity: 1 }} />
           </View>
         )}
       </View>
