@@ -1,0 +1,9 @@
+{
+  "platforms": ["ios", "android"],
+  "ios": {
+    "modules": ["ExpoBackupExclusionsModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.backupexclusions.ExpoBackupExclusionsModule"]
+  }
+}

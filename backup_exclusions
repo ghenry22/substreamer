@@ -1,0 +1,5 @@
+# Folders to exclude from iCloud / Google Drive backups
+# Paths are relative to the app document directory
+image-cache
+music-cache
+SQLite

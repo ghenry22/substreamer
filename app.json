@@ -53,6 +53,7 @@
       "./plugins/fix-jvm-target",
       "expo-sqlite",
       "./modules/expo-ssl-trust/plugin",
+    "./modules/expo-backup-exclusions/plugin",
       "./modules/react-native-track-player/plugin",
       [
         "expo-build-properties",

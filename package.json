@@ -6,6 +6,7 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
+    "prebuild": "expo prebuild --clean",
     "web": "expo start --web",
     "generate-assets": "node scripts/generate-assets.js",
     "release": "node scripts/create-release.js",
@@ -50,7 +51,8 @@
     "react-native-track-player": "file:./modules/react-native-track-player",
     "react-native-worklets": "0.7.4",
     "subsonic-api": "^3.2.0",
-    "zustand": "^5.0.11"
+    "zustand": "^5.0.11",
+    "expo-backup-exclusions": "file:./modules/expo-backup-exclusions"
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
@@ -74,7 +76,8 @@
       "reactNativeDirectoryCheck": {
         "exclude": [
           "react-native-track-player",
-          "expo-ssl-trust"
+          "expo-ssl-trust",
+          "expo-backup-exclusions"
         ]
       }
     }

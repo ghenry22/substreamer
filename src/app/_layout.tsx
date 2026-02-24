@@ -17,6 +17,7 @@ import { fetchScanStatus } from '../services/scanService';
 import { startMonitoring, stopMonitoring } from '../services/connectivityService';
 import { initScrobbleService } from '../services/scrobbleService';
 import { initSslTrustStore } from '../services/sslTrustService';
+import { excludeFromBackup } from 'expo-backup-exclusions';
 import { albumListsStore } from '../store/albumListsStore';
 import { imageCacheStore } from '../store/imageCacheStore';
 import { musicCacheStore } from '../store/musicCacheStore';
@@ -52,6 +53,11 @@ export default function RootLayout() {
   const { theme, colors } = useTheme();
   const router = useRouter();
   const segments = useSegments();
+
+  // --- Exclude cache dirs from iCloud backup (iOS); no-op on Android ---
+  useEffect(() => {
+    excludeFromBackup();
+  }, []);
 
   // --- Rehydrate auth from SQLite ---
   useEffect(() => {
