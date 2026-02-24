@@ -2,9 +2,9 @@
  * MoreOptionsSheet – unified bottom sheet for all entity types.
  *
  * Reads from `moreOptionsStore` and renders entity-specific options:
- *   - Song/Track: Favorite, Add to Playlist, Play more like this, Add to Queue, Go to Album, Go to Artist
+ *   - Song/Track: Favorite, Add to Playlist, Play More Like This, Add to Queue, Go to Album, Go to Artist
  *   - Album: Favorite, Add to Queue, Go to Artist, Album Details
- *   - Artist: Favorite, Save Top Songs Playlist, Play mix of similar artists
+ *   - Artist: Favorite, Save Top Songs Playlist, Play Similar Artists
  *   - Playlist: Add to Queue
  *
  * Rendered once at the root layout level.
@@ -521,7 +521,7 @@ export function MoreOptionsSheet() {
                 </Pressable>
               )}
 
-              {/* Play mix of similar artists (artist only) */}
+              {/* Play Similar Artists (artist only) */}
               {showPlaySimilarArtistsMix && (
                 <Pressable
                   onPress={handlePlaySimilarArtistsMix}
@@ -537,7 +537,7 @@ export function MoreOptionsSheet() {
                     style={styles.optionIcon}
                   />
                   <Text style={[styles.optionLabel, { color: colors.textPrimary }]}>
-                    Play mix of similar artists
+                    Play Similar Artists
                   </Text>
                 </Pressable>
               )}
@@ -563,7 +563,7 @@ export function MoreOptionsSheet() {
                 </Pressable>
               )}
 
-              {/* Play more like this */}
+              {/* Play More Like This */}
               {showPlayMoreLikeThis && (
                 <Pressable
                   onPress={handlePlayMoreLikeThis}
@@ -579,7 +579,7 @@ export function MoreOptionsSheet() {
                     style={styles.optionIcon}
                   />
                   <Text style={[styles.optionLabel, { color: colors.textPrimary }]}>
-                    Play more like this
+                    Play More Like This
                   </Text>
                 </Pressable>
               )}
@@ -838,7 +838,7 @@ export function MoreOptionsSheet() {
                 </Pressable>
               )}
 
-              {/* Play mix of similar artists (artist only) */}
+              {/* Play Similar Artists (artist only) */}
               {showPlaySimilarArtistsMix && (
                 <Pressable
                   onPress={handlePlaySimilarArtistsMix}
@@ -854,7 +854,7 @@ export function MoreOptionsSheet() {
                     style={styles.optionIcon}
                   />
                   <Text style={[styles.optionLabel, { color: colors.textPrimary }]}>
-                    Play mix of similar artists
+                    Play Similar Artists
                   </Text>
                 </Pressable>
               )}
@@ -880,7 +880,7 @@ export function MoreOptionsSheet() {
                 </Pressable>
               )}
 
-              {/* Play more like this */}
+              {/* Play More Like This */}
               {showPlayMoreLikeThis && (
                 <Pressable
                   onPress={handlePlayMoreLikeThis}
@@ -896,7 +896,7 @@ export function MoreOptionsSheet() {
                     style={styles.optionIcon}
                   />
                   <Text style={[styles.optionLabel, { color: colors.textPrimary }]}>
-                    Play more like this
+                    Play More Like This
                   </Text>
                 </Pressable>
               )}
