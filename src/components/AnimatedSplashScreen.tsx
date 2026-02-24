@@ -29,6 +29,12 @@ const SUCCESS = '#00BA7C';
  */
 const SAFETY_TIMEOUT = 15_000;
 
+/**
+ * Scale of native splash logo content vs container. Must match logoScale (0.80)
+ * in scripts/generate-assets.js for splash-logo.svg. If that changes, update here.
+ */
+const NATIVE_CONTENT_SCALE = 0.8;
+
 type MigrationPhase = 'idle' | 'running' | 'done';
 
 type Props = {
@@ -39,6 +45,7 @@ export default function AnimatedSplashScreen({ onFinish }: Props) {
   const containerOpacity = useSharedValue(1);
   const logoImageOpacity = useSharedValue(1);
   const animatedLogoOpacity = useSharedValue(0);
+  const logoContentScale = useSharedValue(NATIVE_CONTENT_SCALE);
   const logoScale = useSharedValue(1);
   const logoTranslateY = useSharedValue(0);
   const migrationOpacity = useSharedValue(0);
@@ -111,7 +118,13 @@ export default function AnimatedSplashScreen({ onFinish }: Props) {
     animate: () => {
       logoImageOpacity.value = 0;
       animatedLogoOpacity.value = 1;
-      setRippling(true);
+      logoContentScale.value = withTiming(
+        1,
+        { duration: 300, easing: Easing.out(Easing.cubic) },
+        (finished) => {
+          if (finished) runOnJS(setRippling)(true);
+        },
+      );
     },
   });
 
@@ -138,6 +151,7 @@ export default function AnimatedSplashScreen({ onFinish }: Props) {
 
   const animatedLogoStyle = useAnimatedStyle(() => ({
     opacity: animatedLogoOpacity.value,
+    transform: [{ scale: logoContentScale.value }],
   }));
 
   const migrationStyle = useAnimatedStyle(() => ({
