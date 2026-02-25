@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -10,8 +10,16 @@ import {
   Text,
   View,
 } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { AlbumCard } from '../components/AlbumCard';
+import { AnimatedNumber } from '../components/AnimatedNumber';
 import { DownloadedIcon } from '../components/DownloadedIcon';
 import { EmptyState } from '../components/EmptyState';
 import { PlaylistCard } from '../components/PlaylistCard';
@@ -227,6 +235,41 @@ const SECTION_ORDER: AlbumListType[] = [
   'randomSelection',
 ];
 
+function AnimatedStatIcon({
+  value,
+  iconBgColor,
+  children,
+}: {
+  value: number | string;
+  iconBgColor: string;
+  children: React.ReactNode;
+}) {
+  const scale = useSharedValue(1);
+  const isFirstRender = useRef(true);
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    scale.value = withSequence(
+      withTiming(1.1, { duration: 300 }),
+      withSpring(1, { damping: 10, stiffness: 120 })
+    );
+  }, [value, scale]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <Animated.View style={[styles.statIcon, { backgroundColor: iconBgColor }, animatedStyle]}>
+      {children}
+    </Animated.View>
+  );
+}
+
+
 export function HomeScreen() {
   const { colors } = useTheme();
   const router = useRouter();
@@ -245,11 +288,8 @@ export function HomeScreen() {
   const completedScrobbles = completedScrobbleStore((s) => s.completedScrobbles);
   const pendingScrobbles = pendingScrobbleStore((s) => s.pendingScrobbles);
   const listeningStats = useMemo(() => {
-    const h = Math.floor(totalSeconds / 3600);
-    const m = Math.floor((totalSeconds % 3600) / 60);
-    const time = h > 0 ? `${h}h ${m}m` : `${m}m`;
     const { current: streak } = computeStreaks([...completedScrobbles, ...pendingScrobbles]);
-    return { total: totalPlays, time, artists: uniqueArtistCount, streak };
+    return { total: totalPlays, totalSeconds, artists: uniqueArtistCount, streak };
   }, [totalPlays, totalSeconds, uniqueArtistCount, completedScrobbles, pendingScrobbles]);
 
   useEffect(() => {
@@ -372,48 +412,53 @@ export function HomeScreen() {
               {listeningStats.total > 0 ? (
                 <View style={styles.statsRow}>
                   <View style={styles.statBlock}>
-                    <View style={[styles.statIcon, { backgroundColor: colors.primary + '18' }]}>
+                    <AnimatedStatIcon value={listeningStats.total} iconBgColor={colors.primary + '18'}>
                       <Ionicons name="musical-notes" size={20} color={colors.primary} />
-                    </View>
-                    <Text style={[styles.statValue, { color: colors.textPrimary }]}>
-                      {listeningStats.total.toLocaleString()}
-                    </Text>
+                    </AnimatedStatIcon>
+                    <AnimatedNumber
+                      value={listeningStats.total}
+                      style={[styles.statValue, { color: colors.textPrimary }]}
+                    />
                     <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
                       plays
                     </Text>
                   </View>
                   <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
                   <View style={styles.statBlock}>
-                    <View style={[styles.statIcon, { backgroundColor: colors.primary + '18' }]}>
+                    <AnimatedStatIcon value={listeningStats.totalSeconds} iconBgColor={colors.primary + '18'}>
                       <Ionicons name="time" size={20} color={colors.primary} />
-                    </View>
-                    <Text style={[styles.statValue, { color: colors.textPrimary }]}>
-                      {listeningStats.time}
-                    </Text>
+                    </AnimatedStatIcon>
+                    <AnimatedNumber
+                      value={listeningStats.totalSeconds}
+                      format="duration"
+                      style={[styles.statValue, { color: colors.textPrimary }]}
+                    />
                     <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
                       listening
                     </Text>
                   </View>
                   <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
                   <View style={styles.statBlock}>
-                    <View style={[styles.statIcon, { backgroundColor: colors.primary + '18' }]}>
+                    <AnimatedStatIcon value={listeningStats.artists} iconBgColor={colors.primary + '18'}>
                       <Ionicons name="people" size={20} color={colors.primary} />
-                    </View>
-                    <Text style={[styles.statValue, { color: colors.textPrimary }]}>
-                      {listeningStats.artists.toLocaleString()}
-                    </Text>
+                    </AnimatedStatIcon>
+                    <AnimatedNumber
+                      value={listeningStats.artists}
+                      style={[styles.statValue, { color: colors.textPrimary }]}
+                    />
                     <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
                       artists
                     </Text>
                   </View>
                   <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
                   <View style={styles.statBlock}>
-                    <View style={[styles.statIcon, { backgroundColor: colors.primary + '18' }]}>
+                    <AnimatedStatIcon value={listeningStats.streak} iconBgColor={colors.primary + '18'}>
                       <Ionicons name="flame" size={20} color={colors.primary} />
-                    </View>
-                    <Text style={[styles.statValue, { color: colors.textPrimary }]}>
-                      {listeningStats.streak}
-                    </Text>
+                    </AnimatedStatIcon>
+                    <AnimatedNumber
+                      value={listeningStats.streak}
+                      style={[styles.statValue, { color: colors.textPrimary }]}
+                    />
                     <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
                       streak
                     </Text>
