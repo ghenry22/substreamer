@@ -102,7 +102,10 @@ const renderGridItem = ({ item, index }: { item: AlbumID3; index: number }) => {
 
 - Ref type: `useRef<FlashListRef<T>>(null)` (import `FlashListRef` from `@shopify/flash-list`).
 
-**Exception:** The download queue screen (`src/screens/download-queue.tsx`) uses `DraggableFlatList` from `react-native-draggable-flatlist` instead of FlashList because it requires drag-to-reorder functionality. The download queue is inherently small (typically under 20 items) and does not need FlashList's virtualization. This is the only screen where this exception applies.
+**Exception:** Two screens use `DraggableFlatList` from `react-native-draggable-flatlist` instead of FlashList because they require drag-to-reorder functionality:
+
+- `src/screens/download-queue.tsx` – the download queue is inherently small (typically under 20 items) and does not need FlashList's virtualization.
+- `src/screens/playlist-detail.tsx` – conditionally renders `DraggableFlatList` when the user enters edit mode to reorder tracks.
 
 ## Modals and Bottom Sheets
 
@@ -144,7 +147,7 @@ const leftActions: SwipeAction[] = [
 
 ## Theming
 
-- Access theme via `useTheme()` which returns `{ theme, colors, preference, primaryColor }`.
+- Access theme via `useTheme()` which returns `{ theme, colors, preference, primaryColor, setThemePreference, setPrimaryColor }`.
 - `ThemeColors` interface defines: `background`, `card`, `textPrimary`, `textSecondary`, `label`, `border`, `primary`, `red`, `inputBg`.
 - Supports light/dark/system modes with optional primary color override.
 - Pass `colors` as a prop to memo'd child components to avoid re-renders from hook calls.

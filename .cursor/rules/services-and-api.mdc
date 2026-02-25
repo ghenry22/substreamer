@@ -88,6 +88,29 @@ export async function getAlbum(albumId: string): Promise<AlbumWithSongsID3 | nul
 - Tracks completed migration versions via `migrationStore`.
 - Handles schema changes and legacy data cleanup across app updates.
 
+## Connectivity Service (`connectivityService.ts`)
+
+- Monitors network reachability and server availability.
+- `startMonitoring()` / `stopMonitoring()` lifecycle tied to login state and offline mode.
+- Updates `connectivityStore` with reachability state.
+
+## Music Cache Service (`musicCacheService.ts`)
+
+- Manages on-disk cache of downloaded music files for offline playback.
+- `initMusicCache()` ensures cache directories exist at launch.
+- `getMusicCacheStats()` returns total size and file count for the settings UI.
+- Handles download queue processing for album/playlist downloads.
+
+## Storage Service (`storageService.ts`)
+
+- Checks device storage against configured limits.
+- `checkStorageLimit()` runs at launch and updates `storageLimitStore`.
+
+## More Options Service (`moreOptionsService.ts`)
+
+- Orchestrates actions triggered from the more-options bottom sheet (e.g. add to playlist, share, delete).
+- Bridges between `moreOptionsStore` and the relevant stores/services for each action.
+
 ## Export Scoping
 
 Only export functions and types that are consumed by other modules. Keep internal helpers, intermediate types, and implementation details module-private:

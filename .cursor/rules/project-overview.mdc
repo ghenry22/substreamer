@@ -31,10 +31,10 @@ src/
     artist/[id]
     playlist/[id]
   screens/        # Screen components with business logic
-  components/     # Reusable UI components (35)
-  hooks/          # Custom hooks (useTheme, useCachedCoverArt, useColorExtraction, useIsStarred, useTransitionComplete)
+  components/     # Reusable UI components
+  hooks/          # Custom hooks (useTheme, useCachedCoverArt, useColorExtraction, useIsStarred, useTransitionComplete, useDownloadStatus, usePlaybackAnalytics)
   services/       # API clients and external integrations
-  store/          # Zustand stores (22 stores)
+  store/          # Zustand stores
   constants/      # Theme definitions
   utils/          # Formatting, color, string, and timing helpers
   assets/         # App icons, splash images

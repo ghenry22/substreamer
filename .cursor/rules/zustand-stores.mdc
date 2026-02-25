@@ -96,9 +96,22 @@ albumListsStore.getState().refreshAll();
 | `pendingScrobbleStore` | Yes | Pending scrobble entries awaiting submission |
 | `scanStatusStore` | Yes | Library scan status and timestamps |
 | `sslCertStore` | Yes | Trusted SSL certificate fingerprints by hostname |
+| `musicCacheStore` | Yes | Downloaded music cache stats and download queue |
+| `offlineModeStore` | Yes | Offline mode toggle |
+| `shareSettingsStore` | Yes | Share expiration/download settings |
+| `sharesStore` | Yes | Server shares list |
+| `storageLimitStore` | Yes | Storage usage limit tracking |
 | `playerStore` | No | Current track, queue, playback position |
 | `searchStore` | No | Search query and results |
 | `migrationStore` | No | Migration version tracking |
+| `addToPlaylistStore` | No | Add-to-playlist sheet state |
+| `connectivityStore` | No | Network reachability state |
+| `createShareStore` | No | Create-share sheet state |
+| `editShareStore` | No | Edit-share sheet state |
+| `filterBarStore` | No | Filter bar visibility/query |
+| `moreOptionsStore` | No | More-options sheet state |
+| `playbackToastStore` | No | Playback toast overlay state |
+| `processingOverlayStore` | No | Processing overlay state |
 
 ## Cross-Store Subscriptions
 
