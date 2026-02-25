@@ -228,6 +228,7 @@ export default function RootLayout() {
             headerStyle: { backgroundColor: 'transparent' },
             contentStyle: { backgroundColor: 'transparent' },
             animation: 'slide_from_bottom',
+            gestureDirection: 'vertical',
             headerBackVisible: false,
           }}
         />
