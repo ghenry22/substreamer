@@ -1,5 +1,16 @@
 # Changelog
 
+## [8.0.9] - 2026-02-27
+
+- file-system: new expo-file-system removes many async operations which makes larger recursive operations block UI interaction which is not good. This was causing slow app start up as the integrity of offline images and music are checked at start. 1) implement a custom expo module with only the required async file functions. 2) move any legacy/async operations to the new custom module (as file-system/legacy will be removed in next major expo version breaking the app) 3) split cache init functions into base init (make sure cache directories exist) and validation passes so that heavier work can run deferred. 4) refactor all of image cache and music cache to use new async functions where appropriate.
+- appearance: blue should be Blue (default) not just Default in colour picker
+- show app version and build number in settings screen
+- downled music: use swipe actions for delete instead of an icon on the line item. Consistent with download queue and playlist edit
+- home: sections should not be refreshable or expandable when offline as these are API driven actions.
+- scrobbles: pending scrobbles list should display newest to oldest
+- image cache: duplicate images with differing suffix, The suffix is a hex encoded unix timestamp used for cache busting. Accomodate this and ensure clean up when a new version replaces old.
+- more options: fix no actions available icon colour
+- more options: fix add album / playlist to queue when offline
 ## [8.0.8] - 2026-02-25
 
 - player: fix crash on progress drag
