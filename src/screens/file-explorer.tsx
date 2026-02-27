@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Directory, File, Paths } from 'expo-file-system';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   Pressable,
   StyleSheet,
@@ -9,6 +10,7 @@ import {
   View,
 } from 'react-native';
 
+import { listDirectoryAsync } from 'expo-async-fs';
 import { EmptyState } from '../components/EmptyState';
 import { useTheme } from '../hooks/useTheme';
 
@@ -38,25 +40,26 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-function listDirectory(dir: Directory): Entry[] {
+async function listDirectoryEntries(dir: Directory): Promise<Entry[]> {
   try {
-    const items = dir.list();
-    return items
-      .map((item) => {
-        const isDir = item instanceof Directory;
+    const names = await listDirectoryAsync(dir.uri);
+    return names
+      .map((name) => {
+        const subDir = new Directory(dir, name);
+        const isDir = subDir.exists;
         let size: number | undefined;
         if (!isDir) {
           try {
-            size = (item as File).size ?? undefined;
+            size = new File(dir, name).size ?? undefined;
           } catch {
             /* some files may not be readable */
           }
         }
         return {
-          name: isDir ? item.name + '/' : item.name,
+          name: isDir ? name + '/' : name,
           isDirectory: isDir,
           size,
-          uri: item.uri,
+          uri: isDir ? subDir.uri : new File(dir, name).uri,
         };
       })
       .sort((a, b) => {
@@ -71,6 +74,8 @@ function listDirectory(dir: Directory): Entry[] {
 export function FileExplorerScreen() {
   const { colors } = useTheme();
   const [path, setPath] = useState<string[] | null>(null);
+  const [entries, setEntries] = useState<Entry[] | null>(null);
+  const [loading, setLoading] = useState(false);
 
   const currentDir = useMemo(() => {
     if (!path) return null;
@@ -80,9 +85,19 @@ export function FileExplorerScreen() {
     return new Directory(root.directory, ...path.slice(1));
   }, [path]);
 
-  const entries = useMemo(() => {
-    if (!currentDir) return null;
-    return listDirectory(currentDir);
+  useEffect(() => {
+    if (!currentDir) {
+      setEntries(null);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    listDirectoryEntries(currentDir).then((result) => {
+      if (cancelled) return;
+      setEntries(result);
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
   }, [currentDir]);
 
   const breadcrumb = useMemo(() => {
@@ -221,7 +236,11 @@ export function FileExplorerScreen() {
         </Text>
       </Pressable>
 
-      {entries && entries.length === 0 ? (
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      ) : entries && entries.length === 0 ? (
         <EmptyState icon="folder-open-outline" title="Empty directory" subtitle="This directory contains no files or folders" />
       ) : (
         <FlatList
@@ -289,6 +308,11 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: 32,
+  },
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   pressed: {
     opacity: 0.7,

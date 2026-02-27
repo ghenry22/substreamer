@@ -112,8 +112,8 @@ export function SettingsStorageScreen() {
         {
           text: 'Clear',
           style: 'destructive',
-          onPress: () => {
-            clearImageCache();
+          onPress: async () => {
+            await clearImageCache();
             checkStorageLimit();
           },
         },
@@ -151,7 +151,7 @@ export function SettingsStorageScreen() {
           style: 'destructive',
           onPress: async () => {
             await clearQueue();
-            clearMusicCache();
+            await clearMusicCache();
             checkStorageLimit();
           },
         },
@@ -170,8 +170,8 @@ export function SettingsStorageScreen() {
           style: 'destructive',
           onPress: async () => {
             await clearQueue();
-            clearMusicCache();
-            clearImageCache();
+            await clearMusicCache();
+            await clearImageCache();
             albumDetailStore.getState().clearAlbums();
             artistDetailStore.getState().clearArtists();
             playlistDetailStore.getState().clearPlaylists();

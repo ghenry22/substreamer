@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 
 import { EmptyState } from '../components/EmptyState';
+import { useTransitionComplete } from '../hooks/useTransitionComplete';
 import { useTheme } from '../hooks/useTheme';
 import {
   deleteCachedImage,
@@ -111,6 +112,7 @@ const CacheRow = memo(function CacheRow({
 
 export function ImageCacheBrowserScreen() {
   const { colors } = useTheme();
+  const transitionComplete = useTransitionComplete();
   const [entries, setEntries] = useState<CachedImageEntry[]>([]);
   const [filter, setFilter] = useState('');
   const listRef = useRef<FlashListRef<CachedImageEntry>>(null);
@@ -138,6 +140,7 @@ export function ImageCacheBrowserScreen() {
   }, [entries, filter]);
 
   useEffect(() => {
+    if (!transitionComplete) return;
     let cancelled = false;
     listCachedImagesAsync().then((result) => {
       if (!cancelled) {
@@ -148,7 +151,7 @@ export function ImageCacheBrowserScreen() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [transitionComplete]);
 
   const handlePullRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -190,8 +193,8 @@ export function ImageCacheBrowserScreen() {
           {
             text: 'Delete',
             style: 'destructive',
-            onPress: () => {
-              deleteCachedImage(coverArtId);
+            onPress: async () => {
+              await deleteCachedImage(coverArtId);
               setEntries((prev) =>
                 prev.filter((e) => e.coverArtId !== coverArtId),
               );
@@ -229,10 +232,15 @@ export function ImageCacheBrowserScreen() {
   const emptySubtitle = isFiltered ? undefined : 'Images are cached automatically as you browse';
 
   const listEmpty = useMemo(
-    () => (
-      <EmptyState icon="images-outline" title={emptyMessage} subtitle={emptySubtitle} />
-    ),
-    [emptyMessage, emptySubtitle],
+    () =>
+      loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      ) : (
+        <EmptyState icon="images-outline" title={emptyMessage} subtitle={emptySubtitle} />
+      ),
+    [loading, emptyMessage, emptySubtitle, colors.primary],
   );
 
   const listHeader = useMemo(
@@ -248,32 +256,27 @@ export function ImageCacheBrowserScreen() {
           autoCapitalize="none"
           autoCorrect={false}
           clearButtonMode="while-editing"
+          editable={!loading}
         />
       </View>
     ),
-    [colors, filter, handleFilterChange],
+    [colors, filter, handleFilterChange, loading],
   );
-
-  if (loading) {
-    return (
-      <View style={[styles.center, { backgroundColor: colors.background }]}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
-    );
-  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {listHeader}
       <FlashList
         ref={listRef}
-        data={filteredEntries}
+        data={loading ? [] : filteredEntries}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         extraData={statusMap}
         refreshing={refreshing}
-        onRefresh={handlePullRefresh}
-        contentContainerStyle={filteredEntries.length === 0 ? styles.emptyContainer : undefined}
+        onRefresh={loading ? undefined : handlePullRefresh}
+        contentContainerStyle={
+          (loading || filteredEntries.length === 0) ? styles.emptyContainer : undefined
+        }
         ListEmptyComponent={listEmpty}
       />
     </View>

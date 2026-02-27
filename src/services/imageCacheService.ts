@@ -23,11 +23,11 @@
  */
 
 import { Directory, File, Paths } from 'expo-file-system';
-import { moveAsync, readDirectoryAsync } from 'expo-file-system/legacy';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { AppState, type AppStateStatus } from 'react-native';
 import { fetch } from 'expo/fetch';
 
+import { listDirectoryAsync, getDirectorySizeAsync } from 'expo-async-fs';
 import { imageCacheStore } from '../store/imageCacheStore';
 import { ensureCoverArtAuth, getCoverArtUrl } from './subsonicService';
 
@@ -103,6 +103,10 @@ function uriCacheKey(coverArtId: string, size: number): string {
  * Create the image-cache directory under Paths.document and register
  * the AppState listener for resume-from-background cleanup.
  * Safe to call multiple times (no-ops if already initialised).
+ *
+ * Expensive scanning (stalled-download recovery, deduplication) is
+ * NOT performed here — call {@link deferredImageCacheInit} after the
+ * first React frame to avoid blocking the native splash screen.
  */
 export function initImageCache(): void {
   if (cacheDir) return;
@@ -112,16 +116,26 @@ export function initImageCache(): void {
   }
   cacheDir = dir;
 
-  recoverStalledImageDownloads();
-  deduplicateCacheFolders();
-
   if (!appStateSubscription) {
     appStateSubscription = AppState.addEventListener('change', (next: AppStateStatus) => {
       if (next === 'active') {
-        recoverStalledImageDownloads();
+        recoverStalledImageDownloadsAsync();
       }
     });
   }
+}
+
+/**
+ * Run the expensive filesystem scanning that was split out of
+ * {@link initImageCache} to avoid blocking app startup.
+ * Should be called once after the first React frame renders.
+ *
+ * All scanning runs on native background threads via expo-async-fs,
+ * so the JS thread remains free for UI updates throughout.
+ */
+export async function deferredImageCacheInit(): Promise<void> {
+  await recoverStalledImageDownloadsAsync();
+  await deduplicateCacheFoldersAsync();
 }
 
 /** Return the initialised cache directory (auto-inits if needed). */
@@ -139,31 +153,33 @@ function ensureCacheDir(): Directory {
  * files, delete them, and re-queue any coverArtId that is missing
  * size variants.
  *
- * Mirrors musicCacheService.recoverStalledDownloads().
+ * Directory listing runs on a native background thread via
+ * expo-async-fs, keeping the JS thread free for UI rendering.
  */
-function recoverStalledImageDownloads(): void {
+async function recoverStalledImageDownloadsAsync(): Promise<void> {
   const dir = ensureCacheDir();
-  let subDirs: (File | Directory)[];
+  let subDirNames: string[];
   try {
-    subDirs = dir.list();
+    subDirNames = await listDirectoryAsync(dir.uri);
   } catch {
     return;
   }
 
-  for (const subDir of subDirs) {
-    if (!(subDir instanceof Directory)) continue;
-    const coverArtId = subDir.uri.split('/').filter(Boolean).pop() ?? '';
+  for (const coverArtId of subDirNames) {
     if (!coverArtId) continue;
+
+    const subDir = new Directory(dir, coverArtId);
+    if (!subDir.exists) continue;
 
     let hasTmp = false;
     let completeCount = 0;
 
     try {
-      for (const entry of subDir.list()) {
-        if (!(entry instanceof File)) continue;
-        if (entry.uri.endsWith('.tmp')) {
+      const fileNames = await listDirectoryAsync(subDir.uri);
+      for (const name of fileNames) {
+        if (name.endsWith('.tmp')) {
           hasTmp = true;
-          try { entry.delete(); } catch { /* best-effort */ }
+          try { new File(subDir, name).delete(); } catch { /* best-effort */ }
         } else {
           completeCount++;
         }
@@ -174,7 +190,6 @@ function recoverStalledImageDownloads(): void {
 
     if (hasTmp || completeCount < IMAGE_SIZES.length) {
       if (!downloading.has(coverArtId) && !downloadQueue.includes(coverArtId)) {
-        // Evict stale URI cache entries so the queue processor re-checks disk.
         for (const s of IMAGE_SIZES) {
           uriCache.delete(uriCacheKey(coverArtId, s));
         }
@@ -353,25 +368,26 @@ function entityPrefix(coverArtId: string): string | null {
  * Remove cache folders that share the same entity prefix as
  * `coverArtId` but have a different (outdated) timestamp suffix.
  * Reuses {@link deleteCachedImage} for safe deletion with stat updates.
+ *
+ * Directory listing runs on a native background thread via
+ * expo-async-fs, keeping the JS thread free for UI rendering.
  */
-function removeStaleFolders(coverArtId: string): void {
+async function removeStaleFolders(coverArtId: string): Promise<void> {
   const prefix = entityPrefix(coverArtId);
   if (!prefix) return;
 
   const dir = ensureCacheDir();
-  let entries: (File | Directory)[];
+  let entryNames: string[];
   try {
-    entries = dir.list();
+    entryNames = await listDirectoryAsync(dir.uri);
   } catch {
     return;
   }
 
-  for (const entry of entries) {
-    if (!(entry instanceof Directory)) continue;
-    const name = entry.uri.split('/').filter(Boolean).pop() ?? '';
+  for (const name of entryNames) {
     if (name === coverArtId) continue;
     if (entityPrefix(name) === prefix) {
-      deleteCachedImage(name);
+      await deleteCachedImage(name);
     }
   }
 }
@@ -380,21 +396,22 @@ function removeStaleFolders(coverArtId: string): void {
  * Batch-deduplicate all cache folders on startup. Groups directories
  * by entity prefix and, for each group with duplicates, keeps the one
  * with the highest hex suffix (newest timestamp) and deletes the rest.
+ *
+ * Directory listing runs on a native background thread via
+ * expo-async-fs, keeping the JS thread free for UI rendering.
  */
-function deduplicateCacheFolders(): void {
+async function deduplicateCacheFoldersAsync(): Promise<void> {
   const dir = ensureCacheDir();
-  let entries: (File | Directory)[];
+  let entryNames: string[];
   try {
-    entries = dir.list();
+    entryNames = await listDirectoryAsync(dir.uri);
   } catch {
     return;
   }
 
   const groups = new Map<string, string[]>();
 
-  for (const entry of entries) {
-    if (!(entry instanceof Directory)) continue;
-    const name = entry.uri.split('/').filter(Boolean).pop() ?? '';
+  for (const name of entryNames) {
     const prefix = entityPrefix(name);
     if (!prefix) continue;
     const list = groups.get(prefix) ?? [];
@@ -414,7 +431,7 @@ function deduplicateCacheFolders(): void {
     });
 
     for (let i = 1; i < ids.length; i++) {
-      deleteCachedImage(ids[i]);
+      await deleteCachedImage(ids[i]);
     }
   }
 }
@@ -442,7 +459,7 @@ async function downloadAndCacheImage(coverArtId: string): Promise<void> {
     await generateResizedVariant(source600Uri, coverArtId, size, subDir);
   }
 
-  removeStaleFolders(coverArtId);
+  await removeStaleFolders(coverArtId);
 }
 
 /**
@@ -514,8 +531,9 @@ async function generateResizedVariant(
       compress: RESIZE_COMPRESS,
     });
 
+    const savedFile = new File(saved.uri);
+    savedFile.move(new File(subDir, tmpName));
     const tmpFile = new File(subDir, tmpName);
-    await moveAsync({ from: saved.uri, to: tmpFile.uri });
 
     const dest = new File(subDir, fileName);
     if (dest.exists) {
@@ -545,16 +563,18 @@ export interface ImageCacheStats {
 }
 
 /**
- * Calculate cache statistics.
+ * Calculate cache statistics. Directory size and listing run on a
+ * native background thread via expo-async-fs, keeping the JS thread
+ * free for UI rendering.
  */
-export function getImageCacheStats(): ImageCacheStats {
+export async function getImageCacheStats(): Promise<ImageCacheStats> {
   const dir = ensureCacheDir();
-  const totalBytes = dir.size ?? 0;
+  const totalBytes = await getDirectorySizeAsync(dir.uri);
 
   let imageCount = 0;
   try {
-    const contents = dir.list();
-    imageCount = contents.filter((item) => item instanceof Directory).length;
+    const entryNames = await listDirectoryAsync(dir.uri);
+    imageCount = entryNames.length;
   } catch {
     imageCount = 0;
   }
@@ -585,58 +605,16 @@ const SIZE_FILE_RE = /^(50|150|300|600)\.(jpg|png|webp)$/;
 /**
  * List all cached images grouped by coverArtId.
  * Each entry includes the individual file variants found on disk.
- */
-function listCachedImages(): CachedImageEntry[] {
-  const dir = ensureCacheDir();
-  let subDirs: (File | Directory)[];
-  try {
-    subDirs = dir.list();
-  } catch {
-    return [];
-  }
-
-  const entries: CachedImageEntry[] = [];
-
-  for (const subDir of subDirs) {
-    if (!(subDir instanceof Directory)) continue;
-    const coverArtId = subDir.uri.split('/').filter(Boolean).pop() ?? '';
-    if (!coverArtId) continue;
-
-    const files: CachedFileEntry[] = [];
-    try {
-      for (const item of subDir.list()) {
-        if (!(item instanceof File)) continue;
-        const name = item.uri.split('/').pop() ?? '';
-        const match = SIZE_FILE_RE.exec(name);
-        if (!match) continue;
-        files.push({ size: Number(match[1]), fileName: name, uri: item.uri });
-      }
-    } catch {
-      continue;
-    }
-
-    if (files.length > 0) {
-      files.sort((a, b) => a.size - b.size);
-      entries.push({ coverArtId, files });
-    }
-  }
-
-  entries.sort((a, b) => a.coverArtId.localeCompare(b.coverArtId));
-  return entries;
-}
-
-/**
- * Async version of {@link listCachedImages} that uses the legacy
- * `readDirectoryAsync` API so the directory listing runs on a native
- * background thread instead of blocking the JS thread.
+ *
+ * All directory listings run on native background threads via
+ * expo-async-fs, so the JS thread stays free for smooth spinner
+ * animations and touch handling throughout the scan.
  */
 export async function listCachedImagesAsync(): Promise<CachedImageEntry[]> {
   const dir = ensureCacheDir();
-  const dirUri = dir.uri.endsWith('/') ? dir.uri : `${dir.uri}/`;
-
   let subDirNames: string[];
   try {
-    subDirNames = await readDirectoryAsync(dir.uri);
+    subDirNames = await listDirectoryAsync(dir.uri);
   } catch {
     return [];
   }
@@ -644,21 +622,22 @@ export async function listCachedImagesAsync(): Promise<CachedImageEntry[]> {
   const entries: CachedImageEntry[] = [];
 
   for (const coverArtId of subDirNames) {
-    const subDirUri = `${dirUri}${coverArtId}`;
-    let fileNames: string[];
+    if (!coverArtId) continue;
+
+    const subDir = new Directory(dir, coverArtId);
+    if (!subDir.exists) continue;
+
+    const files: CachedFileEntry[] = [];
     try {
-      fileNames = await readDirectoryAsync(subDirUri);
+      const fileNames = await listDirectoryAsync(subDir.uri);
+      for (const name of fileNames) {
+        const match = SIZE_FILE_RE.exec(name);
+        if (!match) continue;
+        const fileUri = new File(subDir, name).uri;
+        files.push({ size: Number(match[1]), fileName: name, uri: fileUri });
+      }
     } catch {
       continue;
-    }
-
-    const subUri = subDirUri.endsWith('/') ? subDirUri : `${subDirUri}/`;
-    const files: CachedFileEntry[] = [];
-
-    for (const name of fileNames) {
-      const match = SIZE_FILE_RE.exec(name);
-      if (!match) continue;
-      files.push({ size: Number(match[1]), fileName: name, uri: `${subUri}${name}` });
     }
 
     if (files.length > 0) {
@@ -675,7 +654,7 @@ export async function listCachedImagesAsync(): Promise<CachedImageEntry[]> {
  * Delete all cached variants for a single coverArtId.
  * Updates the imageCacheStore stats accordingly.
  */
-export function deleteCachedImage(coverArtId: string): void {
+export async function deleteCachedImage(coverArtId: string): Promise<void> {
   if (!coverArtId) return;
 
   for (const s of IMAGE_SIZES) {
@@ -688,12 +667,9 @@ export function deleteCachedImage(coverArtId: string): void {
   let deletedCount = 0;
   let deletedBytes = 0;
   try {
-    for (const item of subDir.list()) {
-      if (item instanceof File) {
-        deletedBytes += item.size ?? 0;
-        deletedCount++;
-      }
-    }
+    const fileNames = await listDirectoryAsync(subDir.uri);
+    deletedCount = fileNames.length;
+    deletedBytes = await getDirectorySizeAsync(subDir.uri);
   } catch {
     /* best-effort -- proceed with deletion regardless */
   }
@@ -713,8 +689,8 @@ export function deleteCachedImage(coverArtId: string): void {
  * Re-download all size variants for a single coverArtId.
  * Deletes existing files first, then re-enqueues for a fresh download.
  */
-export function refreshCachedImage(coverArtId: string): Promise<void> {
-  deleteCachedImage(coverArtId);
+export async function refreshCachedImage(coverArtId: string): Promise<void> {
+  await deleteCachedImage(coverArtId);
   downloading.delete(coverArtId);
   const idx = downloadQueue.indexOf(coverArtId);
   if (idx !== -1) downloadQueue.splice(idx, 1);
@@ -727,11 +703,12 @@ export function refreshCachedImage(coverArtId: string): Promise<void> {
 
 /**
  * Delete all cached images and recreate the cache directory.
- * Returns the number of bytes freed.
+ * Returns the number of bytes freed. Directory size runs on a native
+ * background thread via expo-async-fs.
  */
-export function clearImageCache(): number {
+export async function clearImageCache(): Promise<number> {
   const dir = ensureCacheDir();
-  const freedBytes = dir.size ?? 0;
+  const freedBytes = await getDirectorySizeAsync(dir.uri);
   try {
     dir.delete();
   } catch {

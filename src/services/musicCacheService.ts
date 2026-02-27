@@ -17,6 +17,7 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import { AppState, type AppStateStatus } from 'react-native';
 
+import { listDirectoryAsync, getDirectorySizeAsync } from 'expo-async-fs';
 import { checkStorageLimit } from './storageService';
 import { albumDetailStore } from '../store/albumDetailStore';
 import { favoritesStore } from '../store/favoritesStore';
@@ -100,9 +101,13 @@ const trackToItems = new Map<string, Set<string>>();
 /* ------------------------------------------------------------------ */
 
 /**
- * Create the music-cache directory under Paths.document and populate
- * the in-memory track URI map from existing files on disk.
+ * Create the music-cache directory under Paths.document and register
+ * the AppState listener for resume-from-background recovery.
  * Safe to call multiple times (no-ops if already initialised).
+ *
+ * Expensive scanning (populateTrackMaps, stalled-download recovery)
+ * is NOT performed here — call {@link deferredMusicCacheInit} after
+ * the first React frame to avoid blocking the native splash screen.
  */
 export function initMusicCache(): void {
   if (cacheDir) return;
@@ -112,16 +117,26 @@ export function initMusicCache(): void {
   }
   cacheDir = dir;
 
-  populateTrackMaps();
-  recoverStalledDownloads();
-
   if (!appStateSubscription) {
     appStateSubscription = AppState.addEventListener('change', (next: AppStateStatus) => {
       if (next === 'active') {
-        recoverStalledDownloads();
+        recoverStalledDownloadsAsync();
       }
     });
   }
+}
+
+/**
+ * Run the expensive filesystem scanning that was split out of
+ * {@link initMusicCache} to avoid blocking app startup.
+ * Should be called once after the first React frame renders.
+ *
+ * All scanning runs on native background threads via expo-async-fs,
+ * so the JS thread remains free for UI updates throughout.
+ */
+export async function deferredMusicCacheInit(): Promise<void> {
+  await populateTrackMapsAsync();
+  await recoverStalledDownloadsAsync();
 }
 
 /**
@@ -138,8 +153,11 @@ export function initMusicCache(): void {
  * When downloadItem() runs the resumed item, it checks each track
  * against trackUriMap: completed tracks are skipped, and tracks
  * whose .tmp files were cleaned up are re-downloaded.
+ *
+ * Directory listing runs on a native background thread via
+ * expo-async-fs, keeping the JS thread free for UI rendering.
  */
-export function recoverStalledDownloads(): void {
+export async function recoverStalledDownloadsAsync(): Promise<void> {
   const { downloadQueue } = musicCacheStore.getState();
   for (const item of downloadQueue) {
     if (item.status !== 'downloading') continue;
@@ -147,9 +165,10 @@ export function recoverStalledDownloads(): void {
     const itemDir = new Directory(ensureCacheDir(), item.itemId);
     if (itemDir.exists) {
       try {
-        for (const entry of itemDir.list()) {
-          if (entry instanceof File && entry.uri.endsWith('.tmp')) {
-            try { entry.delete(); } catch { /* best-effort */ }
+        const entries = await listDirectoryAsync(itemDir.uri);
+        for (const name of entries) {
+          if (name.endsWith('.tmp')) {
+            try { new File(itemDir, name).delete(); } catch { /* best-effort */ }
           }
         }
       } catch { /* best-effort */ }
@@ -174,31 +193,35 @@ function ensureCacheDir(): Directory {
 /**
  * Scan the music-cache directory to populate trackUriMap and
  * trackToItems from files already on disk.
+ *
+ * Directory listing runs on native background threads via
+ * expo-async-fs, keeping the JS thread free for UI rendering.
  */
-function populateTrackMaps(): void {
+async function populateTrackMapsAsync(): Promise<void> {
   trackUriMap.clear();
   trackToItems.clear();
   const dir = ensureCacheDir();
 
-  let subDirs: (File | Directory)[];
+  let subDirNames: string[];
   try {
-    subDirs = dir.list();
+    subDirNames = await listDirectoryAsync(dir.uri);
   } catch {
     return;
   }
 
-  for (const subDir of subDirs) {
-    if (!(subDir instanceof Directory)) continue;
-    const itemId = subDir.uri.split('/').filter(Boolean).pop() ?? '';
+  for (const itemId of subDirNames) {
     if (!itemId) continue;
 
+    const subDir = new Directory(dir, itemId);
+    if (!subDir.exists) continue;
+
     try {
-      for (const item of subDir.list()) {
-        if (!(item instanceof File)) continue;
-        const fileName = item.uri.split('/').pop() ?? '';
+      const fileNames = await listDirectoryAsync(subDir.uri);
+      for (const fileName of fileNames) {
         if (!fileName || fileName.endsWith('.tmp')) continue;
         const trackId = fileName.replace(/\.[^.]+$/, '') || fileName;
-        trackUriMap.set(trackId, item.uri);
+        const fileUri = new File(subDir, fileName).uri;
+        trackUriMap.set(trackId, fileUri);
 
         if (!trackToItems.has(trackId)) trackToItems.set(trackId, new Set());
         trackToItems.get(trackId)!.add(itemId);
@@ -854,10 +877,14 @@ export function clearDownloadQueue(): void {
   resumeIfSpaceAvailable();
 }
 
-/** Delete all cached music and recreate the cache directory. */
-export function clearMusicCache(): number {
+/**
+ * Delete all cached music and recreate the cache directory.
+ * Returns the number of bytes freed. Directory size runs on a native
+ * background thread via expo-async-fs.
+ */
+export async function clearMusicCache(): Promise<number> {
   const dir = ensureCacheDir();
-  const freedBytes = dir.size ?? 0;
+  const freedBytes = await getDirectorySizeAsync(dir.uri);
 
   try { dir.delete(); } catch { /* best-effort */ }
 
@@ -880,21 +907,27 @@ export interface MusicCacheStats {
   totalFiles: number;
 }
 
-export function getMusicCacheStats(): MusicCacheStats {
+/**
+ * Calculate cache statistics. Directory size and listing run on
+ * native background threads via expo-async-fs, keeping the JS
+ * thread free for UI rendering.
+ */
+export async function getMusicCacheStats(): Promise<MusicCacheStats> {
   const dir = ensureCacheDir();
-  const totalBytes = dir.size ?? 0;
+  const totalBytes = await getDirectorySizeAsync(dir.uri);
 
   let itemCount = 0;
   let totalFiles = 0;
   try {
-    const contents = dir.list();
-    for (const entry of contents) {
-      if (entry instanceof Directory) {
-        itemCount++;
-        try {
-          totalFiles += entry.list().filter((f) => f instanceof File).length;
-        } catch { /* best-effort */ }
-      }
+    const entryNames = await listDirectoryAsync(dir.uri);
+    for (const name of entryNames) {
+      const subDir = new Directory(dir, name);
+      if (!subDir.exists) continue;
+      itemCount++;
+      try {
+        const files = await listDirectoryAsync(subDir.uri);
+        totalFiles += files.length;
+      } catch { /* best-effort */ }
     }
   } catch {
     itemCount = 0;

@@ -1,0 +1,15 @@
+{
+  "name": "expo-async-fs",
+  "version": "1.0.0",
+  "description": "Expo native module for async directory listing and size calculation on background threads",
+  "author": "Gaven Henry",
+  "license": "MIT",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {},
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}

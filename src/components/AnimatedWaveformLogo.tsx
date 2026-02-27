@@ -33,7 +33,7 @@ const HALF_CYCLE = BAR_CYCLE_MS / 2;
 const STAGGER_MS = 70;
 
 /** Number of full left-right-left cycles before calling onComplete. */
-const CYCLE_COUNT = 2;
+const CYCLE_COUNT = 1;
 
 const UP_EASING = Easing.out(Easing.sin);
 const DOWN_EASING = Easing.in(Easing.sin);

@@ -11,8 +11,8 @@ import { PlaybackToast } from '../components/PlaybackToast';
 import { ProcessingOverlay } from '../components/ProcessingOverlay';
 import { useDownloadKeepAwake } from '../hooks/useDownloadKeepAwake';
 import { useTheme } from '../hooks/useTheme';
-import { getImageCacheStats, initImageCache } from '../services/imageCacheService';
-import { getMusicCacheStats, initMusicCache } from '../services/musicCacheService';
+import { deferredImageCacheInit, getImageCacheStats, initImageCache } from '../services/imageCacheService';
+import { deferredMusicCacheInit, getMusicCacheStats, initMusicCache } from '../services/musicCacheService';
 import { checkStorageLimit } from '../services/storageService';
 import { initPlayer } from '../services/playerService';
 import { fetchScanStatus } from '../services/scanService';
@@ -33,20 +33,13 @@ import { serverInfoStore } from '../store/serverInfoStore';
 // until BootSplash.hide() is called. AnimatedSplashScreen handles the
 // hide via useHideAnimation for a seamless native → JS transition.
 
-// Initialise the on-disk cache directories at module load.
+// Initialise the on-disk cache directories at module load (fast mkdir only).
 initImageCache();
 initMusicCache();
 
 // Initialise the SSL trust store so the custom TrustManager / URLSession
 // delegate is installed before any network requests are made.
 initSslTrustStore();
-
-// Reconcile persisted cache stats with the actual filesystem.
-imageCacheStore.getState().recalculate(getImageCacheStats());
-musicCacheStore.getState().recalculate(getMusicCacheStats());
-
-// Evaluate storage limit state on launch.
-checkStorageLimit();
 
 export default function RootLayout() {
   const [splashVisible, setSplashVisible] = useState(true);
@@ -61,6 +54,24 @@ export default function RootLayout() {
   // --- Exclude cache dirs from iCloud backup (iOS); no-op on Android ---
   useEffect(() => {
     excludeFromBackup();
+  }, []);
+
+  // --- Deferred startup: expensive filesystem scanning ---
+  useEffect(() => {
+    // Defer expensive filesystem scanning to after the first frame renders.
+    // useEffect fires after React commits the initial render, so the native
+    // splash hides promptly. All scanning runs on native background threads
+    // via expo-async-fs (no JS thread blocking, no setTimeout(0) needed).
+    let cancelled = false;
+    (async () => {
+      await deferredImageCacheInit();
+      await deferredMusicCacheInit();
+      if (cancelled) return;
+      imageCacheStore.getState().recalculate(await getImageCacheStats());
+      musicCacheStore.getState().recalculate(await getMusicCacheStats());
+      checkStorageLimit();
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   // --- Rehydrate auth from SQLite ---
