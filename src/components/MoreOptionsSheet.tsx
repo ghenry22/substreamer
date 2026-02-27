@@ -780,7 +780,7 @@ export function MoreOptionsSheet() {
               {/* Empty state when no options are available */}
               {!hasAnyOption && (
                 <View style={styles.emptyOptions}>
-                  <Ionicons name="cloud-offline-outline" size={32} color={colors.textSecondary} />
+                  <Ionicons name="cloud-offline-outline" size={32} color={colors.primary} />
                   <Text style={[styles.emptyOptionsText, { color: colors.textSecondary }]}>
                     No additional options available in offline mode
                   </Text>
