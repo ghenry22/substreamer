@@ -8,8 +8,26 @@ const path = require("path");
  *   configuration, if needed' will be run during every build because it does
  *   not specify any outputs."
  *
- * It patches the Podfile post_install block to set `always_out_of_date` on
- * the hermes-engine shell script phases so Xcode no longer warns.
+ * Why this exists:
+ *   The hermes-engine CocoaPod includes shell script build phases that swap
+ *   in the correct Hermes binary (debug vs release). These phases declare no
+ *   output files, which causes Xcode to surface a yellow warning on every
+ *   build. The warning is cosmetic — the build succeeds regardless — but it
+ *   adds noise to the build log and can mask real warnings.
+ *
+ * What it does:
+ *   During `expo prebuild`, this plugin patches the generated Podfile's
+ *   post_install block. It iterates the hermes-engine target's build phases
+ *   and sets `always_out_of_date = "1"` on each shell script phase. This
+ *   tells Xcode the phase is intentionally input/output-less and suppresses
+ *   the warning.
+ *
+ * Impact:
+ *   - Build-time only; no effect on the runtime Hermes engine or app behaviour.
+ *   - The patch is idempotent — it checks for the sentinel string before
+ *     writing, so running prebuild multiple times is safe.
+ *   - If a future React Native or hermes-engine update fixes the missing
+ *     outputs upstream, this plugin becomes a no-op and can be removed.
  */
 function withSilenceHermesWarning(config) {
   return withDangerousMod(config, [
