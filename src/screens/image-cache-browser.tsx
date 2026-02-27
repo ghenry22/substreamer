@@ -52,6 +52,12 @@ const CacheRow = memo(function CacheRow({
         resizeMode="cover"
       />
       <View style={styles.fileList}>
+        <Text
+          style={[styles.coverArtId, { color: colors.textPrimary }]}
+          numberOfLines={1}
+        >
+          {entry.coverArtId}
+        </Text>
         {entry.files.map((f) => (
           <Text
             key={f.fileName}
@@ -324,6 +330,12 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 12,
     gap: 2,
+  },
+  coverArtId: {
+    fontSize: 11,
+    fontFamily: 'Courier',
+    fontWeight: '600',
+    marginBottom: 2,
   },
   fileName: {
     fontSize: 11,
