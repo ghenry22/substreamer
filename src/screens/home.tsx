@@ -36,6 +36,7 @@ import { favoritesStore } from '../store/favoritesStore';
 import { pendingScrobbleStore } from '../store/pendingScrobbleStore';
 import { filterBarStore } from '../store/filterBarStore';
 import { musicCacheStore } from '../store/musicCacheStore';
+import { offlineModeStore } from '../store/offlineModeStore';
 import { playlistLibraryStore } from '../store/playlistLibraryStore';
 
 const CARD_WIDTH = 150;
@@ -71,10 +72,12 @@ function AlbumSection({
   listType,
   albums,
   colors,
+  offlineMode,
 }: {
   listType: AlbumListType;
   albums: AlbumID3[];
   colors: ReturnType<typeof useTheme>['colors'];
+  offlineMode: boolean;
 }) {
   const router = useRouter();
   const config = SECTION_CONFIG[listType];
@@ -94,50 +97,58 @@ function AlbumSection({
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
-        <Pressable
-          onPress={onSeeMore}
-          style={({ pressed }) => [
-            { flex: 1 },
-            pressed && styles.iconButtonPressed,
-          ]}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={`See more ${config.title} albums`}
-        >
+        {offlineMode ? (
           <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
             {config.title}
           </Text>
-        </Pressable>
-        <View style={styles.sectionHeaderActions}>
-          <Pressable
-            onPress={onRefresh}
-            style={({ pressed }) => [
-              styles.iconButton,
-              pressed && styles.iconButtonPressed,
-            ]}
-            hitSlop={8}
-          >
-            <Ionicons
-              name="refresh"
-              size={22}
-              color={colors.textSecondary}
-            />
-          </Pressable>
+        ) : (
           <Pressable
             onPress={onSeeMore}
             style={({ pressed }) => [
-              styles.iconButton,
+              { flex: 1 },
               pressed && styles.iconButtonPressed,
             ]}
             hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={`See more ${config.title} albums`}
           >
-            <Ionicons
-              name="chevron-forward"
-              size={24}
-              color={colors.textSecondary}
-            />
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+              {config.title}
+            </Text>
           </Pressable>
-        </View>
+        )}
+        {!offlineMode && (
+          <View style={styles.sectionHeaderActions}>
+            <Pressable
+              onPress={onRefresh}
+              style={({ pressed }) => [
+                styles.iconButton,
+                pressed && styles.iconButtonPressed,
+              ]}
+              hitSlop={8}
+            >
+              <Ionicons
+                name="refresh"
+                size={22}
+                color={colors.textSecondary}
+              />
+            </Pressable>
+            <Pressable
+              onPress={onSeeMore}
+              style={({ pressed }) => [
+                styles.iconButton,
+                pressed && styles.iconButtonPressed,
+              ]}
+              hitSlop={8}
+            >
+              <Ionicons
+                name="chevron-forward"
+                size={24}
+                color={colors.textSecondary}
+              />
+            </Pressable>
+          </View>
+        )}
       </View>
       {albums.length === 0 ? (
         <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
@@ -301,6 +312,7 @@ export function HomeScreen() {
     store.setHideFavorites(false);
   }, [isFocused]);
 
+  const offlineMode = offlineModeStore((s) => s.offlineMode);
   const downloadedOnly = filterBarStore((s) => s.downloadedOnly);
   const favoritesOnly = filterBarStore((s) => s.favoritesOnly);
   const cachedItems = musicCacheStore((s) => s.cachedItems);
@@ -489,6 +501,7 @@ export function HomeScreen() {
                 listType={key}
                 albums={sectionAlbums}
                 colors={colors}
+                offlineMode={offlineMode}
               />
             );
           })}
