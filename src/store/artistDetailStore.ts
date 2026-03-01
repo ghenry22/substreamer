@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
+import { mbidOverrideStore } from './mbidOverrideStore';
 import { sqliteStorage } from './sqliteStorage';
 
 import {
@@ -23,6 +24,8 @@ export interface ArtistDetailEntry {
   artistInfo: ArtistInfo2 | null;
   topSongs: Child[];
   biography: string | null;
+  /** The MBID that was actually used for biography lookup (override > server > auto-search). */
+  resolvedMbid: string | null;
   /** Timestamp (Date.now()) when this entry was fetched from the server. */
   retrievedAt: number;
 }
@@ -63,12 +66,20 @@ export const artistDetailStore = create<ArtistDetailState>()(
 
         // Resolve biography: prefer Subsonic, fall back to MusicBrainz
         let biography: string | null = null;
+        let resolvedMbid: string | null = null;
         const subsonicBio = infoData?.biography ? sanitizeBiographyText(infoData.biography) : null;
         if (subsonicBio && subsonicBio.length > 0) {
           biography = subsonicBio;
+          resolvedMbid = mbidOverrideStore.getState().overrides[id]?.mbid
+            ?? infoData?.musicBrainzId
+            ?? null;
         } else {
           try {
-            const mbid = infoData?.musicBrainzId || (await searchArtistMBID(artistData.name));
+            const override = mbidOverrideStore.getState().overrides[id];
+            const mbid = override?.mbid
+              ?? infoData?.musicBrainzId
+              ?? (await searchArtistMBID(artistData.name));
+            resolvedMbid = mbid;
             if (mbid) {
               const mbBio = await getArtistBiography(mbid);
               if (mbBio) biography = sanitizeBiographyText(mbBio);
@@ -83,6 +94,7 @@ export const artistDetailStore = create<ArtistDetailState>()(
           artistInfo: infoData,
           topSongs,
           biography,
+          resolvedMbid,
           retrievedAt: Date.now(),
         };
 

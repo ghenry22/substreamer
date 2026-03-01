@@ -49,7 +49,10 @@ import {
   type Playlist,
 } from '../services/subsonicService';
 import { addToPlaylistStore } from '../store/addToPlaylistStore';
+import { artistDetailStore } from '../store/artistDetailStore';
 import { createShareStore } from '../store/createShareStore';
+import { mbidOverrideStore } from '../store/mbidOverrideStore';
+import { mbidSearchStore } from '../store/mbidSearchStore';
 import { musicCacheStore } from '../store/musicCacheStore';
 import {
   moreOptionsStore,
@@ -220,6 +223,19 @@ export function MoreOptionsSheet() {
     if (!entity || entity.type !== 'artist') return;
     handleClose();
     playSimilarArtistsMix(entity.item);
+  }, [entity, handleClose]);
+
+  const handleSetMbid = useCallback(() => {
+    if (!entity || entity.type !== 'artist') return;
+    const artistId = entity.item.id;
+    const artistName = entity.item.name;
+    const override = mbidOverrideStore.getState().overrides[artistId];
+    const resolvedMbid = artistDetailStore.getState().artists[artistId]?.resolvedMbid;
+    const currentMbid = override?.mbid ?? resolvedMbid ?? null;
+    handleClose();
+    setTimeout(() => {
+      mbidSearchStore.getState().show(artistId, artistName, currentMbid);
+    }, 300);
   }, [entity, handleClose]);
 
   const handleAddQueueToPlaylist = useCallback(() => {
@@ -395,12 +411,13 @@ export function MoreOptionsSheet() {
   const showDelete = !offline && canDeletePlaylist(entity);
   const showSaveTopSongsPlaylist = !offline && entity?.type === 'artist';
   const showPlaySimilarArtistsMix = !offline && canPlaySimilarArtistsMix(entity);
+  const showSetMbid = entity?.type === 'artist';
 
   const hasAnyOption =
     starrable || showAddToPlaylist || showAddQueueToPlaylist ||
     showAddToQueue || showPlayMoreLikeThis || showPlaySimilarArtistsMix || showDownload ||
     showAlbumLink || showArtistLink || showShare || showDetails || showDelete ||
-    showSaveTopSongsPlaylist;
+    showSaveTopSongsPlaylist || showSetMbid;
 
   return (
     <>
@@ -538,6 +555,27 @@ export function MoreOptionsSheet() {
                   />
                   <Text style={[styles.optionLabel, { color: colors.textPrimary }]}>
                     Play Similar Artists
+                  </Text>
+                </Pressable>
+              )}
+
+              {/* Set MusicBrainz ID (artist only) */}
+              {showSetMbid && (
+                <Pressable
+                  onPress={handleSetMbid}
+                  style={({ pressed }) => [
+                    styles.option,
+                    pressed && styles.optionPressed,
+                  ]}
+                >
+                  <Ionicons
+                    name="finger-print-outline"
+                    size={22}
+                    color={colors.textPrimary}
+                    style={styles.optionIcon}
+                  />
+                  <Text style={[styles.optionLabel, { color: colors.textPrimary }]}>
+                    Set MusicBrainz ID
                   </Text>
                 </Pressable>
               )}
@@ -855,6 +893,27 @@ export function MoreOptionsSheet() {
                   />
                   <Text style={[styles.optionLabel, { color: colors.textPrimary }]}>
                     Play Similar Artists
+                  </Text>
+                </Pressable>
+              )}
+
+              {/* Set MusicBrainz ID (artist only) */}
+              {showSetMbid && (
+                <Pressable
+                  onPress={handleSetMbid}
+                  style={({ pressed }) => [
+                    styles.option,
+                    pressed && styles.optionPressed,
+                  ]}
+                >
+                  <Ionicons
+                    name="finger-print-outline"
+                    size={22}
+                    color={colors.textPrimary}
+                    style={styles.optionIcon}
+                  />
+                  <Text style={[styles.optionLabel, { color: colors.textPrimary }]}>
+                    Set MusicBrainz ID
                   </Text>
                 </Pressable>
               )}

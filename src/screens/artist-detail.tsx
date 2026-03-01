@@ -81,6 +81,16 @@ export function ArtistDetailScreen() {
     colors.background,
   );
 
+  // Sync local state when the store entry is updated externally (e.g. after
+  // an MBID override triggers a background refetch).
+  useEffect(() => {
+    if (!cachedEntry) return;
+    setArtist(cachedEntry.artist);
+    setArtistInfo(cachedEntry.artistInfo);
+    setTopSongs(cachedEntry.topSongs);
+    setBiography(cachedEntry.biography);
+  }, [cachedEntry]);
+
   /* ---- Header right: more options button ---- */
   useEffect(() => {
     if (!artist) return;

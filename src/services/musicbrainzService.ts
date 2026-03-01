@@ -86,6 +86,37 @@ export async function searchArtistMBID(artistName: string): Promise<string | nul
 }
 
 /**
+ * Search for artists by name and return multiple results for user selection.
+ *
+ * @param query  The artist name / search query.
+ * @param limit  Maximum number of results (default 10).
+ * @returns Array of matching artists, or empty array on failure.
+ */
+export async function searchArtists(
+  query: string,
+  limit = 10,
+): Promise<MusicBrainzArtist[]> {
+  try {
+    const url = `${API_BASE_URL}artist/?query=${encodeURIComponent(`artist:${query}`)}&fmt=json&limit=${limit}`;
+
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': USER_AGENT,
+        Accept: 'application/json',
+      },
+    });
+
+    if (!response.ok) return [];
+
+    const data: MusicBrainzArtistSearchResult = await response.json();
+
+    return data.artists ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Fetch the Wikipedia biography for an artist by their MBID.
  *
  * Uses the MusicBrainz website's `/wikipedia-extract` endpoint which returns

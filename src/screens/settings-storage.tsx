@@ -25,6 +25,7 @@ import {
 } from '../store/musicCacheStore';
 import { playlistDetailStore } from '../store/playlistDetailStore';
 import { completedScrobbleStore } from '../store/completedScrobbleStore';
+import { mbidOverrideStore } from '../store/mbidOverrideStore';
 import { pendingScrobbleStore } from '../store/pendingScrobbleStore';
 import { storageLimitStore, type StorageLimitMode } from '../store/storageLimitStore';
 import { formatBytes } from '../utils/formatters';
@@ -62,6 +63,7 @@ export function SettingsStorageScreen() {
   const totalMetadataCount = cachedAlbumCount + cachedArtistCount + cachedPlaylistCount;
   const pendingScrobbleCount = pendingScrobbleStore((s) => s.pendingScrobbles.length);
   const completedScrobbleCount = completedScrobbleStore((s) => s.completedScrobbles.length);
+  const mbidOverrideCount = mbidOverrideStore((s) => Object.keys(s.overrides).length);
 
   const musicCacheBytes = musicCacheStore((s) => s.totalBytes);
   const musicCachedItemCount = musicCacheStore((s) => Object.keys(s.cachedItems).length);
@@ -314,6 +316,34 @@ export function SettingsStorageScreen() {
               <Ionicons name="analytics-outline" size={18} color={colors.textPrimary} />
               <Text style={[styles.browseCacheText, { color: colors.textPrimary }]}>
                 My Listening
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+          </Pressable>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>MBID Overrides</Text>
+        <View style={[styles.card, dynamicStyles.card]}>
+          <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.infoLabel, { color: colors.textPrimary }]}>Active overrides</Text>
+            <Text style={[styles.infoValue, { color: colors.textSecondary }]}>
+              {mbidOverrideCount}
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => router.push('/mbid-override-browser')}
+            style={({ pressed }) => [
+              styles.browseCacheButton,
+              { borderTopColor: colors.border },
+              pressed && styles.pressed,
+            ]}
+          >
+            <View style={styles.browseCacheLeft}>
+              <Ionicons name="finger-print-outline" size={18} color={colors.textPrimary} />
+              <Text style={[styles.browseCacheText, { color: colors.textPrimary }]}>
+                Browse MBID Overrides
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />

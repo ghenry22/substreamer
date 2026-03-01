@@ -6,6 +6,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AddToPlaylistSheet } from '../components/AddToPlaylistSheet';
 import AnimatedSplashScreen from '../components/AnimatedSplashScreen';
 import { CreateShareSheet } from '../components/CreateShareSheet';
+import { MbidSearchSheet } from '../components/MbidSearchSheet';
 import { MoreOptionsSheet } from '../components/MoreOptionsSheet';
 import { PlaybackToast } from '../components/PlaybackToast';
 import { ProcessingOverlay } from '../components/ProcessingOverlay';
@@ -249,6 +250,10 @@ export default function RootLayout() {
           }}
         />
         <Stack.Screen
+          name="mbid-override-browser"
+          options={{ title: 'MBID Overrides', headerBackTitle: 'Back' }}
+        />
+        <Stack.Screen
           name="scrobble-browser"
           options={{ title: 'Scrobbles', headerBackTitle: 'Back' }}
         />
@@ -278,6 +283,9 @@ export default function RootLayout() {
 
       {/* Global add-to-playlist bottom sheet driven by addToPlaylistStore */}
       <AddToPlaylistSheet />
+
+      {/* Global MBID search sheet driven by mbidSearchStore */}
+      <MbidSearchSheet />
 
       {/* Global processing overlay for async operations (delete, etc.) */}
       <ProcessingOverlay />
