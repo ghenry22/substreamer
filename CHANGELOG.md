@@ -1,5 +1,8 @@
 # Changelog
 
+## [8.0.14] - 2026-03-01
+
+- expo-notifications: try again to strip the push capability and entitlement that we don't need
 ## [8.0.13] - 2026-03-01
 
 - expo-notifications: remove unneeded push notificiation entitlement
