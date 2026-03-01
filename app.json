@@ -63,8 +63,7 @@
           }
         }
       ],
-      "expo-font",
-      "expo-notifications"
+      "expo-font"
     ],
     "extra": {
       "router": {},
