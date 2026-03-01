@@ -642,6 +642,8 @@ export async function seekTo(position: number): Promise<void> {
   // available even if the native player doesn't report it.
   if (isFullyBuffered) {
     await TrackPlayer.seekTo(nativeTarget);
+    const store = playerStore.getState();
+    store.setProgress(position, store.duration, maxBufferedSeen);
     return;
   }
 
@@ -661,11 +663,15 @@ export async function seekTo(position: number): Promise<void> {
 
     if (isTranscoding) {
       await TrackPlayer.seekTo(effectiveBuffered - 1);
+      const store = playerStore.getState();
+      store.setProgress((effectiveBuffered - 1) + positionOffset, store.duration, maxBufferedSeen);
       return;
     }
   }
 
   await TrackPlayer.seekTo(nativeTarget);
+  const store = playerStore.getState();
+  store.setProgress(position, store.duration, maxBufferedSeen);
 }
 
 /** Skip to a specific track in the queue by index. */
