@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.0.11] - 2026-03-01
+
+- keyboard: better keyboard behaviour on search inputs
+- download queue & playlist edit: drag to re-order issues. fix: slow item pickup fix: pickup handle inconsistent fix: persistent shade after drop to new location
+- scrobbles: intermittent incorrect scrobbles. PlaybackEndedWithReason and PlaybackActiveTrackChanged events are non-deterministic in firing order.  Fix catches when these fire out of order.
+- music downloads: implement transfer speed stats. update our custom expo-async-fs module to include a downloadAsync variant that exposes progress events as expo-file-system is lacking this. Implement speed tracking across concurrent threads Implement transfer stats card on download queue to show the user more detail on what is happening beyond the standard per track progress bar.
+- caching enhancement: queue recovery when backgrounding was too aggressive.  Now checks status so only recovers when needed. Add local notification reminder that downloads are running. Cleaner queue restart mechanism
+- scripts: expand comment on the silence-hermes-warning script for clarity
 ## [8.0.10] - 2026-02-27
 
 - offline mode: no pull to refresh in offline mode
