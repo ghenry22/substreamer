@@ -19,7 +19,7 @@ export function useTheme(): {
   const setPrimaryColor = themeStore((s) => s.setPrimaryColor);
 
   const theme: ResolvedTheme = useMemo(
-    () => (preference === 'system' ? (systemScheme ?? 'dark') : preference),
+    () => (preference === 'system' ? (systemScheme === 'light' ? 'light' : 'dark') : preference),
     [preference, systemScheme]
   );
 

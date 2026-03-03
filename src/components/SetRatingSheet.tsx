@@ -41,7 +41,7 @@ export function SetRatingSheet() {
 
   const [localRating, setLocalRating] = useState(currentRating);
   const [saveState, setSaveState] = useState<SaveState>('idle');
-  const closeTimer = useRef<ReturnType<typeof setTimeout>>();
+  const closeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const prevVisible = useRef(false);
   useEffect(() => {

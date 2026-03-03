@@ -11,7 +11,6 @@
     "orientation": "portrait",
     "icon": "./src/assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "com.ghenry22.substream2",
       "buildNumber": "98",
@@ -31,7 +30,6 @@
         "foregroundImage": "./src/assets/adaptive-icon.png",
         "backgroundColor": "#1D9BF0"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "versionCode": 98,
       "package": "com.ghenry22.substream2"

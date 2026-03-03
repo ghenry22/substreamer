@@ -16,6 +16,6 @@ export function useDownloadKeepAwake() {
     } else {
       deactivateKeepAwake(TAG);
     }
-    return () => deactivateKeepAwake(TAG);
+    return () => { deactivateKeepAwake(TAG); };
   }, [hasActiveDownloads]);
 }

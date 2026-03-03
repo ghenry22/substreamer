@@ -1,12 +1,23 @@
 import { requireNativeModule } from 'expo-modules-core';
 
+import { type CertificateInfo, type TrustedCert } from './ExpoSslTrust';
+
+interface ExpoSslTrustNative {
+  initTrustStore(): Promise<void>;
+  getCertificateInfo(url: string): Promise<CertificateInfo>;
+  trustCertificate(hostname: string, sha256Fingerprint: string): Promise<void>;
+  removeTrustedCertificate(hostname: string): Promise<void>;
+  getTrustedCertificates(): Promise<TrustedCert[]>;
+  isCertificateTrusted(hostname: string): Promise<boolean>;
+}
+
 // Load the native module from JSI. If the native module is not available
 // (e.g. during development before a native rebuild), provide a stub that
 // logs warnings instead of crashing the app.
-let module: ReturnType<typeof requireNativeModule>;
+let module: ExpoSslTrustNative;
 
 try {
-  module = requireNativeModule('ExpoSslTrust');
+  module = requireNativeModule<ExpoSslTrustNative>('ExpoSslTrust');
 } catch {
   console.warn(
     '[expo-ssl-trust] Native module not found. ' +
