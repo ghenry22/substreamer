@@ -212,7 +212,7 @@ export default function RootLayout() {
         />
         <Stack.Screen
           name="download-queue"
-          options={{ title: 'Download Queue', headerBackTitle: 'Back' }}
+          options={{ title: 'Downloads', headerBackTitle: 'Back' }}
         />
         <Stack.Screen
           name="settings-server"
