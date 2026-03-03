@@ -403,6 +403,65 @@ export function SettingsStorageScreen() {
       </View>
 
       <View style={styles.section}>
+        <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>Backup</Text>
+        <View style={[styles.card, dynamicStyles.card]}>
+          <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.infoLabel, { color: colors.textPrimary }]}>Auto backup</Text>
+            <Switch
+              value={autoBackupEnabled}
+              onValueChange={handleToggleAutoBackup}
+              trackColor={{ false: colors.border, true: colors.primary }}
+            />
+          </View>
+          <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.infoLabel, { color: colors.textPrimary }]}>Last backup</Text>
+            <Text style={[styles.infoValue, { color: colors.textSecondary }]}>
+              {lastBackupTime
+                ? new Date(lastBackupTime).toLocaleString(undefined, {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  })
+                : 'Never'}
+            </Text>
+          </View>
+          <View style={styles.backupButtonRow}>
+            <Pressable
+              onPress={handleBackUpNow}
+              disabled={backingUp}
+              style={({ pressed }) => [
+                styles.backupActionButton,
+                { backgroundColor: colors.primary },
+                pressed && !backingUp && styles.buttonPressed,
+              ]}
+            >
+              {backingUp ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="cloud-upload-outline" size={18} color="#fff" />
+                  <Text style={styles.backupActionButtonText}>Back Up</Text>
+                </>
+              )}
+            </Pressable>
+            <Pressable
+              onPress={handleOpenRestoreSheet}
+              style={({ pressed }) => [
+                styles.backupActionButton,
+                { borderColor: colors.border, borderWidth: StyleSheet.hairlineWidth },
+                pressed && styles.buttonPressed,
+              ]}
+            >
+              <Ionicons name="cloud-download-outline" size={18} color={colors.textPrimary} />
+              <Text style={[styles.backupActionButtonText, { color: colors.textPrimary }]}>Restore</Text>
+            </Pressable>
+          </View>
+        </View>
+        <Text style={[styles.backupDescription, { color: colors.textSecondary }]}>
+          Your listening history and artist MBID overrides are backed up to {Platform.OS === 'ios' ? 'iCloud' : 'Google Backup'}, as this data is only available locally.
+        </Text>
+      </View>
+
+      <View style={styles.section}>
         <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>Scrobbles</Text>
         <View style={[styles.card, dynamicStyles.card]}>
           <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
@@ -478,65 +537,6 @@ export function SettingsStorageScreen() {
             <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
           </Pressable>
         </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>Backup</Text>
-        <View style={[styles.card, dynamicStyles.card]}>
-          <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.infoLabel, { color: colors.textPrimary }]}>Auto backup</Text>
-            <Switch
-              value={autoBackupEnabled}
-              onValueChange={handleToggleAutoBackup}
-              trackColor={{ false: colors.border, true: colors.primary }}
-            />
-          </View>
-          <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.infoLabel, { color: colors.textPrimary }]}>Last backup</Text>
-            <Text style={[styles.infoValue, { color: colors.textSecondary }]}>
-              {lastBackupTime
-                ? new Date(lastBackupTime).toLocaleString(undefined, {
-                    dateStyle: 'medium',
-                    timeStyle: 'short',
-                  })
-                : 'Never'}
-            </Text>
-          </View>
-          <View style={styles.backupButtonRow}>
-            <Pressable
-              onPress={handleBackUpNow}
-              disabled={backingUp}
-              style={({ pressed }) => [
-                styles.backupActionButton,
-                { backgroundColor: colors.primary },
-                pressed && !backingUp && styles.buttonPressed,
-              ]}
-            >
-              {backingUp ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <>
-                  <Ionicons name="cloud-upload-outline" size={18} color="#fff" />
-                  <Text style={styles.backupActionButtonText}>Back Up</Text>
-                </>
-              )}
-            </Pressable>
-            <Pressable
-              onPress={handleOpenRestoreSheet}
-              style={({ pressed }) => [
-                styles.backupActionButton,
-                { borderColor: colors.border, borderWidth: StyleSheet.hairlineWidth },
-                pressed && styles.buttonPressed,
-              ]}
-            >
-              <Ionicons name="cloud-download-outline" size={18} color={colors.textPrimary} />
-              <Text style={[styles.backupActionButtonText, { color: colors.textPrimary }]}>Restore</Text>
-            </Pressable>
-          </View>
-        </View>
-        <Text style={[styles.backupDescription, { color: colors.textSecondary }]}>
-          Backups save your listening history and MBID overrides as compressed files that sync to {Platform.OS === 'ios' ? 'iCloud' : 'Google Backup'}. If you reinstall the app, you can restore from these backups to recover your data.
-        </Text>
       </View>
 
       <View style={styles.section}>
