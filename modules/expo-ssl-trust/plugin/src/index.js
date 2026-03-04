@@ -33,7 +33,7 @@ function withSslTrust(config) {
       const networkSecurityConfig = `<?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
     <!-- Default configuration: trust system CAs -->
-    <base-config cleartextTrafficPermitted="false">
+    <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
             <!-- Trust user-installed CA certificates (for self-signed server certs) -->
