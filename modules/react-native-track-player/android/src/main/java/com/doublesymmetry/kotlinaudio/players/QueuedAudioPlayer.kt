@@ -180,6 +180,7 @@ class QueuedAudioPlayer(
      * Does nothing if there is no next item to skip to.
      */
     fun next() {
+        playerEventHolder.updatePlaybackEndedReason(PlaybackEndedReason.SKIPPED_TO_NEXT)
         exoPlayer.seekToNextMediaItem()
         exoPlayer.prepare()
     }
@@ -189,6 +190,7 @@ class QueuedAudioPlayer(
      * Does nothing if there is no previous item to skip to.
      */
     fun previous() {
+        playerEventHolder.updatePlaybackEndedReason(PlaybackEndedReason.SKIPPED_TO_PREVIOUS)
         exoPlayer.seekToPreviousMediaItem()
         exoPlayer.prepare()
     }
@@ -221,6 +223,7 @@ class QueuedAudioPlayer(
      */
     fun jumpToItem(index: Int) {
         try {
+            playerEventHolder.updatePlaybackEndedReason(PlaybackEndedReason.JUMPED_TO_INDEX)
             exoPlayer.seekTo(index, C.TIME_UNSET)
             exoPlayer.prepare()
         } catch (e: IllegalSeekPositionException) {

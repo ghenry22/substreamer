@@ -27,6 +27,7 @@ import com.doublesymmetry.kotlinaudio.models.AudioItemTransitionReason
 import com.doublesymmetry.kotlinaudio.models.AudioPlayerState
 import com.doublesymmetry.kotlinaudio.models.MediaSessionCallback
 import com.doublesymmetry.kotlinaudio.models.PlayWhenReadyChangeData
+import com.doublesymmetry.kotlinaudio.models.PlaybackEndedReason
 import com.doublesymmetry.kotlinaudio.models.PlaybackError
 import com.doublesymmetry.kotlinaudio.models.PlayerOptions
 import com.doublesymmetry.kotlinaudio.models.PositionChangedReason
@@ -243,6 +244,7 @@ abstract class BaseAudioPlayer internal constructor(
      */
     @CallSuper
     open fun stop() {
+        playerEventHolder.updatePlaybackEndedReason(PlaybackEndedReason.PLAYER_STOPPED)
         playerState = AudioPlayerState.STOPPED
         exoPlayer.playWhenReady = false
         exoPlayer.stop()
@@ -351,9 +353,12 @@ abstract class BaseAudioPlayer internal constructor(
          */
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             when (reason) {
-                Player.MEDIA_ITEM_TRANSITION_REASON_AUTO -> playerEventHolder.updateAudioItemTransition(
-                    AudioItemTransitionReason.AUTO(oldPosition)
-                )
+                Player.MEDIA_ITEM_TRANSITION_REASON_AUTO -> {
+                    playerEventHolder.updatePlaybackEndedReason(PlaybackEndedReason.PLAYED_UNTIL_END)
+                    playerEventHolder.updateAudioItemTransition(
+                        AudioItemTransitionReason.AUTO(oldPosition)
+                    )
+                }
                 Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED -> playerEventHolder.updateAudioItemTransition(
                     AudioItemTransitionReason.QUEUE_CHANGED(oldPosition)
                 )
@@ -398,7 +403,10 @@ abstract class BaseAudioPlayer internal constructor(
                                 else
                                     AudioPlayerState.IDLE
                             Player.STATE_ENDED ->
-                                if (player.mediaItemCount > 0) AudioPlayerState.ENDED
+                                if (player.mediaItemCount > 0) {
+                                    playerEventHolder.updatePlaybackEndedReason(PlaybackEndedReason.PLAYED_UNTIL_END)
+                                    AudioPlayerState.ENDED
+                                }
                                 else AudioPlayerState.IDLE
                             else -> null // noop
                         }
