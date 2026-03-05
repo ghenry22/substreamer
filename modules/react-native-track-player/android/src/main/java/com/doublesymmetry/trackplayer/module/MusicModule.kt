@@ -201,7 +201,6 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
                 val sessionToken =
                     SessionToken(context, ComponentName(context, MusicService::class.java))
                 val browserFuture = MediaBrowser.Builder(context, sessionToken).buildAsync()
-                // browser = browserFuture.get()
             }
         } catch (exception: Exception) {
             Timber.w(exception, "Could not initialize service")
@@ -221,9 +220,6 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
         callback.resolve(null)
     }
 
-    // override fun add(data: Double, y: Double): Double {
-    //   return 1.0
-    // }
     override fun add(data: ReadableArray, insertBeforeIndex: Double?, callback: Promise) = launchInScope {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
@@ -365,7 +361,10 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         musicService.stop()
-        delay(300) // Allow playback to stop
+        // Brief yield to let ExoPlayer's internal teardown (decoder release, notification
+        // update) settle before clearing the queue. Removing this risks a race where
+        // clearMediaItems fires while ExoPlayer is still releasing resources.
+        delay(300)
         musicService.clear()
 
         callback.resolve(null)
@@ -541,8 +540,9 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
         callback.resolve(musicService.onStartCommandIntentValid)
     }
 
-    // Bridgeless interop layer tries to pass the `Job` from `scope.launch` to the JS side
-    // which causes an exception. We can work around this using a wrapper.
+    // React Native's bridgeless TurboModule interop tries to serialize the return value
+    // to JS. scope.launch returns a Job, which isn't serializable and throws. This wrapper
+    // ensures the return type is Unit.
     private fun launchInScope(block: suspend () -> Unit) {
         scope.launch {
             block()

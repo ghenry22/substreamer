@@ -164,10 +164,14 @@ class MusicService : HeadlessJsMediaService() {
         onStartCommandIntentValid = intent != null
         Timber.d("onStartCommand: ${intent?.action}, ${intent?.`package`}")
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            // HACK: this is not supposed to be here. I definitely screwed up. but Why?
+            // Pre-Android 13: media button intents arrive via onStartCommand with
+            // EXTRA_KEY_EVENT. From Tiramisu onward, Media3 routes them through
+            // MediaSession.Callback.onMediaButtonEvent() instead.
             onMediaKeyEvent(intent)
         }
-        // HACK: Why is onPlay triggering onStartCommand??
+        // Media3's MediaSessionService auto-starts the service when play() is called,
+        // which re-invokes onStartCommand. Guard against re-registering the headless
+        // JS task on subsequent calls.
         if (!commandStarted) {
             commandStarted = true
             super.onStartCommand(intent, flags, startId)
@@ -259,7 +263,7 @@ class MusicService : HeadlessJsMediaService() {
         if (notificationCapabilities.isEmpty()) notificationCapabilities = capabilities
 
         val playerCommandsBuilder = Player.Commands.Builder().addAll(
-            // HACK: without COMMAND_GET_CURRENT_MEDIA_ITEM, notification cannot be created
+            // Required by DefaultMediaNotificationProvider to read title/artist/artwork
             Player.COMMAND_GET_CURRENT_MEDIA_ITEM,
             Player.COMMAND_GET_TRACKS,
             Player.COMMAND_GET_TIMELINE,
@@ -634,7 +638,8 @@ class MusicService : HeadlessJsMediaService() {
                 }
                 emit(MusicEvents.METADATA_TIMED_RECEIVED, bundle)
 
-                // TODO: Handle the different types of metadata and publish to new events
+                // Coalesce all metadata formats into a single PLAYBACK_METADATA event.
+                // Type-specific events could be added if consumers need to distinguish sources.
                 val metadata = PlaybackMetadata.fromId3Metadata(it)
                     ?: PlaybackMetadata.fromIcy(it)
                     ?: PlaybackMetadata.fromVorbisComment(it)
@@ -695,7 +700,6 @@ class MusicService : HeadlessJsMediaService() {
                             }
                         }
                         else -> {
-                            // Internal position discontinuity -- log for diagnostics
                             Timber.d("Position changed: ${it::class.simpleName} from ${it.oldPosition} to ${it.newPosition}")
                         }
                     }
@@ -766,7 +770,9 @@ class MusicService : HeadlessJsMediaService() {
     }
 
     override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
-        // https://github.com/androidx/media/issues/843#issuecomment-1860555950
+        // Always request foreground start to prevent the notification from disappearing
+        // unexpectedly on some devices.
+        // See: https://github.com/androidx/media/issues/843#issuecomment-1860555950
         super.onUpdateNotification(session, true)
     }
 
@@ -789,13 +795,12 @@ class MusicService : HeadlessJsMediaService() {
                 mediaSession.release()
                 player.clear()
                 player.stop()
-                // HACK: the service first stops, then starts, then call onTaskRemove. Why system
-                // registers the service being restarted?
                 player.destroy()
                 scope.cancel()
                 stopForeground(STOP_FOREGROUND_REMOVE)
-                onDestroy()
-                // https://github.com/androidx/media/issues/27#issuecomment-1456042326
+                // Because onStartCommand returns START_STICKY, Android schedules a
+                // service restart after cleanup. exitProcess prevents the zombie restart.
+                // See: https://github.com/androidx/media/issues/27#issuecomment-1456042326
                 stopSelf()
                 exitProcess(0)
             }
@@ -808,7 +813,10 @@ class MusicService : HeadlessJsMediaService() {
     private fun selfWake(clientPackageName: String): Boolean {
         val reactActivity = reactContext?.currentActivity
         if (
-        // HACK: validate reactActivity is present; if not, send wake intent
+            // When an external controller (e.g. Android Auto, system UI) connects while
+            // the React activity is dead, we need to relaunch it so the JS bridge can
+            // handle playback events. Requires SYSTEM_ALERT_WINDOW permission for
+            // background activity starts.
             (reactActivity == null || reactActivity.isDestroyed)
             && Settings.canDrawOverlays(this)
         ) {
@@ -841,7 +849,8 @@ class MusicService : HeadlessJsMediaService() {
 
     @MainThread
     override fun onHeadlessJsTaskFinish(taskId: Int) {
-        // This is empty so ReactNative doesn't kill this service
+        // Intentionally empty: the default implementation calls stopSelf(), which would
+        // kill the media service. The service must stay alive for background playback.
     }
 
     @MainThread
@@ -918,8 +927,9 @@ class MusicService : HeadlessJsMediaService() {
     }
 
     private inner class InnerMediaSessionCallback : MediaLibrarySession.Callback {
-        // HACK: I'm sure most of the callbacks were not implemented correctly.
-        // ATM I only care that andorid auto still functions.
+        // Only connection, playback-control, and media-button callbacks are implemented.
+        // Browsing callbacks (onGetLibraryRoot, onGetChildren, etc.) are not yet needed
+        // but should be added when full Android Auto library browsing support is built.
 
         override fun onDisconnected(
             session: MediaSession,
@@ -931,7 +941,6 @@ class MusicService : HeadlessJsMediaService() {
             super.onDisconnected(session, controller)
         }
 
-        // Configure commands available to the controller in onConnect()
         @OptIn(UnstableApi::class)
         override fun onConnect(
             session: MediaSession,
@@ -955,7 +964,9 @@ class MusicService : HeadlessJsMediaService() {
                     "com.google.android.projection.gearhead"
                 )
             ) {
-                // HACK: attempt to wake up activity (for legacy APM). if not, start headless.
+                // Try to relaunch the React activity so the JS bridge can handle events.
+                // If that fails (no overlay permission or cooldown), fall back to starting
+                // a headless JS task.
                 if (!selfWake(controller.packageName)) {
                     onStartCommand(null, 0, 0)
                 }

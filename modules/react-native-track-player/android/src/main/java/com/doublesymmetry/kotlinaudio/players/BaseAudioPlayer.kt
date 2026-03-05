@@ -146,7 +146,6 @@ abstract class BaseAudioPlayer internal constructor(
                 .setAudioOffloadMode(
                     if (offload) TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED
                     else TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED)
-                // Add additional options as needed
                 .setIsGaplessSupportRequired(true)
                 .setIsSpeedChangeSupportRequired(true)
                 .build()
@@ -381,8 +380,8 @@ abstract class BaseAudioPlayer internal constructor(
          * to the individual events.
          */
         override fun onEvents(player: Player, events: Player.Events) {
-            // Note that it is necessary to set `playerState` in order, since each mutation fires an
-            // event.
+            // Process events in the order ExoPlayer reported them. Setting playerState
+            // fires a stateChange emission, so ordering matters for downstream listeners.
             for (i in 0 until events.size()) {
                 when (events[i]) {
                     Player.EVENT_PLAYBACK_STATE_CHANGED -> {
@@ -445,20 +444,25 @@ abstract class BaseAudioPlayer internal constructor(
         }
     }
 
+    /**
+     * Intercepts player commands from external controllers (Android Auto, system UI,
+     * notification) and routes them as events to the JS layer via [PlayerEventHolder],
+     * rather than letting them mutate the ExoPlayer queue directly.
+     *
+     * Queue-mutation methods (setMediaItems, addMediaItems) are intentionally no-ops
+     * to prevent external controllers from replacing the RNTP-managed queue.
+     */
     @UnstableApi
     inner class InnerForwardingPlayer(player: ExoPlayer): ForwardingPlayer(player) {
         override fun setMediaItems(mediaItems: MutableList<MediaItem>, resetPosition: Boolean) {
-            // override setMediaItem handling to RNTP
             return
         }
 
         override fun addMediaItems(mediaItems: MutableList<MediaItem>) {
-            // override setMediaItem handling to RNTP
             return
         }
 
         override fun addMediaItems(index: Int, mediaItems: MutableList<MediaItem>) {
-            // override setMediaItem handling to RNTP
             return
         }
 
@@ -467,12 +471,10 @@ abstract class BaseAudioPlayer internal constructor(
             startIndex: Int,
             startPositionMs: Long
         ) {
-            // override setMediaItem handling to RNTP
             return
         }
 
         override fun setMediaItems(mediaItems: MutableList<MediaItem>) {
-            // override setMediaItem handling to RNTP
             return
         }
 

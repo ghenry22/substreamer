@@ -54,7 +54,8 @@
        super.onStartCommand(intent, flags, startId);
        HeadlessJsTaskConfig taskConfig = getTaskConfig(intent);
        if (!initialized && taskConfig != null) {
-           // HACK: ensure headlessJsMediaService tasks are only registered once.
+           // Guard: onStartCommand may be called multiple times (Media3 auto-starts
+           // the service on play). Only register the headless JS task once.
            initialized = true;
            startTask(taskConfig);
            return START_REDELIVER_INTENT;
@@ -108,7 +109,6 @@
     */
    protected void startTask(final HeadlessJsTaskConfig taskConfig) {
      UiThreadUtil.assertOnUiThread();
-     // acquireWakeLockNow(this);
        ReactContext reactContext = getReactContext();
        if (reactContext == null) {
            createReactContextAndScheduleTask(taskConfig);

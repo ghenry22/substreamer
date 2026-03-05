@@ -53,8 +53,7 @@ class Track
             resourceId = null
             BundleUtils.getUri(context, bundle, "url")
         } else {
-            // RawResourceDataSource.buildRawResourceUri(resourceId!!)
-            Uri.Builder().scheme(ContentResolver.SCHEME_ANDROID_RESOURCE).path(Integer. toString(
+            Uri.Builder().scheme(ContentResolver.SCHEME_ANDROID_RESOURCE).path(Integer.toString(
                 resourceId!!
             )).build()
         }

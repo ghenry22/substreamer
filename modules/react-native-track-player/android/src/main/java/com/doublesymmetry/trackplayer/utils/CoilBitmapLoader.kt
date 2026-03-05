@@ -44,7 +44,8 @@ class CoilBitmapLoader @Inject constructor(
         var imageRequest = ImageRequest.Builder(context)
             .data(uri)
             .allowHardware(false)
-        // HACK: header implementation should be done via parsed data from uri
+        // Notification panels expect square artwork. Some OEMs (notably Samsung) render
+        // non-square bitmaps incorrectly, so always crop to square for consistency.
         if (Build.MANUFACTURER == "samsung" || cropSquare) {
             imageRequest = imageRequest.transformations(CropSquareTransformation())
         }
