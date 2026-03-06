@@ -1,5 +1,32 @@
 # Changelog
 
+## [8.0.18] - 2026-03-06
+
+- tests: improve test coverage for services
+- connectivity monitor: fix unreliable and stuck states
+- tests: updated for my listening changes
+- my listening: fix broken streak behaviour
+- tests: let's try to test all the things
+- my listening: show most recent pending scrobbles first not oldest as it looks like things are missing the other way round
+- swipe actions: text should animate in / out with the action icon
+- tests: unit tests for all local /modules
+- RNTP: Bring Android implementation inline with iOS
+- RNTP: Android playbackCompletedWithReason was not wired.  Bring it in line with iOS implementation
+- AI: keep project rules in sync for all main platforms
+- splashscreen: stop text jumping
+- RNTP: Review all comments in Android code base, address where needed, clean up and update comments for accuracy.
+- android: fix link in media notifcation, should just return to app, no need to deeplink for this
+- RNTP: KotlinAudio was inlined in the 5.0.0alpha version we are based on.  No need to retain a seperate copy.
+- ai: add project rules for claude code and github copilot
+- android: fix download concurrency (was stuck at 1)
+- react-native: interaction manager now marked as deprecated after RN 0.83 update
+- android: set minsdk sensibly to SDK29/Android 10
+- android RNTP: modernize fork — bump minSdk to 29, upgrade Media3 to 1.9.2, remove old-arch and compat code
+- android: unused option removed on splashscreen
+- expo-ssl-trust: should enable cleartext, not disable
+- lock gradle version
+- review and update project docs
+- android: build scripts and env vars
 ## [8.0.17] - 2026-03-03
 
 - UI: clean up on the storage settings page a bit.
