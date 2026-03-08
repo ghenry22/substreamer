@@ -34,6 +34,7 @@ import { Pressable as GHPressable } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CachedImage } from '../components/CachedImage';
+import { EmptyState } from '../components/EmptyState';
 import { MarqueeText } from '../components/MarqueeText';
 import { MoreOptionsButton } from '../components/MoreOptionsButton';
 import { PlaybackRateButton } from '../components/PlaybackRateButton';
@@ -79,6 +80,17 @@ export function PlayerView() {
   const queueLoading = playerStore((s) => s.queueLoading);
 
   const onClose = useCallback(() => router.back(), [router]);
+
+  // Auto-dismiss when the queue is externally cleared (e.g. offline mode
+  // removes all non-downloaded tracks while this screen is open).
+  const [wasPopulated, setWasPopulated] = useState(false);
+  useEffect(() => {
+    if (currentTrack) {
+      setWasPopulated(true);
+    } else if (wasPopulated) {
+      onClose();
+    }
+  }, [currentTrack, wasPopulated, onClose]);
 
   const { coverBackgroundColor, gradientOpacity } = useColorExtraction(
     currentTrack?.coverArt,
@@ -238,7 +250,17 @@ export function PlayerView() {
     ],
   );
 
-  if (!currentTrack) return null;
+  if (!currentTrack) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <EmptyState
+          icon="musical-notes-outline"
+          title="Nothing Playing"
+          subtitle="It's quiet in here… pick something good and hit play!"
+        />
+      </View>
+    );
+  }
 
   return (
     <>
