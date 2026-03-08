@@ -42,11 +42,6 @@ function handleNetworkChange(state: NetInfoState): void {
 function subscribe(): void {
   if (unsubscribeNetInfo) return;
 
-  const { mode } = autoOfflineStore.getState();
-  if (mode === 'home-wifi') {
-    NetInfo.configure({ shouldFetchWiFiSSID: true });
-  }
-
   unsubscribeNetInfo = NetInfo.addEventListener(handleNetworkChange);
 }
 
@@ -93,7 +88,6 @@ export function stopAutoOffline(): void {
 
 export async function getCurrentSSID(): Promise<string | null> {
   try {
-    NetInfo.configure({ shouldFetchWiFiSSID: true });
     const state = await NetInfo.fetch();
     if (state.type !== 'wifi') return null;
     return (state.details as { ssid?: string | null })?.ssid ?? null;

@@ -39,6 +39,7 @@ import { deferredMusicCacheInit, getMusicCacheStats, initMusicCache } from '../s
 import { checkStorageLimit } from '../services/storageService';
 import { initPlayer, removeNonDownloadedTracks } from '../services/playerService';
 import { fetchScanStatus } from '../services/scanService';
+import NetInfo from '@react-native-community/netinfo';
 import { startMonitoring, stopMonitoring } from '../services/connectivityService';
 import { initScrobbleService } from '../services/scrobbleService';
 import { initSslTrustStore } from '../services/sslTrustService';
@@ -58,6 +59,11 @@ import { serverInfoStore } from '../store/serverInfoStore';
 // react-native-bootsplash keeps the native splash visible by default
 // until BootSplash.hide() is called. AnimatedSplashScreen handles the
 // hide via useHideAnimation for a seamless native → JS transition.
+
+// Enable SSID fetching globally — must be called before any NetInfo listener
+// is registered (connectivityService, autoOfflineService). Safe to always
+// enable; it simply tells the native module to include SSID in state updates.
+NetInfo.configure({ shouldFetchWiFiSSID: true });
 
 // Initialise the on-disk cache directories at module load (fast mkdir only).
 initImageCache();
