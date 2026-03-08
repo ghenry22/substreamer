@@ -80,6 +80,15 @@ export async function login(
 
 export function getApi(): SubsonicAPI | null {
   if (offlineModeStore.getState().offlineMode) return null;
+  return getApiUnchecked();
+}
+
+/**
+ * Return the cached SubsonicAPI instance without checking offline mode.
+ * Used by the connectivity service which must ping the server regardless
+ * of offline state to detect when it becomes reachable again.
+ */
+export function getApiUnchecked(): SubsonicAPI | null {
   const { isLoggedIn, serverUrl, username, password } = authStore.getState();
   if (!isLoggedIn || !serverUrl || !username || !password) {
     return null;

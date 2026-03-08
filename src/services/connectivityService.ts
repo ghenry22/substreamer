@@ -2,7 +2,7 @@ import NetInfo, { type NetInfoState } from '@react-native-community/netinfo';
 import { AppState, type NativeEventSubscription } from 'react-native';
 
 import { connectivityStore } from '../store/connectivityStore';
-import { getApi } from './subsonicService';
+import { getApiUnchecked } from './subsonicService';
 
 const PING_INTERVAL_REACHABLE_MS = 10_000;
 const PING_INTERVAL_UNREACHABLE_MS = 5_000;
@@ -54,7 +54,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 async function pingServer(): Promise<void> {
   if (pingInFlight) return;
 
-  const api = getApi();
+  const api = getApiUnchecked();
   if (!api) {
     schedulePing();
     return;
