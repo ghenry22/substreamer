@@ -8,7 +8,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
-import { useNavigation, useRouter } from 'expo-router';
+import { Stack, useNavigation, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -90,6 +90,7 @@ export function PlayerView() {
 
   /* ---- Header: dismiss button + more options ---- */
   useEffect(() => {
+    if (Platform.OS === 'ios') return;
     navigation.setOptions({
       headerLeft: () => (
         <GHPressable
@@ -240,54 +241,69 @@ export function PlayerView() {
   if (!currentTrack) return null;
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Gradient background */}
-      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.background }]} />
-      <Animated.View
-        style={[StyleSheet.absoluteFillObject, gradientAnimatedStyle]}
-        pointerEvents="none"
-      >
-        <LinearGradient
-          colors={[gradientStart, gradientEnd]}
-          locations={[0, 0.6]}
-          style={StyleSheet.absoluteFillObject}
-        />
-      </Animated.View>
-
-      <FlashList
-        data={queue}
-        renderItem={renderQueueItem}
-        keyExtractor={keyExtractor}
-        ListHeaderComponent={listHeader}
-        onScrollBeginDrag={closeOpenRow}
-        drawDistance={200}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{
-          paddingBottom: insets.bottom + 24,
-          ...(Platform.OS !== 'ios' ? { paddingTop: insets.top + HEADER_BAR_HEIGHT } : undefined),
-        }}
-        contentInset={Platform.OS === 'ios' ? { top: insets.top + HEADER_BAR_HEIGHT } : undefined}
-        contentOffset={Platform.OS === 'ios' ? { x: 0, y: -(insets.top + HEADER_BAR_HEIGHT) } : undefined}
-      />
-
-      {/* Shuffle overlay */}
-      {shuffling && (
-        <Animated.View
-          style={[styles.shuffleOverlay, overlayAnimatedStyle]}
-          pointerEvents="auto"
-        >
-          <View style={[styles.shuffleCard, { backgroundColor: colors.card }]}>
-            <Animated.View style={spinStyle}>
-              <Ionicons name="shuffle" size={32} color={colors.primary} />
-            </Animated.View>
-            <Text style={[styles.shuffleText, { color: colors.textPrimary }]}>
-              Shuffling…
-            </Text>
-          </View>
-        </Animated.View>
+    <>
+      {Platform.OS === 'ios' && (
+        <>
+          <Stack.Toolbar placement="left">
+            <Stack.Toolbar.Button icon="chevron.down" onPress={onClose} />
+          </Stack.Toolbar>
+          <Stack.Toolbar placement="right">
+            <Stack.Toolbar.Button
+              icon="ellipsis"
+              onPress={() => moreOptionsStore.getState().show({ type: 'song', item: currentTrack! }, 'player')}
+              hidden={!currentTrack}
+            />
+          </Stack.Toolbar>
+        </>
       )}
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        {/* Gradient background */}
+        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.background }]} />
+        <Animated.View
+          style={[StyleSheet.absoluteFillObject, gradientAnimatedStyle]}
+          pointerEvents="none"
+        >
+          <LinearGradient
+            colors={[gradientStart, gradientEnd]}
+            locations={[0, 0.6]}
+            style={StyleSheet.absoluteFillObject}
+          />
+        </Animated.View>
 
-    </View>
+        <FlashList
+          data={queue}
+          renderItem={renderQueueItem}
+          keyExtractor={keyExtractor}
+          ListHeaderComponent={listHeader}
+          onScrollBeginDrag={closeOpenRow}
+          drawDistance={200}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{
+            paddingBottom: insets.bottom + 24,
+            ...(Platform.OS !== 'ios' ? { paddingTop: insets.top + HEADER_BAR_HEIGHT } : undefined),
+          }}
+          contentInset={Platform.OS === 'ios' ? { top: insets.top + HEADER_BAR_HEIGHT } : undefined}
+          contentOffset={Platform.OS === 'ios' ? { x: 0, y: -(insets.top + HEADER_BAR_HEIGHT) } : undefined}
+        />
+
+        {/* Shuffle overlay */}
+        {shuffling && (
+          <Animated.View
+            style={[styles.shuffleOverlay, overlayAnimatedStyle]}
+            pointerEvents="auto"
+          >
+            <View style={[styles.shuffleCard, { backgroundColor: colors.card }]}>
+              <Animated.View style={spinStyle}>
+                <Ionicons name="shuffle" size={32} color={colors.primary} />
+              </Animated.View>
+              <Text style={[styles.shuffleText, { color: colors.textPrimary }]}>
+                Shuffling…
+              </Text>
+            </View>
+          </Animated.View>
+        )}
+      </View>
+    </>
   );
 }
 

@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useNavigation } from 'expo-router';
+import { Stack, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -93,6 +93,7 @@ export function ArtistDetailScreen() {
 
   /* ---- Header right: more options button ---- */
   useEffect(() => {
+    if (Platform.OS === 'ios') return;
     if (!artist) return;
     navigation.setOptions({
       headerRight: () => (
@@ -368,55 +369,65 @@ export function ArtistDetailScreen() {
   ];
 
   return (
-    <View style={styles.container}>
-      {/* Background layers */}
-      <View style={[gradientFillStyle, { backgroundColor: colors.background }]} />
-      <Animated.View
-        style={[gradientFillStyle, gradientAnimatedStyle]}
-        pointerEvents="none"
-      >
-        <LinearGradient
-          colors={[gradientStart, gradientEnd]}
-          locations={[0, 0.5]}
-          style={StyleSheet.absoluteFillObject}
-        />
-      </Animated.View>
+    <>
+      {Platform.OS === 'ios' && artist && (
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Button
+            icon="ellipsis"
+            onPress={() => moreOptionsStore.getState().show({ type: 'artist', item: artist })}
+          />
+        </Stack.Toolbar>
+      )}
+      <View style={styles.container}>
+        {/* Background layers */}
+        <View style={[gradientFillStyle, { backgroundColor: colors.background }]} />
+        <Animated.View
+          style={[gradientFillStyle, gradientAnimatedStyle]}
+          pointerEvents="none"
+        >
+          <LinearGradient
+            colors={[gradientStart, gradientEnd]}
+            locations={[0, 0.5]}
+            style={StyleSheet.absoluteFillObject}
+          />
+        </Animated.View>
 
-      <FlashList
-        data={sortedAlbums}
-        renderItem={renderAlbumItem}
-        keyExtractor={albumKeyExtractor}
-        ListHeaderComponent={listHeader}
-        onScrollBeginDrag={closeOpenRow}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[
-          styles.content,
-          Platform.OS !== 'ios' && {
-            paddingTop: insets.top + HEADER_BAR_HEIGHT,
-          },
-        ]}
-        contentInset={
-          Platform.OS === 'ios'
-            ? { top: insets.top + HEADER_BAR_HEIGHT }
-            : undefined
-        }
-        contentOffset={
-          Platform.OS === 'ios'
-            ? { x: 0, y: -(insets.top + HEADER_BAR_HEIGHT) }
-            : undefined
-        }
-        refreshControl={
-          offlineMode ? undefined : (
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={colors.primary}
-              progressViewOffset={insets.top + HEADER_BAR_HEIGHT}
-            />
-          )
-        }
-      />
-    </View>
+        <FlashList
+          data={sortedAlbums}
+          renderItem={renderAlbumItem}
+          keyExtractor={albumKeyExtractor}
+          ListHeaderComponent={listHeader}
+          onScrollBeginDrag={closeOpenRow}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[
+            styles.content,
+            Platform.OS !== 'ios' && {
+              paddingTop: insets.top + HEADER_BAR_HEIGHT,
+            },
+          ]}
+          contentInset={
+            Platform.OS === 'ios'
+              ? { top: insets.top + HEADER_BAR_HEIGHT }
+              : undefined
+          }
+          contentOffset={
+            Platform.OS === 'ios'
+              ? { x: 0, y: -(insets.top + HEADER_BAR_HEIGHT) }
+              : undefined
+          }
+          refreshControl={
+            offlineMode ? undefined : (
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={colors.primary}
+                progressViewOffset={insets.top + HEADER_BAR_HEIGHT}
+              />
+            )
+          }
+        />
+      </View>
+    </>
   );
 }
 

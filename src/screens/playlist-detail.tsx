@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useNavigation } from 'expo-router';
+import { Stack, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -29,10 +29,11 @@ import { MoreOptionsButton } from '../components/MoreOptionsButton';
 import { closeOpenRow, SwipeableRow, type SwipeAction } from '../components/SwipeableRow';
 import { TrackRow } from '../components/TrackRow';
 import { useColorExtraction } from '../hooks/useColorExtraction';
+import { useDownloadStatus } from '../hooks/useDownloadStatus';
 import { useTheme } from '../hooks/useTheme';
 import { useTransitionComplete } from '../hooks/useTransitionComplete';
 import { cacheAllSizes, refreshCachedImage } from '../services/imageCacheService';
-import { syncCachedPlaylistTracks } from '../services/musicCacheService';
+import { enqueuePlaylistDownload, syncCachedPlaylistTracks } from '../services/musicCacheService';
 import { playTrack } from '../services/playerService';
 import { updatePlaylistOrder } from '../services/subsonicService';
 import { minDelay } from '../utils/stringHelpers';
@@ -62,6 +63,7 @@ export function PlaylistDetailScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const transitionComplete = useTransitionComplete();
+  const downloadStatus = useDownloadStatus('playlist', Platform.OS === 'ios' ? (id ?? '') : '');
 
   const offlineMode = offlineModeStore((s) => s.offlineMode);
   const [editing, setEditing] = useState(false);
@@ -179,6 +181,7 @@ export function PlaylistDetailScreen() {
   /* ---- Header ---- */
 
   useEffect(() => {
+    if (Platform.OS === 'ios') return;
     if (!playlist || !id) return;
 
     if (editing) {
@@ -442,8 +445,40 @@ export function PlaylistDetailScreen() {
       : undefined;
 
   return (
-    <View style={styles.container}>
-      <View style={[gradientFillStyle, { backgroundColor: colors.background }]} />
+    <>
+      {Platform.OS === 'ios' && !editing && playlist && id && (
+        <Stack.Toolbar placement="right">
+          {!offlineMode && (
+            <Stack.Toolbar.Button icon="pencil" onPress={handleStartEdit} />
+          )}
+          {downloadStatus === 'none' ? (
+            <Stack.Toolbar.Button
+              icon="arrow.down.circle"
+              onPress={() => enqueuePlaylistDownload(id)}
+            />
+          ) : (
+            <Stack.Toolbar.View>
+              <DownloadButton itemId={id} type="playlist" />
+            </Stack.Toolbar.View>
+          )}
+          <Stack.Toolbar.Button
+            icon="ellipsis"
+            onPress={() => moreOptionsStore.getState().show({ type: 'playlist', item: playlist })}
+          />
+        </Stack.Toolbar>
+      )}
+      {Platform.OS === 'ios' && editing && (
+        <>
+          <Stack.Toolbar placement="left">
+            <Stack.Toolbar.Button onPress={handleCancelEdit}>Cancel</Stack.Toolbar.Button>
+          </Stack.Toolbar>
+          <Stack.Toolbar placement="right">
+            <Stack.Toolbar.Button onPress={handleSave} disabled={saving}>Save</Stack.Toolbar.Button>
+          </Stack.Toolbar>
+        </>
+      )}
+      <View style={styles.container}>
+        <View style={[gradientFillStyle, { backgroundColor: colors.background }]} />
       <Animated.View
         style={[gradientFillStyle, gradientAnimatedStyle]}
         pointerEvents="none"
@@ -493,7 +528,8 @@ export function PlaylistDetailScreen() {
           }
         />
       )}
-    </View>
+      </View>
+    </>
   );
 }
 

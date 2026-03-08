@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useNavigation } from 'expo-router';
+import { Stack, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -22,9 +22,11 @@ import { MoreOptionsButton } from '../components/MoreOptionsButton';
 import { closeOpenRow } from '../components/SwipeableRow';
 import { TrackRow } from '../components/TrackRow';
 import { useColorExtraction } from '../hooks/useColorExtraction';
+import { useDownloadStatus } from '../hooks/useDownloadStatus';
 import { useTheme } from '../hooks/useTheme';
 import { useTransitionComplete } from '../hooks/useTransitionComplete';
 import { refreshCachedImage } from '../services/imageCacheService';
+import { enqueueAlbumDownload } from '../services/musicCacheService';
 import { minDelay } from '../utils/stringHelpers';
 import { playTrack } from '../services/playerService';
 import { albumDetailStore } from '../store/albumDetailStore';
@@ -69,6 +71,7 @@ export function AlbumDetailScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const transitionComplete = useTransitionComplete();
+  const downloadStatus = useDownloadStatus('album', Platform.OS === 'ios' ? (id ?? '') : '');
 
   const { coverBackgroundColor, gradientOpacity } = useColorExtraction(
     album?.coverArt,
@@ -77,6 +80,7 @@ export function AlbumDetailScreen() {
 
   /* ---- Header right: download button + more options ---- */
   useEffect(() => {
+    if (Platform.OS === 'ios') return;
     if (!album || !id) return;
     navigation.setOptions({
       headerRight: () => (
@@ -274,45 +278,65 @@ export function AlbumDetailScreen() {
   ];
 
   return (
-    <View style={styles.container}>
-      <View style={[gradientFillStyle, { backgroundColor: colors.background }]} />
-      <Animated.View
-        style={[gradientFillStyle, gradientAnimatedStyle]}
-        pointerEvents="none"
-      >
-        <LinearGradient
-          colors={[gradientStart, gradientEnd]}
-          locations={[0, 0.5]}
-          style={StyleSheet.absoluteFillObject}
-        />
-      </Animated.View>
-      <FlashList
-        data={listData}
-        renderItem={renderItem}
-        keyExtractor={keyExtractor}
-        getItemType={getItemType}
-        ListHeaderComponent={listHeader}
-        ListEmptyComponent={listEmpty}
-        onScrollBeginDrag={closeOpenRow}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{
-          paddingBottom: 32,
-          ...(Platform.OS !== 'ios' ? { paddingTop: insets.top + HEADER_BAR_HEIGHT } : undefined),
-        }}
-        contentInset={Platform.OS === 'ios' ? { top: insets.top + HEADER_BAR_HEIGHT } : undefined}
-        contentOffset={Platform.OS === 'ios' ? { x: 0, y: -(insets.top + HEADER_BAR_HEIGHT) } : undefined}
-        refreshControl={
-          offlineMode ? undefined : (
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={colors.primary}
-              progressViewOffset={insets.top + HEADER_BAR_HEIGHT}
+    <>
+      {Platform.OS === 'ios' && album && id && (
+        <Stack.Toolbar placement="right">
+          {downloadStatus === 'none' ? (
+            <Stack.Toolbar.Button
+              icon="arrow.down.circle"
+              onPress={() => enqueueAlbumDownload(id)}
             />
-          )
-        }
-      />
-    </View>
+          ) : (
+            <Stack.Toolbar.View>
+              <DownloadButton itemId={id} type="album" />
+            </Stack.Toolbar.View>
+          )}
+          <Stack.Toolbar.Button
+            icon="ellipsis"
+            onPress={() => moreOptionsStore.getState().show({ type: 'album', item: album })}
+          />
+        </Stack.Toolbar>
+      )}
+      <View style={styles.container}>
+        <View style={[gradientFillStyle, { backgroundColor: colors.background }]} />
+        <Animated.View
+          style={[gradientFillStyle, gradientAnimatedStyle]}
+          pointerEvents="none"
+        >
+          <LinearGradient
+            colors={[gradientStart, gradientEnd]}
+            locations={[0, 0.5]}
+            style={StyleSheet.absoluteFillObject}
+          />
+        </Animated.View>
+        <FlashList
+          data={listData}
+          renderItem={renderItem}
+          keyExtractor={keyExtractor}
+          getItemType={getItemType}
+          ListHeaderComponent={listHeader}
+          ListEmptyComponent={listEmpty}
+          onScrollBeginDrag={closeOpenRow}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{
+            paddingBottom: 32,
+            ...(Platform.OS !== 'ios' ? { paddingTop: insets.top + HEADER_BAR_HEIGHT } : undefined),
+          }}
+          contentInset={Platform.OS === 'ios' ? { top: insets.top + HEADER_BAR_HEIGHT } : undefined}
+          contentOffset={Platform.OS === 'ios' ? { x: 0, y: -(insets.top + HEADER_BAR_HEIGHT) } : undefined}
+          refreshControl={
+            offlineMode ? undefined : (
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={colors.primary}
+                progressViewOffset={insets.top + HEADER_BAR_HEIGHT}
+              />
+            )
+          }
+        />
+      </View>
+    </>
   );
 }
 

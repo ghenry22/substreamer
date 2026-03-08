@@ -105,7 +105,7 @@ export const DownloadButton = memo(function DownloadButton({
           size={progressSize}
           strokeWidth={2.5}
           color={colors.primary}
-          trackColor={colors.textPrimary}
+          trackColor={colors.textSecondary}
           onComplete={handleRingComplete}
         />
       ) : downloadStatus === 'complete' ? (
