@@ -1,6 +1,11 @@
 # Substreamer
 
-A React Native music streaming client for Subsonic-compatible servers (Subsonic, Navidrome, etc.), built with Expo SDK 54, React 19, and TypeScript.
+[![Tests](https://github.com/ghenry22/substreamer/actions/workflows/tests.yml/badge.svg)](https://github.com/ghenry22/substreamer/actions/workflows/tests.yml)
+![Platform](https://img.shields.io/badge/platform-iOS%20%7C%20Android-lightgrey)
+![Expo SDK](https://img.shields.io/badge/Expo%20SDK-55-blue)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)
+
+A React Native music streaming client for Subsonic-compatible servers (Subsonic, Navidrome, etc.), built with Expo SDK 55, React 19, and TypeScript.
 
 ## Getting Started
 
