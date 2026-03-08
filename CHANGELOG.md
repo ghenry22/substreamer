@@ -1,5 +1,8 @@
 # Changelog
 
+## [8.0.21] - 2026-03-08
+
+- No notable changes
 ## [8.0.20] - 2026-03-08
 
 - No notable changes
