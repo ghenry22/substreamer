@@ -23,17 +23,12 @@ export interface AuthState {
 const PERSIST_KEY = 'substreamer-auth';
 
 /**
- * Temporary: clears all persisted auth data (SQLite + in-memory state).
- * Remove this when no longer needed for development.
+ * Clears all persisted auth data (SQLite + in-memory state).
+ * Intended for development/debugging use.
  */
 export async function clearPersistedData(): Promise<void> {
-  const debug = false;
-  if (debug) {
   sqliteStorage.removeItem(PERSIST_KEY);
   authStore.getState().clearSession();
-  } else {
-    return Promise.resolve();
-  }
 }
 
 export const authStore = create<AuthState>()(
