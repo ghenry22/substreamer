@@ -22,7 +22,11 @@
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true
         },
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "Location access is needed to detect your WiFi network name for automatic offline mode switching."
+      },
+      "entitlements": {
+        "com.apple.developer.networking.wifi-info": true
       }
     },
     "android": {
@@ -30,6 +34,9 @@
         "foregroundImage": "./src/assets/adaptive-icon.png",
         "backgroundColor": "#1D9BF0"
       },
+      "permissions": [
+        "ACCESS_FINE_LOCATION"
+      ],
       "predictiveBackGestureEnabled": false,
       "versionCode": 102,
       "package": "com.ghenry22.substream2"
@@ -67,6 +74,13 @@
         }
       ],
       "expo-font",
+      [
+        "expo-location",
+        {
+          "isAndroidBackgroundLocationEnabled": false,
+          "isIosBackgroundLocationEnabled": false
+        }
+      ],
       "./plugins/strip-push-entitlement",
       "expo-notifications"
     ],

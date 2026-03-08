@@ -37,18 +37,20 @@ import { useTheme } from '../hooks/useTheme';
 import { deferredImageCacheInit, getImageCacheStats, initImageCache } from '../services/imageCacheService';
 import { deferredMusicCacheInit, getMusicCacheStats, initMusicCache } from '../services/musicCacheService';
 import { checkStorageLimit } from '../services/storageService';
-import { initPlayer } from '../services/playerService';
+import { initPlayer, removeNonDownloadedTracks } from '../services/playerService';
 import { fetchScanStatus } from '../services/scanService';
 import { startMonitoring, stopMonitoring } from '../services/connectivityService';
 import { initScrobbleService } from '../services/scrobbleService';
 import { initSslTrustStore } from '../services/sslTrustService';
 import { runAutoBackupIfNeeded } from '../services/backupService';
+import { startAutoOffline, stopAutoOffline } from '../services/autoOfflineService';
 import { excludeFromBackup } from 'expo-backup-exclusions';
 import { albumListsStore } from '../store/albumListsStore';
 import { imageCacheStore } from '../store/imageCacheStore';
 import { musicCacheStore } from '../store/musicCacheStore';
 import { authStore, clearPersistedData } from '../store/authStore';
 import { favoritesStore } from '../store/favoritesStore';
+import { autoOfflineStore } from '../store/autoOfflineStore';
 import { offlineModeStore } from '../store/offlineModeStore';
 import { fetchServerInfo } from '../services/subsonicService';
 import { serverInfoStore } from '../store/serverInfoStore';
@@ -124,6 +126,11 @@ export default function RootLayout() {
 
     const offline = offlineModeStore.getState().offlineMode;
 
+    // Start auto-offline monitoring if enabled
+    if (autoOfflineStore.getState().enabled) {
+      startAutoOffline();
+    }
+
     if (!offline) {
       startMonitoring();
       fetchServerInfo().then((info) => {
@@ -134,7 +141,17 @@ export default function RootLayout() {
       favoritesStore.getState().fetchStarred();
     }
 
+    const unsubAutoOffline = autoOfflineStore.subscribe((state, prev) => {
+      if (state.enabled && !prev.enabled) startAutoOffline();
+      else if (!state.enabled && prev.enabled) stopAutoOffline();
+    });
+
     const unsub = offlineModeStore.subscribe((state, prev) => {
+      // Defer queue cleanup so the offline mode toggle and filter bar update
+      // immediately without waiting for a potentially long queue scan.
+      if (state.offlineMode && !prev.offlineMode) {
+        setTimeout(removeNonDownloadedTracks, 0);
+      }
       if (prev.offlineMode && !state.offlineMode) {
         startMonitoring();
         fetchServerInfo().then((info) => {
@@ -150,6 +167,8 @@ export default function RootLayout() {
 
     return () => {
       unsub();
+      unsubAutoOffline();
+      stopAutoOffline();
       stopMonitoring();
     };
   }, [rehydrated, isLoggedIn]);

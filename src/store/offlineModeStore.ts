@@ -8,6 +8,7 @@ interface OfflineModeState {
   showInFilterBar: boolean;
 
   toggleOfflineMode: () => void;
+  setOfflineMode: (value: boolean) => void;
   setShowInFilterBar: (show: boolean) => void;
 }
 
@@ -20,6 +21,7 @@ export const offlineModeStore = create<OfflineModeState>()(
       showInFilterBar: true,
 
       toggleOfflineMode: () => set((s) => ({ offlineMode: !s.offlineMode })),
+      setOfflineMode: (offlineMode) => set({ offlineMode }),
       setShowInFilterBar: (showInFilterBar) => set({ showInFilterBar }),
     }),
     {

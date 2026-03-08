@@ -778,6 +778,35 @@ export async function removeFromQueue(index: number): Promise<void> {
 }
 
 /**
+ * Remove all non-downloaded tracks from the play queue.
+ *
+ * Called when entering offline mode (manual or auto) so that only
+ * locally available tracks remain. Iterates in reverse to avoid
+ * index shifting issues. If all tracks are removed, clears the queue.
+ */
+export async function removeNonDownloadedTracks(): Promise<void> {
+  if (currentChildQueue.length === 0) return;
+
+  const indicesToRemove: number[] = [];
+  for (let i = currentChildQueue.length - 1; i >= 0; i--) {
+    if (!getLocalTrackUri(currentChildQueue[i].id)) {
+      indicesToRemove.push(i);
+    }
+  }
+
+  if (indicesToRemove.length === 0) return;
+
+  if (indicesToRemove.length === currentChildQueue.length) {
+    await clearQueue();
+    return;
+  }
+
+  for (const index of indicesToRemove) {
+    await removeFromQueue(index);
+  }
+}
+
+/**
  * Cycle the repeat mode: off → all → one → off.
  *
  * Updates both the persisted store and the native RNTP player.
