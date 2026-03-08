@@ -59,7 +59,10 @@
         {
           "android": {
             "minSdkVersion": 29,
-            "usesCleartextTraffic": true
+            "usesCleartextTraffic": true,
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "extraProguardRules": "-keep class expo.modules.** { *; }\n-keep class com.doublesymmetry.** { *; }"
           }
         }
       ],
