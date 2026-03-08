@@ -559,3 +559,917 @@ describe('isVariousArtists', () => {
     expect(isVariousArtists(undefined)).toBe(false);
   });
 });
+
+describe('getRecentlyPlayedAlbums', () => {
+  it('returns empty when no API', async () => {
+    mockAuthStore.getState.mockReturnValue({ isLoggedIn: false } as any);
+    const { getRecentlyPlayedAlbums } = require('../subsonicService');
+    expect(await getRecentlyPlayedAlbums()).toEqual([]);
+  });
+
+  it('returns albums on success', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getAlbumList2 = jest.fn().mockResolvedValue({
+      albumList2: { album: [{ id: 'a1', name: 'Recent' }] },
+    });
+    const { getRecentlyPlayedAlbums, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getRecentlyPlayedAlbums();
+    expect(result).toEqual([{ id: 'a1', name: 'Recent' }]);
+    expect(SubsonicAPI.prototype.getAlbumList2).toHaveBeenCalledWith({ type: 'recent', size: 20 });
+  });
+});
+
+describe('getFrequentlyPlayedAlbums', () => {
+  it('returns empty when no API', async () => {
+    mockAuthStore.getState.mockReturnValue({ isLoggedIn: false } as any);
+    const { getFrequentlyPlayedAlbums } = require('../subsonicService');
+    expect(await getFrequentlyPlayedAlbums()).toEqual([]);
+  });
+
+  it('returns albums on success', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getAlbumList2 = jest.fn().mockResolvedValue({
+      albumList2: { album: [{ id: 'a2', name: 'Frequent' }] },
+    });
+    const { getFrequentlyPlayedAlbums, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getFrequentlyPlayedAlbums();
+    expect(result).toEqual([{ id: 'a2', name: 'Frequent' }]);
+    expect(SubsonicAPI.prototype.getAlbumList2).toHaveBeenCalledWith({ type: 'frequent', size: 20 });
+  });
+});
+
+describe('getRandomAlbums', () => {
+  it('returns empty when no API', async () => {
+    mockAuthStore.getState.mockReturnValue({ isLoggedIn: false } as any);
+    const { getRandomAlbums } = require('../subsonicService');
+    expect(await getRandomAlbums()).toEqual([]);
+  });
+
+  it('returns albums on success', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getAlbumList2 = jest.fn().mockResolvedValue({
+      albumList2: { album: [{ id: 'a3', name: 'Random' }] },
+    });
+    const { getRandomAlbums, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getRandomAlbums();
+    expect(result).toEqual([{ id: 'a3', name: 'Random' }]);
+    expect(SubsonicAPI.prototype.getAlbumList2).toHaveBeenCalledWith({ type: 'random', size: 20 });
+  });
+});
+
+describe('searchAllAlbums', () => {
+  it('returns albums on success', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.search3 = jest.fn().mockResolvedValue({
+      searchResult3: { album: [{ id: 'a1' }, { id: 'a2' }] },
+    });
+    const { searchAllAlbums, getApi } = require('../subsonicService');
+    getApi();
+    const result = await searchAllAlbums();
+    expect(result).toEqual([{ id: 'a1' }, { id: 'a2' }]);
+  });
+
+  it('returns empty when search result has no albums', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.search3 = jest.fn().mockResolvedValue({
+      searchResult3: {},
+    });
+    const { searchAllAlbums, getApi } = require('../subsonicService');
+    getApi();
+    const result = await searchAllAlbums();
+    expect(result).toEqual([]);
+  });
+});
+
+describe('getAlbumListAlphabetical', () => {
+  it('returns albums on success', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getAlbumList2 = jest.fn().mockResolvedValue({
+      albumList2: { album: [{ id: 'a1' }] },
+    });
+    const { getAlbumListAlphabetical, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getAlbumListAlphabetical(500, 0);
+    expect(result).toEqual([{ id: 'a1' }]);
+    expect(SubsonicAPI.prototype.getAlbumList2).toHaveBeenCalledWith({
+      type: 'alphabeticalByArtist',
+      size: 500,
+      offset: 0,
+    });
+  });
+});
+
+describe('getAllAlbumsAlphabetical', () => {
+  it('paginates until a short page is returned', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    const page1 = Array.from({ length: 500 }, (_, i) => ({ id: `a${i}` }));
+    const page2 = [{ id: 'a500' }, { id: 'a501' }];
+    SubsonicAPI.prototype.getAlbumList2 = jest.fn()
+      .mockResolvedValueOnce({ albumList2: { album: page1 } })
+      .mockResolvedValueOnce({ albumList2: { album: page2 } });
+    const { getAllAlbumsAlphabetical, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getAllAlbumsAlphabetical();
+    expect(result).toHaveLength(502);
+    expect(SubsonicAPI.prototype.getAlbumList2).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns single page when fewer than PAGE_SIZE results', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getAlbumList2 = jest.fn().mockResolvedValue({
+      albumList2: { album: [{ id: 'a1' }] },
+    });
+    const { getAllAlbumsAlphabetical, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getAllAlbumsAlphabetical();
+    expect(result).toEqual([{ id: 'a1' }]);
+    expect(SubsonicAPI.prototype.getAlbumList2).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('getArtist', () => {
+  it('returns null when no API', async () => {
+    mockAuthStore.getState.mockReturnValue({ isLoggedIn: false } as any);
+    const { getArtist } = require('../subsonicService');
+    expect(await getArtist('ar1')).toBeNull();
+  });
+
+  it('returns artist on success', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getArtist = jest.fn().mockResolvedValue({
+      artist: { id: 'ar1', name: 'Radiohead', album: [] },
+    });
+    const { getArtist, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getArtist('ar1');
+    expect(result).toEqual({ id: 'ar1', name: 'Radiohead', album: [] });
+  });
+});
+
+describe('getArtistInfo2', () => {
+  it('returns artist info on success', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getArtistInfo2 = jest.fn().mockResolvedValue({
+      artistInfo2: { biography: 'Bio text', similarArtist: [] },
+    });
+    const { getArtistInfo2, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getArtistInfo2('ar1');
+    expect(result).toEqual({ biography: 'Bio text', similarArtist: [] });
+  });
+
+  it('returns null on exception', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getArtistInfo2 = jest.fn().mockRejectedValue(new Error('unsupported'));
+    const { getArtistInfo2, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getArtistInfo2('ar1');
+    expect(result).toBeNull();
+  });
+});
+
+describe('getSimilarSongs', () => {
+  it('returns empty when no API', async () => {
+    mockAuthStore.getState.mockReturnValue({ isLoggedIn: false } as any);
+    const { getSimilarSongs } = require('../subsonicService');
+    expect(await getSimilarSongs('s1')).toEqual([]);
+  });
+
+  it('returns songs on success', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getSimilarSongs = jest.fn().mockResolvedValue({
+      similarSongs: { song: [{ id: 's2', title: 'Similar' }] },
+    });
+    const { getSimilarSongs, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getSimilarSongs('s1');
+    expect(result).toEqual([{ id: 's2', title: 'Similar' }]);
+  });
+});
+
+describe('getSimilarSongs2', () => {
+  it('returns empty when no API', async () => {
+    mockAuthStore.getState.mockReturnValue({ isLoggedIn: false } as any);
+    const { getSimilarSongs2 } = require('../subsonicService');
+    expect(await getSimilarSongs2('ar1')).toEqual([]);
+  });
+
+  it('returns songs on success', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getSimilarSongs2 = jest.fn().mockResolvedValue({
+      similarSongs2: { song: [{ id: 's3', title: 'Similar2' }] },
+    });
+    const { getSimilarSongs2, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getSimilarSongs2('ar1');
+    expect(result).toEqual([{ id: 's3', title: 'Similar2' }]);
+  });
+});
+
+describe('getPlaylist', () => {
+  it('returns null when no API', async () => {
+    mockAuthStore.getState.mockReturnValue({ isLoggedIn: false } as any);
+    const { getPlaylist } = require('../subsonicService');
+    expect(await getPlaylist('p1')).toBeNull();
+  });
+
+  it('returns playlist on success', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getPlaylist = jest.fn().mockResolvedValue({
+      playlist: { id: 'p1', name: 'My Playlist', entry: [] },
+    });
+    const { getPlaylist, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getPlaylist('p1');
+    expect(result).toEqual({ id: 'p1', name: 'My Playlist', entry: [] });
+  });
+});
+
+describe('updatePlaylistOrder', () => {
+  it('returns true on success', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.createPlaylist = jest.fn().mockResolvedValue(undefined);
+    const { updatePlaylistOrder, getApi } = require('../subsonicService');
+    getApi();
+    const result = await updatePlaylistOrder('p1', 'My Playlist', ['s1', 's2']);
+    expect(result).toBe(true);
+    expect(SubsonicAPI.prototype.createPlaylist).toHaveBeenCalledWith({
+      playlistId: 'p1',
+      name: 'My Playlist',
+      songId: ['s1', 's2'],
+    });
+  });
+
+  it('returns false on exception', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.createPlaylist = jest.fn().mockRejectedValue(new Error('fail'));
+    const { updatePlaylistOrder, getApi } = require('../subsonicService');
+    getApi();
+    const result = await updatePlaylistOrder('p1', 'My Playlist', ['s1']);
+    expect(result).toBe(false);
+  });
+});
+
+describe('createNewPlaylist', () => {
+  it('returns true on success', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.createPlaylist = jest.fn().mockResolvedValue(undefined);
+    const { createNewPlaylist, getApi } = require('../subsonicService');
+    getApi();
+    const result = await createNewPlaylist('New Playlist', ['s1']);
+    expect(result).toBe(true);
+    expect(SubsonicAPI.prototype.createPlaylist).toHaveBeenCalledWith({
+      name: 'New Playlist',
+      songId: ['s1'],
+    });
+  });
+
+  it('returns false on exception', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.createPlaylist = jest.fn().mockRejectedValue(new Error('fail'));
+    const { createNewPlaylist, getApi } = require('../subsonicService');
+    getApi();
+    const result = await createNewPlaylist('New Playlist', ['s1']);
+    expect(result).toBe(false);
+  });
+});
+
+describe('addToPlaylist', () => {
+  it('returns true on success', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.updatePlaylist = jest.fn().mockResolvedValue(undefined);
+    const { addToPlaylist, getApi } = require('../subsonicService');
+    getApi();
+    const result = await addToPlaylist('p1', ['s1', 's2']);
+    expect(result).toBe(true);
+    expect(SubsonicAPI.prototype.updatePlaylist).toHaveBeenCalledWith({
+      playlistId: 'p1',
+      songIdToAdd: ['s1', 's2'],
+    });
+  });
+
+  it('returns false on exception', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.updatePlaylist = jest.fn().mockRejectedValue(new Error('fail'));
+    const { addToPlaylist, getApi } = require('../subsonicService');
+    getApi();
+    const result = await addToPlaylist('p1', ['s1']);
+    expect(result).toBe(false);
+  });
+});
+
+describe('removeFromPlaylist', () => {
+  it('returns true on success', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.updatePlaylist = jest.fn().mockResolvedValue(undefined);
+    const { removeFromPlaylist, getApi } = require('../subsonicService');
+    getApi();
+    const result = await removeFromPlaylist('p1', [0, 2]);
+    expect(result).toBe(true);
+    expect(SubsonicAPI.prototype.updatePlaylist).toHaveBeenCalledWith({
+      playlistId: 'p1',
+      songIndexToRemove: [0, 2],
+    });
+  });
+
+  it('returns false on exception', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.updatePlaylist = jest.fn().mockRejectedValue(new Error('fail'));
+    const { removeFromPlaylist, getApi } = require('../subsonicService');
+    getApi();
+    const result = await removeFromPlaylist('p1', [0]);
+    expect(result).toBe(false);
+  });
+});
+
+describe('starAlbum / unstarAlbum', () => {
+  it('starAlbum calls api.star with albumId', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.star = jest.fn().mockResolvedValue(undefined);
+    const { starAlbum, getApi } = require('../subsonicService');
+    getApi();
+    await starAlbum('a1');
+    expect(SubsonicAPI.prototype.star).toHaveBeenCalledWith({ albumId: 'a1' });
+  });
+
+  it('starAlbum does nothing when no API', async () => {
+    mockAuthStore.getState.mockReturnValue({ isLoggedIn: false } as any);
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.star = jest.fn();
+    const { starAlbum } = require('../subsonicService');
+    await starAlbum('a1');
+    expect(SubsonicAPI.prototype.star).not.toHaveBeenCalled();
+  });
+
+  it('unstarAlbum calls api.unstar with albumId', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.unstar = jest.fn().mockResolvedValue(undefined);
+    const { unstarAlbum, getApi } = require('../subsonicService');
+    getApi();
+    await unstarAlbum('a1');
+    expect(SubsonicAPI.prototype.unstar).toHaveBeenCalledWith({ albumId: 'a1' });
+  });
+
+  it('unstarAlbum does nothing when no API', async () => {
+    mockAuthStore.getState.mockReturnValue({ isLoggedIn: false } as any);
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.unstar = jest.fn();
+    const { unstarAlbum } = require('../subsonicService');
+    await unstarAlbum('a1');
+    expect(SubsonicAPI.prototype.unstar).not.toHaveBeenCalled();
+  });
+});
+
+describe('starArtist / unstarArtist', () => {
+  it('starArtist calls api.star with artistId', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.star = jest.fn().mockResolvedValue(undefined);
+    const { starArtist, getApi } = require('../subsonicService');
+    getApi();
+    await starArtist('ar1');
+    expect(SubsonicAPI.prototype.star).toHaveBeenCalledWith({ artistId: 'ar1' });
+  });
+
+  it('starArtist does nothing when no API', async () => {
+    mockAuthStore.getState.mockReturnValue({ isLoggedIn: false } as any);
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.star = jest.fn();
+    const { starArtist } = require('../subsonicService');
+    await starArtist('ar1');
+    expect(SubsonicAPI.prototype.star).not.toHaveBeenCalled();
+  });
+
+  it('unstarArtist calls api.unstar with artistId', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.unstar = jest.fn().mockResolvedValue(undefined);
+    const { unstarArtist, getApi } = require('../subsonicService');
+    getApi();
+    await unstarArtist('ar1');
+    expect(SubsonicAPI.prototype.unstar).toHaveBeenCalledWith({ artistId: 'ar1' });
+  });
+
+  it('unstarArtist does nothing when no API', async () => {
+    mockAuthStore.getState.mockReturnValue({ isLoggedIn: false } as any);
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.unstar = jest.fn();
+    const { unstarArtist } = require('../subsonicService');
+    await unstarArtist('ar1');
+    expect(SubsonicAPI.prototype.unstar).not.toHaveBeenCalled();
+  });
+});
+
+describe('fetchServerInfo', () => {
+  it('returns full server info for OpenSubsonic server', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.ping = jest.fn().mockResolvedValue({
+      status: 'ok',
+      version: '1.16.1',
+      openSubsonic: true,
+      type: 'navidrome',
+      serverVersion: '0.52.5',
+    });
+    SubsonicAPI.prototype.getOpenSubsonicExtensions = jest.fn().mockResolvedValue({
+      status: 'ok',
+      openSubsonicExtensions: [
+        { name: 'transcoding', versions: [1, 2] },
+      ],
+    });
+    const { fetchServerInfo, getApi } = require('../subsonicService');
+    getApi();
+    const result = await fetchServerInfo();
+    expect(result).not.toBeNull();
+    expect(result.serverType).toBe('navidrome');
+    expect(result.serverVersion).toBe('0.52.5');
+    expect(result.apiVersion).toBe('1.16.1');
+    expect(result.openSubsonic).toBe(true);
+    expect(result.extensions).toEqual([{ name: 'transcoding', versions: [1, 2] }]);
+  });
+
+  it('handles extensions endpoint failure gracefully', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.ping = jest.fn().mockResolvedValue({
+      status: 'ok',
+      version: '1.16.1',
+      openSubsonic: true,
+      type: 'navidrome',
+      serverVersion: '0.52.5',
+    });
+    SubsonicAPI.prototype.getOpenSubsonicExtensions = jest.fn().mockRejectedValue(new Error('unsupported'));
+    const { fetchServerInfo, getApi } = require('../subsonicService');
+    getApi();
+    const result = await fetchServerInfo();
+    expect(result).not.toBeNull();
+    expect(result.openSubsonic).toBe(true);
+    expect(result.extensions).toEqual([]);
+  });
+
+  it('returns null when ping fails', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.ping = jest.fn().mockResolvedValue({ status: 'failed' });
+    const { fetchServerInfo, getApi } = require('../subsonicService');
+    getApi();
+    const result = await fetchServerInfo();
+    expect(result).toBeNull();
+  });
+
+  it('returns null on exception', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.ping = jest.fn().mockRejectedValue(new Error('network'));
+    const { fetchServerInfo, getApi } = require('../subsonicService');
+    getApi();
+    const result = await fetchServerInfo();
+    expect(result).toBeNull();
+  });
+});
+
+describe('startScan', () => {
+  it('returns scan status on success', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.startScan = jest.fn().mockResolvedValue({
+      scanStatus: { scanning: true, count: 42 },
+    });
+    const { startScan, getApi } = require('../subsonicService');
+    getApi();
+    const result = await startScan();
+    expect(result).toEqual({ scanning: true, count: 42, lastScan: null, folderCount: null });
+    expect(SubsonicAPI.prototype.startScan).toHaveBeenCalledWith(undefined);
+  });
+
+  it('passes fullScan param', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.startScan = jest.fn().mockResolvedValue({
+      scanStatus: { scanning: true, count: 0 },
+    });
+    const { startScan, getApi } = require('../subsonicService');
+    getApi();
+    await startScan(true);
+    expect(SubsonicAPI.prototype.startScan).toHaveBeenCalledWith({ fullScan: true });
+  });
+
+  it('returns null when no API', async () => {
+    mockAuthStore.getState.mockReturnValue({ isLoggedIn: false } as any);
+    const { startScan } = require('../subsonicService');
+    expect(await startScan()).toBeNull();
+  });
+
+  it('returns null on exception', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.startScan = jest.fn().mockRejectedValue(new Error('fail'));
+    const { startScan, getApi } = require('../subsonicService');
+    getApi();
+    expect(await startScan()).toBeNull();
+  });
+});
+
+describe('getShares', () => {
+  it('returns shares on success', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getShares = jest.fn().mockResolvedValue({
+      shares: { share: [{ id: 'sh1', url: 'https://example.com/share/sh1' }] },
+    });
+    const { getShares, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getShares();
+    expect(result).toEqual([{ id: 'sh1', url: 'https://example.com/share/sh1' }]);
+  });
+
+  it('returns null when no API', async () => {
+    mockAuthStore.getState.mockReturnValue({ isLoggedIn: false } as any);
+    const { getShares } = require('../subsonicService');
+    expect(await getShares()).toBeNull();
+  });
+});
+
+describe('createShare', () => {
+  it('returns share on success', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.createShare = jest.fn().mockResolvedValue({
+      shares: { share: [{ id: 'sh1', url: 'https://example.com/share/sh1' }] },
+    });
+    const { createShare, getApi } = require('../subsonicService');
+    getApi();
+    const result = await createShare('s1', 'desc', 1234);
+    expect(result).toEqual({ id: 'sh1', url: 'https://example.com/share/sh1' });
+  });
+
+  it('returns null on exception', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.createShare = jest.fn().mockRejectedValue(new Error('fail'));
+    const { createShare, getApi } = require('../subsonicService');
+    getApi();
+    const result = await createShare('s1');
+    expect(result).toBeNull();
+  });
+});
+
+describe('createShareMultiple', () => {
+  it('delegates to createShare for single ID', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.createShare = jest.fn().mockResolvedValue({
+      shares: { share: [{ id: 'sh1' }] },
+    });
+    const { createShareMultiple, getApi } = require('../subsonicService');
+    getApi();
+    const result = await createShareMultiple(['s1'], 'desc');
+    expect(result).toEqual({ id: 'sh1' });
+  });
+
+  it('uses raw fetch for multiple IDs', async () => {
+    const mockFetch = jest.fn().mockResolvedValue({
+      json: jest.fn().mockResolvedValue({
+        'subsonic-response': {
+          status: 'ok',
+          shares: { share: [{ id: 'sh2' }] },
+        },
+      }),
+    });
+    global.fetch = mockFetch;
+    const { createShareMultiple, getApi } = require('../subsonicService');
+    getApi();
+    const result = await createShareMultiple(['s1', 's2'], 'desc', 9999);
+    expect(result).toEqual({ id: 'sh2' });
+    expect(mockFetch).toHaveBeenCalled();
+  });
+
+  it('returns null on exception for multiple IDs', async () => {
+    global.fetch = jest.fn().mockRejectedValue(new Error('network'));
+    const { createShareMultiple, getApi } = require('../subsonicService');
+    getApi();
+    const result = await createShareMultiple(['s1', 's2']);
+    expect(result).toBeNull();
+  });
+});
+
+describe('updateShare', () => {
+  it('returns true on success', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.updateShare = jest.fn().mockResolvedValue(undefined);
+    const { updateShare, getApi } = require('../subsonicService');
+    getApi();
+    const result = await updateShare('sh1', 'new desc', 5000);
+    expect(result).toBe(true);
+  });
+
+  it('returns false on exception', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.updateShare = jest.fn().mockRejectedValue(new Error('fail'));
+    const { updateShare, getApi } = require('../subsonicService');
+    getApi();
+    const result = await updateShare('sh1');
+    expect(result).toBe(false);
+  });
+});
+
+describe('deleteShare', () => {
+  it('returns true on success', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.deleteShare = jest.fn().mockResolvedValue(undefined);
+    const { deleteShare, getApi } = require('../subsonicService');
+    getApi();
+    const result = await deleteShare('sh1');
+    expect(result).toBe(true);
+  });
+
+  it('returns false on exception', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.deleteShare = jest.fn().mockRejectedValue(new Error('fail'));
+    const { deleteShare, getApi } = require('../subsonicService');
+    getApi();
+    const result = await deleteShare('sh1');
+    expect(result).toBe(false);
+  });
+});
+
+describe('getRecentlyAddedAlbums (success path)', () => {
+  it('returns albums from API response', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getAlbumList2 = jest.fn().mockResolvedValue({
+      albumList2: { album: [{ id: 'a1', name: 'New Album' }] },
+    });
+    const { getRecentlyAddedAlbums, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getRecentlyAddedAlbums(10);
+    expect(result).toEqual([{ id: 'a1', name: 'New Album' }]);
+    expect(SubsonicAPI.prototype.getAlbumList2).toHaveBeenCalledWith({ type: 'newest', size: 10 });
+  });
+
+  it('returns empty array when albumList2 is missing', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getAlbumList2 = jest.fn().mockResolvedValue({});
+    const { getRecentlyAddedAlbums, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getRecentlyAddedAlbums();
+    expect(result).toEqual([]);
+  });
+});
+
+describe('getTopSongs (success and error paths)', () => {
+  it('returns songs on success', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getTopSongs = jest.fn().mockResolvedValue({
+      topSongs: { song: [{ id: 's1', title: 'Hit' }] },
+    });
+    const { getTopSongs, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getTopSongs('Radiohead');
+    expect(result).toEqual([{ id: 's1', title: 'Hit' }]);
+  });
+
+  it('returns empty array when topSongs is missing', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getTopSongs = jest.fn().mockResolvedValue({});
+    const { getTopSongs, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getTopSongs('Radiohead');
+    expect(result).toEqual([]);
+  });
+
+  it('returns empty array on exception', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getTopSongs = jest.fn().mockRejectedValue(new Error('fail'));
+    const { getTopSongs, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getTopSongs('Radiohead');
+    expect(result).toEqual([]);
+  });
+});
+
+describe('getSimilarSongs (catch path)', () => {
+  it('returns empty array on exception', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getSimilarSongs = jest.fn().mockRejectedValue(new Error('fail'));
+    const { getSimilarSongs, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getSimilarSongs('s1');
+    expect(result).toEqual([]);
+  });
+});
+
+describe('getSimilarSongs2 (catch path)', () => {
+  it('returns empty array on exception', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getSimilarSongs2 = jest.fn().mockRejectedValue(new Error('fail'));
+    const { getSimilarSongs2, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getSimilarSongs2('ar1');
+    expect(result).toEqual([]);
+  });
+});
+
+describe('getAllPlaylists (success path)', () => {
+  it('returns playlists from API response', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getPlaylists = jest.fn().mockResolvedValue({
+      playlists: { playlist: [{ id: 'p1', name: 'My Playlist' }] },
+    });
+    const { getAllPlaylists, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getAllPlaylists();
+    expect(result).toEqual([{ id: 'p1', name: 'My Playlist' }]);
+  });
+
+  it('returns empty array when playlists is missing', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getPlaylists = jest.fn().mockResolvedValue({});
+    const { getAllPlaylists, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getAllPlaylists();
+    expect(result).toEqual([]);
+  });
+});
+
+describe('getStarred2 (success path)', () => {
+  it('returns starred items from API response', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getStarred2 = jest.fn().mockResolvedValue({
+      starred2: {
+        album: [{ id: 'a1' }],
+        artist: [{ id: 'ar1' }],
+        song: [{ id: 's1' }],
+      },
+    });
+    const { getStarred2, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getStarred2();
+    expect(result).toEqual({
+      albums: [{ id: 'a1' }],
+      artists: [{ id: 'ar1' }],
+      songs: [{ id: 's1' }],
+    });
+  });
+
+  it('returns empty arrays when starred2 is missing', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getStarred2 = jest.fn().mockResolvedValue({});
+    const { getStarred2, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getStarred2();
+    expect(result).toEqual({ albums: [], artists: [], songs: [] });
+  });
+});
+
+describe('search3 (success path)', () => {
+  it('returns search results from API response', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.search3 = jest.fn().mockResolvedValue({
+      searchResult3: {
+        album: [{ id: 'a1' }],
+        artist: [{ id: 'ar1' }],
+        song: [{ id: 's1' }],
+      },
+    });
+    const { search3, getApi } = require('../subsonicService');
+    getApi();
+    const result = await search3('test query');
+    expect(result).toEqual({
+      albums: [{ id: 'a1' }],
+      artists: [{ id: 'ar1' }],
+      songs: [{ id: 's1' }],
+    });
+  });
+
+  it('returns empty results for whitespace-only query', async () => {
+    const { search3 } = require('../subsonicService');
+    const result = await search3('   ');
+    expect(result).toEqual({ albums: [], artists: [], songs: [] });
+  });
+
+  it('returns empty arrays when searchResult3 is missing', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.search3 = jest.fn().mockResolvedValue({});
+    const { search3, getApi } = require('../subsonicService');
+    getApi();
+    const result = await search3('test');
+    expect(result).toEqual({ albums: [], artists: [], songs: [] });
+  });
+});
+
+describe('getScanStatus (success path)', () => {
+  it('returns scan status from API response', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getScanStatus = jest.fn().mockResolvedValue({
+      scanStatus: { scanning: false, count: 1234 },
+      lastScan: 1700000000000,
+      folderCount: 5,
+    });
+    const { getScanStatus, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getScanStatus();
+    expect(result).toEqual({
+      scanning: false,
+      count: 1234,
+      lastScan: 1700000000000,
+      folderCount: 5,
+    });
+  });
+
+  it('defaults count to 0 and optional fields to null', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getScanStatus = jest.fn().mockResolvedValue({
+      scanStatus: { scanning: true },
+    });
+    const { getScanStatus, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getScanStatus();
+    expect(result).toEqual({
+      scanning: true,
+      count: 0,
+      lastScan: null,
+      folderCount: null,
+    });
+  });
+
+  it('returns null on exception', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getScanStatus = jest.fn().mockRejectedValue(new Error('fail'));
+    const { getScanStatus, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getScanStatus();
+    expect(result).toBeNull();
+  });
+});
+
+describe('getShares (catch path)', () => {
+  it('returns null on exception', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.getShares = jest.fn().mockRejectedValue(new Error('fail'));
+    const { getShares, getApi } = require('../subsonicService');
+    getApi();
+    const result = await getShares();
+    expect(result).toBeNull();
+  });
+});
+
+describe('createShareMultiple (edge cases)', () => {
+  it('returns null for empty array', async () => {
+    const { createShareMultiple } = require('../subsonicService');
+    const result = await createShareMultiple([]);
+    expect(result).toBeNull();
+  });
+
+  it('returns null when fetch response status is not ok', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      json: jest.fn().mockResolvedValue({
+        'subsonic-response': { status: 'failed' },
+      }),
+    });
+    const { createShareMultiple, getApi } = require('../subsonicService');
+    getApi();
+    const result = await createShareMultiple(['s1', 's2']);
+    expect(result).toBeNull();
+  });
+
+  it('returns null when not logged in for multiple IDs', async () => {
+    mockAuthStore.getState.mockReturnValue({ isLoggedIn: false } as any);
+    const { createShareMultiple } = require('../subsonicService');
+    const result = await createShareMultiple(['s1', 's2']);
+    expect(result).toBeNull();
+  });
+});
+
+describe('fetchServerInfo (non-OpenSubsonic server)', () => {
+  it('returns info without extensions for standard Subsonic server', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.ping = jest.fn().mockResolvedValue({
+      status: 'ok',
+      version: '1.16.1',
+    });
+    const { fetchServerInfo, getApi } = require('../subsonicService');
+    getApi();
+    const result = await fetchServerInfo();
+    expect(result).not.toBeNull();
+    expect(result.openSubsonic).toBe(false);
+    expect(result.serverType).toBeNull();
+    expect(result.serverVersion).toBeNull();
+    expect(result.extensions).toEqual([]);
+  });
+});
+
+describe('login (edge cases)', () => {
+  it('falls back to response.version when serverVersion is falsy', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.ping = jest.fn().mockResolvedValue({
+      status: 'ok',
+      version: '1.16.0',
+      openSubsonic: true,
+      serverVersion: undefined,
+    });
+    const { login } = require('../subsonicService');
+    const result = await login('https://music.example.com', 'user', 'pass');
+    expect(result).toEqual({ success: true, version: '1.16.0' });
+  });
+
+  it('returns Authentication failed when error has no message and non-40 code', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.ping = jest.fn().mockResolvedValue({
+      status: 'failed',
+      error: {},
+    });
+    const { login } = require('../subsonicService');
+    const result = await login('https://music.example.com', 'user', 'pass');
+    expect(result).toEqual({ success: false, error: 'Authentication failed' });
+  });
+});

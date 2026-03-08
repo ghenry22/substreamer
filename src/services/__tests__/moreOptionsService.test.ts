@@ -101,6 +101,8 @@ import {
 import { favoritesStore } from '../../store/favoritesStore';
 import { albumDetailStore } from '../../store/albumDetailStore';
 import { playlistDetailStore } from '../../store/playlistDetailStore';
+import { artistDetailStore } from '../../store/artistDetailStore';
+import { playlistLibraryStore } from '../../store/playlistLibraryStore';
 import {
   toggleStar,
   addSongToQueue,
@@ -109,6 +111,7 @@ import {
   removeItemFromQueue,
   playMoreLikeThis,
   playSimilarArtistsMix,
+  saveArtistTopSongsPlaylist,
 } from '../moreOptionsService';
 
 const mockStarSong = starSong as jest.Mock;
@@ -374,5 +377,86 @@ describe('playSimilarArtistsMix', () => {
     await playSimilarArtistsMix({ id: 'ar1', name: 'Artist' } as any);
 
     expect(mockOverlayShowError).toHaveBeenCalledWith('Failed to load similar artists mix');
+  });
+});
+
+describe('saveArtistTopSongsPlaylist', () => {
+  const artist = { id: 'ar1', name: 'Test Artist' } as any;
+
+  it('creates playlist from cached top songs', async () => {
+    const topSongs = [{ id: 's1' }, { id: 's2' }];
+    (artistDetailStore.getState as jest.Mock).mockReturnValue({
+      artists: { ar1: { topSongs } },
+      fetchArtist: jest.fn(),
+    });
+    mockCreateNewPlaylist.mockResolvedValue(true);
+    const mockFetchAllPlaylists = jest.fn().mockResolvedValue(undefined);
+    (playlistLibraryStore.getState as jest.Mock).mockReturnValue({
+      fetchAllPlaylists: mockFetchAllPlaylists,
+    });
+
+    await saveArtistTopSongsPlaylist(artist);
+
+    expect(mockOverlayShow).toHaveBeenCalledWith('Creating…');
+    expect(mockCreateNewPlaylist).toHaveBeenCalledWith('Test Artist Top Songs', ['s1', 's2']);
+    expect(mockFetchAllPlaylists).toHaveBeenCalled();
+    expect(mockOverlayShowSuccess).toHaveBeenCalledWith('Playlist Created');
+  });
+
+  it('fetches artist when top songs are not cached', async () => {
+    const topSongs = [{ id: 's1' }];
+    const mockFetchArtist = jest.fn().mockResolvedValue({ topSongs });
+    (artistDetailStore.getState as jest.Mock).mockReturnValue({
+      artists: {},
+      fetchArtist: mockFetchArtist,
+    });
+    mockCreateNewPlaylist.mockResolvedValue(true);
+    const mockFetchAllPlaylists = jest.fn().mockResolvedValue(undefined);
+    (playlistLibraryStore.getState as jest.Mock).mockReturnValue({
+      fetchAllPlaylists: mockFetchAllPlaylists,
+    });
+
+    await saveArtistTopSongsPlaylist(artist);
+
+    expect(mockFetchArtist).toHaveBeenCalledWith('ar1');
+    expect(mockCreateNewPlaylist).toHaveBeenCalledWith('Test Artist Top Songs', ['s1']);
+    expect(mockOverlayShowSuccess).toHaveBeenCalledWith('Playlist Created');
+  });
+
+  it('shows error when no top songs are available', async () => {
+    const mockFetchArtist = jest.fn().mockResolvedValue({ topSongs: [] });
+    (artistDetailStore.getState as jest.Mock).mockReturnValue({
+      artists: {},
+      fetchArtist: mockFetchArtist,
+    });
+
+    await saveArtistTopSongsPlaylist(artist);
+
+    expect(mockOverlayShowError).toHaveBeenCalledWith('No top songs available');
+    expect(mockCreateNewPlaylist).not.toHaveBeenCalled();
+  });
+
+  it('shows error when createNewPlaylist returns false', async () => {
+    const topSongs = [{ id: 's1' }];
+    (artistDetailStore.getState as jest.Mock).mockReturnValue({
+      artists: { ar1: { topSongs } },
+      fetchArtist: jest.fn(),
+    });
+    mockCreateNewPlaylist.mockResolvedValue(false);
+
+    await saveArtistTopSongsPlaylist(artist);
+
+    expect(mockOverlayShowError).toHaveBeenCalledWith('Failed to create playlist');
+  });
+
+  it('shows error on exception', async () => {
+    (artistDetailStore.getState as jest.Mock).mockReturnValue({
+      artists: {},
+      fetchArtist: jest.fn().mockRejectedValue(new Error('network')),
+    });
+
+    await saveArtistTopSongsPlaylist(artist);
+
+    expect(mockOverlayShowError).toHaveBeenCalledWith('Failed to create playlist');
   });
 });

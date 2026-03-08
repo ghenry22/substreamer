@@ -166,3 +166,133 @@ describe('processScrobbles (via addCompletedScrobble)', () => {
     expect(pendingScrobbleStore.getState().pendingScrobbles).toHaveLength(1);
   });
 });
+
+describe('initScrobbleService', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+
+  it('processes pending scrobbles immediately and sets up a timer', async () => {
+    const intervalSpy = jest.spyOn(global, 'setInterval');
+
+    jest.resetModules();
+    const { pendingScrobbleStore: ps } = require('../../store/pendingScrobbleStore');
+    const { completedScrobbleStore: cs } = require('../../store/completedScrobbleStore');
+    const { getApi: ga } = require('../subsonicService');
+
+    ps.setState({
+      pendingScrobbles: [{
+        id: 'init-1',
+        song: { id: 's1', title: 'Song', artist: 'A' },
+        time: Date.now(),
+      }],
+    });
+    cs.setState({ completedScrobbles: [], stats: { totalPlays: 0, totalListeningSeconds: 0, uniqueArtists: {} } });
+
+    const mockScrobble = jest.fn().mockResolvedValue(undefined);
+    (ga as jest.Mock).mockReturnValue({ scrobble: mockScrobble });
+
+    const { initScrobbleService: init } = require('../scrobbleService');
+    init();
+
+    expect(intervalSpy).toHaveBeenCalledWith(expect.any(Function), 60_000);
+
+    // Flush the async processScrobbles call
+    await jest.advanceTimersByTimeAsync(0);
+
+    expect(mockScrobble).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 's1', submission: true }),
+    );
+
+    intervalSpy.mockRestore();
+  });
+
+  it('is idempotent — second call does not set up another timer', () => {
+    jest.resetModules();
+    const { initScrobbleService: init } = require('../scrobbleService');
+    const intervalSpy = jest.spyOn(global, 'setInterval');
+
+    init(); // first call
+    intervalSpy.mockClear();
+
+    init(); // second call — should be no-op
+    expect(intervalSpy).not.toHaveBeenCalled();
+
+    intervalSpy.mockRestore();
+  });
+
+  it('periodic timer triggers processScrobbles', async () => {
+    jest.resetModules();
+
+    const { pendingScrobbleStore: ps } = require('../../store/pendingScrobbleStore');
+    const { completedScrobbleStore: cs } = require('../../store/completedScrobbleStore');
+    const { getApi: ga } = require('../subsonicService');
+
+    ps.setState({ pendingScrobbles: [] });
+    cs.setState({ completedScrobbles: [], stats: { totalPlays: 0, totalListeningSeconds: 0, uniqueArtists: {} } });
+    (ga as jest.Mock).mockReturnValue(null);
+
+    const { initScrobbleService: init } = require('../scrobbleService');
+    init();
+
+    // Add a pending scrobble and enable API after init
+    ps.setState({
+      pendingScrobbles: [{
+        id: 'timer-1',
+        song: { id: 's2', title: 'Song2', artist: 'B' },
+        time: Date.now(),
+      }],
+    });
+    const mockScrobble = jest.fn().mockResolvedValue(undefined);
+    (ga as jest.Mock).mockReturnValue({ scrobble: mockScrobble });
+
+    await jest.advanceTimersByTimeAsync(60_000);
+
+    expect(mockScrobble).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 's2', submission: true }),
+    );
+  });
+
+  it('flushes pending queue when offline mode is disabled', async () => {
+    jest.resetModules();
+
+    const { pendingScrobbleStore: ps } = require('../../store/pendingScrobbleStore');
+    const { completedScrobbleStore: cs } = require('../../store/completedScrobbleStore');
+    const { getApi: ga } = require('../subsonicService');
+    const { offlineModeStore: oms } = require('../../store/offlineModeStore');
+    const { initScrobbleService: init } = require('../scrobbleService');
+
+    ps.setState({ pendingScrobbles: [] });
+    cs.setState({ completedScrobbles: [], stats: { totalPlays: 0, totalListeningSeconds: 0, uniqueArtists: {} } });
+    (ga as jest.Mock).mockReturnValue(null);
+
+    init();
+    await jest.advanceTimersByTimeAsync(0);
+
+    // Set up a pending scrobble and enable API
+    ps.setState({
+      pendingScrobbles: [{
+        id: 'offline-1',
+        song: { id: 's3', title: 'Song3', artist: 'C' },
+        time: Date.now(),
+      }],
+    });
+    const mockScrobble = jest.fn().mockResolvedValue(undefined);
+    (ga as jest.Mock).mockReturnValue({ scrobble: mockScrobble });
+
+    // Simulate going offline then back online
+    oms.setState({ offlineMode: true });
+    oms.setState({ offlineMode: false });
+
+    await jest.advanceTimersByTimeAsync(0);
+
+    expect(mockScrobble).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 's3', submission: true }),
+    );
+  });
+});
