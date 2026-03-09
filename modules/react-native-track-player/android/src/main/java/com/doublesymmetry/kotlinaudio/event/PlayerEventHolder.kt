@@ -50,6 +50,10 @@ class PlayerEventHolder {
     private var _onTimedMetadata = MutableSharedFlow<Metadata>(1)
     var onTimedMetadata = _onTimedMetadata.asSharedFlow()
 
+    private var _bufferFull = MutableSharedFlow<Boolean>(1)
+    /** Emitted when the entire track has been buffered (true) or reset on track change (false). */
+    var bufferFull = _bufferFull.asSharedFlow()
+
     private var _onPlayerActionTriggeredExternally = MutableSharedFlow<MediaSessionCallback>()
 
     /**
@@ -113,6 +117,12 @@ class PlayerEventHolder {
     internal fun updatePlaybackError(error: PlaybackError) {
         coroutineScope.launch {
             _playbackError.emit(error)
+        }
+    }
+
+    internal fun updateBufferFull(isFull: Boolean) {
+        coroutineScope.launch {
+            _bufferFull.emit(isFull)
         }
     }
 

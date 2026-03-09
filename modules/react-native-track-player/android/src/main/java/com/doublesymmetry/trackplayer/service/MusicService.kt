@@ -253,14 +253,6 @@ class MusicService : HeadlessJsMediaService() {
                         MusicEvents.PLAYBACK_PROGRESS_UPDATED,
                         it
                     )
-                    if (!hasEmittedBufferFull && player.duration > 0
-                        && player.bufferedPosition >= player.duration) {
-                        hasEmittedBufferFull = true
-                        Bundle().apply {
-                            putBoolean("isFull", true)
-                            emit(MusicEvents.PLAYBACK_BUFFER_FULL, this)
-                        }
-                    }
                 }
             }
         }
@@ -545,20 +537,31 @@ class MusicService : HeadlessJsMediaService() {
                     emitQueueEndedEvent()
                 }
 
-                // Detect stall: transition from PLAYING to BUFFERING means the buffer ran dry
+                // Detect stall: transition from PLAYING to BUFFERING means the buffer ran dry.
+                // Suppress shortly after a seek — ExoPlayer transitions through BUFFERING on seek
+                // and may briefly re-stall while filling the buffer at the new position.
+                val SEEK_STALL_SUPPRESSION_MS = 100L
                 if (previousState == AudioPlayerState.PLAYING && it == AudioPlayerState.BUFFERING) {
-                    Bundle().apply {
-                        putInt(TRACK_KEY, player.currentIndex)
-                        putDouble(POSITION_KEY, player.position.toSeconds())
-                        emit(MusicEvents.PLAYBACK_STALLED, this)
+                    val msSinceSeek = System.currentTimeMillis() - player.lastSeekTimeMs
+                    if (player.lastSeekTimeMs == 0L || msSinceSeek > SEEK_STALL_SUPPRESSION_MS) {
+                        Bundle().apply {
+                            putInt(TRACK_KEY, player.currentIndex)
+                            putDouble(POSITION_KEY, player.position.toSeconds())
+                            emit(MusicEvents.PLAYBACK_STALLED, this)
+                        }
                     }
+                }
+
+                // Buffer empty: any transition INTO BUFFERING from an active state.
+                if (it == AudioPlayerState.BUFFERING && previousState?.isActive == true
+                    && previousState != AudioPlayerState.BUFFERING) {
                     Bundle().apply {
                         putBoolean("isEmpty", true)
                         emit(MusicEvents.PLAYBACK_BUFFER_EMPTY, this)
                     }
                 }
 
-                // Detect buffer recovery: BUFFERING -> PLAYING/READY means buffer is no longer empty
+                // Buffer recovery: any transition OUT of BUFFERING to a ready/playing state.
                 if (previousState == AudioPlayerState.BUFFERING &&
                     (it == AudioPlayerState.PLAYING || it == AudioPlayerState.READY)) {
                     Bundle().apply {
@@ -579,6 +582,18 @@ class MusicService : HeadlessJsMediaService() {
                         player.previousIndex,
                         (it?.oldPosition ?: 0).toSeconds()
                     )
+                }
+            }
+        }
+
+        scope.launch {
+            event.bufferFull.collect { isFull ->
+                if (isFull && !hasEmittedBufferFull) {
+                    hasEmittedBufferFull = true
+                    Bundle().apply {
+                        putBoolean("isFull", true)
+                        emit(MusicEvents.PLAYBACK_BUFFER_FULL, this)
+                    }
                 }
             }
         }
@@ -703,10 +718,18 @@ class MusicService : HeadlessJsMediaService() {
                     when (it) {
                         is PositionChangedReason.SEEK,
                         is PositionChangedReason.SEEK_FAILED -> {
-                            Bundle().apply {
-                                putDouble("position", it.newPosition.toSeconds())
-                                putBoolean("didFinish", it is PositionChangedReason.SEEK)
-                                emit(MusicEvents.PLAYBACK_SEEK_COMPLETED, this)
+                            // Only emit seek completed for user-initiated seeks.
+                            // Skip/jump/load operations call exoPlayer.seekTo() internally,
+                            // which fires DISCONTINUITY_REASON_SEEK, but those are not real seeks.
+                            // lastSeekTimeMs is only set in BaseAudioPlayer.seek()/seekBy().
+                            val SEEK_EVENT_WINDOW_MS = 100L
+                            val msSinceSeek = System.currentTimeMillis() - player.lastSeekTimeMs
+                            if (player.lastSeekTimeMs > 0 && msSinceSeek <= SEEK_EVENT_WINDOW_MS) {
+                                Bundle().apply {
+                                    putDouble("position", it.newPosition.toSeconds())
+                                    putBoolean("didFinish", it is PositionChangedReason.SEEK)
+                                    emit(MusicEvents.PLAYBACK_SEEK_COMPLETED, this)
+                                }
                             }
                         }
                         else -> {

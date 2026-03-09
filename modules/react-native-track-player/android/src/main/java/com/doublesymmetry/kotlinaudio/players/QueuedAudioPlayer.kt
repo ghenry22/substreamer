@@ -231,9 +231,16 @@ class QueuedAudioPlayer(
      */
     fun jumpToItem(index: Int) {
         try {
-            playerEventHolder.updatePlaybackEndedReason(PlaybackEndedReason.JUMPED_TO_INDEX)
+            // Only emit playback-ended if the player was genuinely playing or paused.
+            // BUFFERING/LOADING after add()+prepare() is not "active playback".
+            val wasPlaying = playerState == AudioPlayerState.PLAYING
+                    || playerState == AudioPlayerState.PAUSED
+                    || playerState == AudioPlayerState.READY
             exoPlayer.seekTo(index, C.TIME_UNSET)
             exoPlayer.prepare()
+            if (wasPlaying) {
+                playerEventHolder.updatePlaybackEndedReason(PlaybackEndedReason.JUMPED_TO_INDEX)
+            }
         } catch (e: IllegalSeekPositionException) {
             throw Error("This item index $index does not exist. The size of the queue is ${queue.size} items.")
         }

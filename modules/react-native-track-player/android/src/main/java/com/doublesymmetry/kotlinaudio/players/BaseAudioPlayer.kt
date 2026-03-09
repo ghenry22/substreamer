@@ -70,6 +70,9 @@ abstract class BaseAudioPlayer internal constructor(
         get() = exoPlayer.currentMediaItem?.let { AudioItem.fromMediaItem(it) }
 
     var playbackError: PlaybackError? = null
+    /** Monotonic timestamp (ms) of the most recent seek request. Zero if no seek has occurred. */
+    var lastSeekTimeMs: Long = 0
+        private set
     var playerState: AudioPlayerState = AudioPlayerState.IDLE
         private set(value) {
             if (value != field) {
@@ -284,11 +287,13 @@ abstract class BaseAudioPlayer internal constructor(
 
     open fun seek(duration: Long, unit: TimeUnit) {
         val positionMs = TimeUnit.MILLISECONDS.convert(duration, unit)
+        lastSeekTimeMs = System.currentTimeMillis()
         exoPlayer.seekTo(positionMs)
     }
 
     open fun seekBy(offset: Long, unit: TimeUnit) {
         val positionMs = exoPlayer.currentPosition + TimeUnit.MILLISECONDS.convert(offset, unit)
+        lastSeekTimeMs = System.currentTimeMillis()
         exoPlayer.seekTo(positionMs)
     }
 
@@ -439,6 +444,11 @@ abstract class BaseAudioPlayer internal constructor(
                     Player.EVENT_IS_PLAYING_CHANGED -> {
                         if (player.isPlaying) {
                             playerState = AudioPlayerState.PLAYING
+                        }
+                    }
+                    Player.EVENT_IS_LOADING_CHANGED -> {
+                        if (!player.isLoading && duration > 0 && bufferedPosition >= duration) {
+                            playerEventHolder.updateBufferFull(true)
                         }
                     }
                 }
