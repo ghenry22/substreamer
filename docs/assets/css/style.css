@@ -65,9 +65,20 @@ img {
 }
 
 .nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-size: 20px;
   font-weight: 700;
   color: var(--text-primary);
+}
+
+.nav-logo {
+  width: 28px;
+  height: 28px;
+  background: var(--accent);
+  border-radius: 6px;
+  padding: 4px;
 }
 
 .nav-links {
@@ -297,6 +308,10 @@ section:nth-child(even) {
   color: var(--text-primary);
 }
 
+.server-tag:hover {
+  border-color: var(--accent);
+}
+
 .server-tag.recommended {
   border-color: var(--accent);
   color: var(--accent);
@@ -456,6 +471,37 @@ section:nth-child(even) {
 
 .github-icon:hover {
   fill: var(--text-primary);
+}
+
+/* Policy page */
+.policy-content h2 {
+  font-size: 22px;
+  font-weight: 600;
+  margin-top: 36px;
+  margin-bottom: 12px;
+}
+
+.policy-content p {
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.7;
+  margin-bottom: 12px;
+}
+
+.policy-content ul {
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.7;
+  margin-bottom: 12px;
+  padding-left: 24px;
+}
+
+.policy-content li {
+  margin-bottom: 4px;
+}
+
+.policy-content strong {
+  color: var(--text-primary);
 }
 
 /* Responsive */
