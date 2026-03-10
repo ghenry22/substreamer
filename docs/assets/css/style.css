@@ -114,14 +114,40 @@ img {
   transform: scale(0.97);
 }
 
-.btn-primary {
+.btn-primary,
+.nav-links .btn-primary {
   background: var(--accent);
   color: #fff;
 }
 
-.btn-primary:hover {
+.btn-primary:hover,
+.nav-links .btn-primary:hover {
   background: var(--accent-hover);
   color: #fff;
+}
+
+.btn-sponsor,
+.nav-links .btn-sponsor {
+  background: transparent;
+  color: #db61a2;
+  border: 1px solid #db61a2;
+}
+
+.btn-sponsor:hover,
+.nav-links .btn-sponsor:hover {
+  background: #db61a2;
+  color: #fff;
+}
+
+.btn-sponsor:hover .heart-icon {
+  fill: #fff;
+}
+
+.heart-icon {
+  width: 16px;
+  height: 16px;
+  fill: #db61a2;
+  transition: fill 0.2s;
 }
 
 .btn-outline {
