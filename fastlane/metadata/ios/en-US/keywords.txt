@@ -1,0 +1,1 @@
+subsonic,navidrome,music,streaming,player,airsonic,gonic,self-hosted

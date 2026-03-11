@@ -1,0 +1,15 @@
+Substreamer is a music streaming client for Subsonic-compatible servers including Navidrome, Airsonic, Gonic, and more.
+
+Features:
+- Stream your entire music library from anywhere
+- Background playback with lock screen controls
+- Offline mode with automatic music caching
+- Browse by album, artist, playlist, or genre
+- Search across your entire library
+- Scrobbling support
+- Customizable themes (light/dark mode)
+- High-quality streaming with configurable bitrate
+- Share tracks and albums
+- Star and rate your favorite music
+
+Substreamer connects to any server that implements the Subsonic API, giving you full control over your music collection.

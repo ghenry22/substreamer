@@ -1,0 +1,53 @@
+substreamer is a completely free app to use with subsonic compatible music servers (subsonic, airsonic, navidrome, ampache etc).  Your music when you want it, where you want it, online or offline.
+
+Easily see newly added, recently played and most played albums or just grab a list of random albums or songs for something different.
+
+Like that song?  Play similar songs with a tap!
+
+Discover new songs and old favorites by genre and time period with SubStreamer radio.  Pick your filters and get a random generated playlist, just like radio without the ads!
+
+Got a song stuck in your head?  Sure that you have it on an album somewhere but just can't remember where?  Just search!
+
+Connect your subsonic server with your last.fm account and Substreamer can also tap into last.fm to give you more information about artists, songs and albums in your collection and recommend similar artists, similar songs or give you a list of the top rated songs in your own collection for you to explore.
+
+Build up a play queue of your favorite rock songs and just hit save as playlist to have it stored on the server for later.
+
+Of course you can also just hit your favorite album and press play.
+
+Oh and if Music isn't enough we also support podcasts that you have synced with your subsonic server both online and offline!
+
+Features:
+Chromecast Support.
+
+Full offline support.  Store albums, songs and playlists and podcasts on your device and listen offline.
+
+Keep your starred songs automatically synced to your device!
+
+Automatic caching of upcoming songs for smooth playback.
+
+Easy playlist management for adding single or multiple tracks to a playlist or starting a new playlist.
+
+Radio mode generates random playlists for your chosen genre or time period (or both!)
+
+Quick lists of random / recently played / frequently played and newest albums right up front.
+
+Search for artists, albums, songs
+
+last.fm integration for fetching artist info, recommendations and playlists based on ratings
+
+last.fm scrobbling
+
+Airplay support (just open the volume controls in the player to access airplay directly or use the control center by swiping up from the bottom of the screen)
+
+if you run into any bugs please let me know, i use this app every day myself and am always trying to make it better! ghenry22.apps@gmail.com
+
+Requirements:
+
+Subsonic API compatible server (API level 1.13.0) or equivalent.
+
+Note that for SSL support you must have a valid certificate.  Invalid certificates will cause connection errors.
+
+Get Subsonic server at: http://www.subsonic.org
+Substreamer: http://substreamerapp.com
+
+*Please note all the music, images and names in the screenshots are free, and courtesy of Jamendo (jamendo.com) and the respective artists and provided for the subsonic demo server at http://demo.subsonic.org

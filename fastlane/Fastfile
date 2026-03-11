@@ -1,0 +1,76 @@
+default_platform(:ios)
+
+def asc_api_key
+  app_store_connect_api_key(
+    key_id: ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"],
+    issuer_id: ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"],
+    key_filepath: ENV["APP_STORE_CONNECT_API_KEY_KEY_FILEPATH"]
+  )
+end
+
+platform :ios do
+  desc "Push App Store metadata and screenshots"
+  lane :metadata do
+    deliver(
+      api_key: asc_api_key,
+      app_identifier: "com.ghenry22.substream2",
+      skip_binary_upload: true,
+      skip_app_version_update: true,
+      force: true,
+      precheck_include_in_app_purchases: false,
+      metadata_path: "./fastlane/metadata/ios",
+      screenshots_path: "./fastlane/screenshots"
+    )
+  end
+
+  desc "Pull current App Store metadata into local files"
+  lane :pull_metadata do
+    require 'json'
+    project_root = File.expand_path("..")
+    api_key_path = File.join(project_root, "fastlane", ".api_key.json")
+    key_content = File.read(File.expand_path(ENV["APP_STORE_CONNECT_API_KEY_KEY_FILEPATH"], project_root))
+    File.write(api_key_path, JSON.pretty_generate({
+      key_id: ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"],
+      issuer_id: ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"],
+      key: key_content,
+      in_house: false
+    }))
+    begin
+      sh("fastlane deliver download_metadata " \
+         "--app_identifier com.ghenry22.substream2 " \
+         "--metadata_path ./metadata/ios " \
+         "--use_live_version true " \
+         "--api_key_path #{api_key_path}")
+    ensure
+      File.delete(api_key_path) if File.exist?(api_key_path)
+    end
+    UI.success("iOS metadata downloaded to fastlane/metadata/ios/")
+  end
+end
+
+platform :android do
+  desc "Push Play Store metadata and screenshots"
+  lane :metadata do
+    supply(
+      package_name: "com.ghenry22.substream2",
+      skip_upload_aab: true,
+      skip_upload_apk: true,
+      skip_upload_images: false,
+      skip_upload_screenshots: false,
+      metadata_path: "./fastlane/metadata/android",
+      track: "beta"
+    )
+  end
+
+  desc "Pull current Play Store metadata into local files"
+  lane :pull_metadata do
+    project_root = File.expand_path("..")
+    json_key = File.expand_path(ENV["SUPPLY_JSON_KEY_FILE"], project_root)
+    sh("fastlane supply init " \
+       "--package_name com.ghenry22.substream2 " \
+       "--metadata_path ./metadata/android " \
+       "--json_key #{json_key} " \
+       "--track beta")
+    UI.success("Android metadata downloaded to fastlane/metadata/android/")
+  end
+end

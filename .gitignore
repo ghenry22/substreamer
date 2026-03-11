@@ -33,6 +33,7 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
 
 # release script temp file
@@ -55,3 +56,16 @@ modules/*/ios/build/
 /ios
 /android
 FEATURES.md
+
+# ruby / bundler
+vendor/
+Gemfile.lock
+
+# fastlane
+fastlane/.env
+fastlane/.api_key.json
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+play-store-key.json
