@@ -5,6 +5,7 @@ on:
     branches: [master]
     paths:
       - 'fastlane/metadata/**'
+  workflow_dispatch:
 
 env:
   FASTLANE_SKIP_DOCS: '1'
