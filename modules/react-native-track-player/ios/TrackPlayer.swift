@@ -250,12 +250,12 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
         // activate the audio session when there is an item to be played
         // and the player has been configured to start when it is ready loading:
         if (player.playWhenReady) {
-            try? audioSessionController.activateSession()
             if #available(iOS 11.0, *) {
                 try? AVAudioSession.sharedInstance().setCategory(sessionCategory, mode: sessionCategoryMode, policy: sessionCategoryPolicy, options: sessionCategoryOptions)
             } else {
                 try? AVAudioSession.sharedInstance().setCategory(sessionCategory, mode: sessionCategoryMode, options: sessionCategoryOptions)
             }
+            try? audioSessionController.activateSession()
         }
     }
 
@@ -473,6 +473,20 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
     public func play(resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
         if (rejectWhenNotInitialized(reject: reject)) { return }
         player.play()
+
+        // Synchronously publish core now-playing info so lock screen controls
+        // appear immediately, even before the async NowPlayingInfoController
+        // dispatch completes. The controller will overwrite with full metadata.
+        if let item = player.currentItem {
+            var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+            nowPlayingInfo[MPMediaItemPropertyTitle] = item.getTitle()
+            nowPlayingInfo[MPMediaItemPropertyArtist] = item.getArtist()
+            nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = item.getAlbumTitle()
+            nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = 1.0
+            nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = (item as? Track)?.duration
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+        }
+
         resolve(NSNull())
     }
 
