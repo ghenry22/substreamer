@@ -161,15 +161,19 @@ class MusicService : HeadlessJsMediaService() {
     private var latestOptions: Bundle? = null
     private var commandStarted = false
 
+    // Track last processed media key event to prevent double-handling
+    // when both onStartCommand and onMediaButtonEvent fire for the same press
+    private var lastMediaKeyDownTime: Long = -1
+    private var lastMediaKeyCode: Int = -1
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         onStartCommandIntentValid = intent != null
         Timber.d("onStartCommand: ${intent?.action}, ${intent?.`package`}")
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            // Pre-Android 13: media button intents arrive via onStartCommand with
-            // EXTRA_KEY_EVENT. From Tiramisu onward, Media3 routes them through
-            // MediaSession.Callback.onMediaButtonEvent() instead.
-            onMediaKeyEvent(intent)
-        }
+        // Some OEMs (OnePlus OxygenOS < 15, Huawei HarmonyOS) route media button
+        // intents here instead of through MediaSession.Callback.onMediaButtonEvent(),
+        // even on Android 13+. Always attempt to handle them here — deduplication
+        // in onMediaKeyEvent() prevents double-handling on standard devices.
+        onMediaKeyEvent(intent)
         // Media3's MediaSessionService auto-starts the service when play() is called,
         // which re-invokes onStartCommand. Guard against re-registering the headless
         // JS task on subsequent calls.
@@ -908,6 +912,16 @@ class MusicService : HeadlessJsMediaService() {
         }
 
         if (keyEvent?.action == KeyEvent.ACTION_DOWN) {
+            // Deduplicate: on well-behaved Android 13+ devices, media button
+            // intents arrive at both onStartCommand and onMediaButtonEvent.
+            // Skip if this exact press was already processed.
+            if (keyEvent.downTime == lastMediaKeyDownTime &&
+                keyEvent.keyCode == lastMediaKeyCode) {
+                return true // already handled
+            }
+            lastMediaKeyDownTime = keyEvent.downTime
+            lastMediaKeyCode = keyEvent.keyCode
+
             return when (keyEvent.keyCode) {
                 KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
                     emit(MusicEvents.BUTTON_PLAY_PAUSE)
