@@ -166,7 +166,7 @@ console.log('  ✓ Updated CHANGELOG.md');
 appJson.expo.version = newVersion;
 const currentBuildNum = parseInt(appJson.expo.ios.buildNumber, 10);
 appJson.expo.ios.buildNumber = String(currentBuildNum + 1);
-appJson.expo.android.versionCode = currentBuildNum + 1;
+appJson.expo.android.versionCode = 80000000 + currentBuildNum + 1;
 writeJSON(APP_JSON, appJson);
 console.log(`  ✓ Updated app.json (build ${currentBuildNum} → ${currentBuildNum + 1})`);
 

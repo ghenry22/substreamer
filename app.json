@@ -38,7 +38,7 @@
         "ACCESS_FINE_LOCATION"
       ],
       "predictiveBackGestureEnabled": false,
-      "versionCode": 108,
+      "versionCode": 80000108,
       "package": "com.ghenry22.substream2"
     },
     "web": {
