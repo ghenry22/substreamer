@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import { useTheme } from '../hooks/useTheme';
+import { useThemedAlert } from '../hooks/useThemedAlert';
+import { ThemedAlert } from '../components/ThemedAlert';
 import { autoOfflineStore, type AutoOfflineMode } from '../store/autoOfflineStore';
 import { offlineModeStore } from '../store/offlineModeStore';
 import {
@@ -16,6 +18,7 @@ import { sslCertStore, type TrustedCertEntry } from '../store/sslCertStore';
 
 export function SettingsConnectivityScreen() {
   const { colors } = useTheme();
+  const { alert, alertProps } = useThemedAlert();
 
   const offlineMode = offlineModeStore((s) => s.offlineMode);
   const toggleOfflineMode = offlineModeStore((s) => s.toggleOfflineMode);
@@ -155,7 +158,7 @@ export function SettingsConnectivityScreen() {
   }, [ssidPromptValue, ssidEditTarget]);
 
   const handleRemoveSSID = useCallback((ssid: string) => {
-    Alert.alert(
+    alert(
       'Remove Network',
       `Remove "${ssid}" from your home networks?`,
       [
@@ -167,7 +170,7 @@ export function SettingsConnectivityScreen() {
         },
       ],
     );
-  }, []);
+  }, [alert]);
 
   const showCurrentSSIDRow =
     autoMode === 'home-wifi' &&
@@ -179,7 +182,7 @@ export function SettingsConnectivityScreen() {
   const trustedCertEntries = Object.entries(trustedCerts) as [string, TrustedCertEntry][];
 
   const handleRemoveTrustedCert = useCallback((hostname: string) => {
-    Alert.alert(
+    alert(
       'Remove Trusted Certificate',
       `Remove the trusted certificate for ${hostname}? You will need to re-accept the certificate on next connection.`,
       [
@@ -195,7 +198,7 @@ export function SettingsConnectivityScreen() {
         },
       ],
     );
-  }, []);
+  }, [alert]);
 
   const dynamicStyles = useMemo(
     () =>
@@ -209,6 +212,7 @@ export function SettingsConnectivityScreen() {
   );
 
   return (
+    <>
     <ScrollView
       style={[styles.container, dynamicStyles.container]}
       contentContainerStyle={styles.content}
@@ -536,6 +540,8 @@ export function SettingsConnectivityScreen() {
         </View>
       </View>
     </ScrollView>
+    <ThemedAlert {...alertProps} />
+    </>
   );
 }
 

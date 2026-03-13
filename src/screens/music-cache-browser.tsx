@@ -3,7 +3,6 @@ import { FlashList } from '@shopify/flash-list';
 import { memo, useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -19,6 +18,8 @@ import {
   type SwipeAction,
 } from '../components/SwipeableRow';
 import { useTheme } from '../hooks/useTheme';
+import { ThemedAlert } from '../components/ThemedAlert';
+import { useThemedAlert } from '../hooks/useThemedAlert';
 import {
   deleteCachedItem,
   redownloadItem,
@@ -184,6 +185,7 @@ const CacheRow = memo(function CacheRow({
 
 export function MusicCacheBrowserScreen() {
   const { colors } = useTheme();
+  const { alert, alertProps } = useThemedAlert();
   const cachedItems = musicCacheStore((s) => s.cachedItems);
   const [filter, setFilter] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -207,7 +209,7 @@ export function MusicCacheBrowserScreen() {
   const handleDelete = useCallback((itemId: string) => {
     const item = musicCacheStore.getState().cachedItems[itemId];
     if (!item) return;
-    Alert.alert(
+    alert(
       'Remove Download',
       `Delete "${item.name}" and free ${formatBytes(item.totalBytes)}?\n\nThis may affect offline access to your music.`,
       [
@@ -227,7 +229,7 @@ export function MusicCacheBrowserScreen() {
   const handleRedownload = useCallback((itemId: string) => {
     const item = musicCacheStore.getState().cachedItems[itemId];
     if (!item) return;
-    Alert.alert(
+    alert(
       'Redownload',
       `Redownload all tracks in "${item.name}" with current quality settings?`,
       [
@@ -293,6 +295,7 @@ export function MusicCacheBrowserScreen() {
   );
 
   return (
+    <>
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {listHeader}
       <FlashList
@@ -305,6 +308,8 @@ export function MusicCacheBrowserScreen() {
         onScrollBeginDrag={closeOpenRow}
       />
     </View>
+    <ThemedAlert {...alertProps} />
+    </>
   );
 }
 

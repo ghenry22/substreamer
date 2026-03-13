@@ -3,7 +3,6 @@ import * as Clipboard from 'expo-clipboard';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -25,6 +24,8 @@ import Animated, {
 import { EditShareSheet } from '../components/EditShareSheet';
 import { EmptyState } from '../components/EmptyState';
 import { useTheme } from '../hooks/useTheme';
+import { useThemedAlert } from '../hooks/useThemedAlert';
+import { ThemedAlert } from '../components/ThemedAlert';
 import { offlineModeStore } from '../store/offlineModeStore';
 import { type Share } from '../services/subsonicService';
 import { minDelay } from '../utils/stringHelpers';
@@ -83,6 +84,7 @@ function getShareSubtitle(share: Share): string {
 
 export function SettingsSharesScreen() {
   const { colors } = useTheme();
+  const { alert, alertProps } = useThemedAlert();
   const offlineMode = offlineModeStore((s) => s.offlineMode);
   const serverUrl = authStore((s) => s.serverUrl);
   const shareBaseUrl = shareSettingsStore((s) => s.shareBaseUrl);
@@ -145,7 +147,7 @@ export function SettingsSharesScreen() {
   const handleDelete = useCallback(
     (share: Share) => {
       const title = getShareTitle(share);
-      Alert.alert('Delete Share', `Delete "${title}"? This cannot be undone.`, [
+      alert('Delete Share', `Delete "${title}"? This cannot be undone.`, [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
@@ -163,7 +165,7 @@ export function SettingsSharesScreen() {
             cancelAnimation(deleteAnim);
             setDeletingId(null);
             if (!success) {
-              Alert.alert('Error', 'Failed to delete share.');
+              alert('Error', 'Failed to delete share.');
             }
           },
         },
@@ -399,6 +401,7 @@ export function SettingsSharesScreen() {
       </ScrollView>
 
       <EditShareSheet />
+      <ThemedAlert {...alertProps} />
     </>
   );
 }

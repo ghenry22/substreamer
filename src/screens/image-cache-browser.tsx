@@ -3,7 +3,6 @@ import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Pressable,
   StyleSheet,
@@ -15,6 +14,8 @@ import {
 import { EmptyState } from '../components/EmptyState';
 import { useTransitionComplete } from '../hooks/useTransitionComplete';
 import { useTheme } from '../hooks/useTheme';
+import { ThemedAlert } from '../components/ThemedAlert';
+import { useThemedAlert } from '../hooks/useThemedAlert';
 import {
   deleteCachedImage,
   listCachedImagesAsync,
@@ -118,6 +119,7 @@ const CacheRow = memo(function CacheRow({
 
 export function ImageCacheBrowserScreen() {
   const { colors } = useTheme();
+  const { alert, alertProps } = useThemedAlert();
   const transitionComplete = useTransitionComplete();
   const [entries, setEntries] = useState<CachedImageEntry[]>([]);
   const [filter, setFilter] = useState('');
@@ -191,7 +193,7 @@ export function ImageCacheBrowserScreen() {
 
   const handleDelete = useCallback(
     (coverArtId: string) => {
-      Alert.alert(
+      alert(
         'Delete Cached Image',
         'Remove all cached variants for this image?\n\nThis may affect offline access to your music.',
         [
@@ -270,6 +272,7 @@ export function ImageCacheBrowserScreen() {
   );
 
   return (
+    <>
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {listHeader}
       <FlashList
@@ -286,6 +289,8 @@ export function ImageCacheBrowserScreen() {
         ListEmptyComponent={listEmpty}
       />
     </View>
+    <ThemedAlert {...alertProps} />
+    </>
   );
 }
 

@@ -3,7 +3,6 @@ import { useNavigation } from 'expo-router';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -22,9 +21,11 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { CachedImage } from '../components/CachedImage';
+import { ThemedAlert } from '../components/ThemedAlert';
 import { EmptyState } from '../components/EmptyState';
 import { closeOpenRow, SwipeableRow, type SwipeAction } from '../components/SwipeableRow';
 import { useTheme } from '../hooks/useTheme';
+import { useThemedAlert } from '../hooks/useThemedAlert';
 import { getDownloadSpeed, getActiveDownloadCount } from '../services/downloadSpeedTracker';
 import { cancelDownload, clearDownloadQueue, forceRecoverDownloadsAsync, retryDownload } from '../services/musicCacheService';
 import {
@@ -238,6 +239,7 @@ const QueueRow = memo(function QueueRow({
 
 export function DownloadQueueScreen() {
   const { colors } = useTheme();
+  const { alert, alertProps } = useThemedAlert();
   const navigation = useNavigation();
   const downloadQueue = musicCacheStore((s) => s.downloadQueue);
 
@@ -258,7 +260,7 @@ export function DownloadQueueScreen() {
   /* ---- Header buttons ---- */
 
   const handleClearAll = useCallback(() => {
-    Alert.alert(
+    alert(
       'Clear Download Queue',
       'This will cancel all downloads and remove partially downloaded files. Continue?',
       [
@@ -316,7 +318,7 @@ export function DownloadQueueScreen() {
     if (!item) return;
 
     if (item.status === 'downloading') {
-      Alert.alert('Cancel Download', `Cancel the download of "${item.name}"?`, [
+      alert('Cancel Download', `Cancel the download of "${item.name}"?`, [
         { text: 'Keep', style: 'cancel' },
         {
           text: 'Cancel Download',
@@ -417,6 +419,7 @@ export function DownloadQueueScreen() {
         containerStyle={styles.container}
         contentContainerStyle={contentStyle}
       />
+      <ThemedAlert {...alertProps} />
     </View>
   );
 }

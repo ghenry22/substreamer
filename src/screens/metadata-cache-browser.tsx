@@ -3,7 +3,6 @@ import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -13,7 +12,9 @@ import {
 
 import { CachedImage } from '../components/CachedImage';
 import { EmptyState } from '../components/EmptyState';
+import { ThemedAlert } from '../components/ThemedAlert';
 import { useTheme } from '../hooks/useTheme';
+import { useThemedAlert } from '../hooks/useThemedAlert';
 import { albumDetailStore } from '../store/albumDetailStore';
 import { artistDetailStore } from '../store/artistDetailStore';
 import { offlineModeStore } from '../store/offlineModeStore';
@@ -186,6 +187,7 @@ const MetadataRow = memo(function MetadataRow({
 
 export function MetadataCacheBrowserScreen() {
   const { colors } = useTheme();
+  const { alert, alertProps } = useThemedAlert();
   const [entries, setEntries] = useState<MetadataEntry[]>(() => buildEntries());
   const [filter, setFilter] = useState('');
   const listRef = useRef<FlashListRef<MetadataEntry>>(null);
@@ -251,7 +253,7 @@ export function MetadataCacheBrowserScreen() {
 
   const handleDelete = useCallback(
     (entry: MetadataEntry) => {
-      Alert.alert(
+      alert(
         'Delete Cached Metadata',
         `Remove cached data for "${entry.name}"?\n\nThis may affect offline access to your music.`,
         [
@@ -331,6 +333,7 @@ export function MetadataCacheBrowserScreen() {
   );
 
   return (
+    <>
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {listHeader}
       <FlashList
@@ -345,6 +348,8 @@ export function MetadataCacheBrowserScreen() {
         ListEmptyComponent={listEmpty}
       />
     </View>
+    <ThemedAlert {...alertProps} />
+    </>
   );
 }
 

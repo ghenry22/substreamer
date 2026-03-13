@@ -13,7 +13,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Platform,
   Pressable,
   StyleSheet,
@@ -47,6 +46,8 @@ import { type ThemeColors } from '../constants/theme';
 import { useColorExtraction } from '../hooks/useColorExtraction';
 import { useIsStarred } from '../hooks/useIsStarred';
 import { useTheme } from '../hooks/useTheme';
+import { ThemedAlert } from '../components/ThemedAlert';
+import { useThemedAlert } from '../hooks/useThemedAlert';
 import { toggleStar } from '../services/moreOptionsService';
 import { offlineModeStore } from '../store/offlineModeStore';
 import {
@@ -71,6 +72,7 @@ const HEADER_BAR_HEIGHT = 44;
 
 export function PlayerView() {
   const { colors } = useTheme();
+  const { alert, alertProps } = useThemedAlert();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const router = useRouter();
@@ -138,7 +140,7 @@ export function PlayerView() {
   }, []);
 
   const handleClearQueue = useCallback(() => {
-    Alert.alert(
+    alert(
       'Clear Queue',
       'This will stop playback and clear the queue.',
       [
@@ -325,6 +327,7 @@ export function PlayerView() {
           </Animated.View>
         )}
       </View>
+      <ThemedAlert {...alertProps} />
     </>
   );
 }

@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 
 import { InfoRow } from '../components/InfoRow';
 import { useTheme } from '../hooks/useTheme';
+import { useThemedAlert } from '../hooks/useThemedAlert';
+import { ThemedAlert } from '../components/ThemedAlert';
 import {
   fetchScanStatus,
   startScan as startLibraryScan,
@@ -14,6 +16,7 @@ import { serverInfoStore } from '../store/serverInfoStore';
 
 export function SettingsServerScreen() {
   const { colors } = useTheme();
+  const { alert, alertProps } = useThemedAlert();
 
   const serverInfo = serverInfoStore(
     useShallow((s) => ({
@@ -49,7 +52,7 @@ export function SettingsServerScreen() {
   }, []);
 
   const handleFullScan = useCallback(() => {
-    Alert.alert(
+    alert(
       'Full Scan',
       'Full scans re-read all files and may take a long time. Continue?',
       [
@@ -71,6 +74,7 @@ export function SettingsServerScreen() {
   );
 
   return (
+    <>
     <ScrollView
       style={[styles.container, dynamicStyles.container]}
       contentContainerStyle={styles.content}
@@ -220,6 +224,8 @@ export function SettingsServerScreen() {
         </View>
       </View>
     </ScrollView>
+    <ThemedAlert {...alertProps} />
+    </>
   );
 }
 

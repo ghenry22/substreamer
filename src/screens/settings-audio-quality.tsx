@@ -1,8 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { useTheme } from '../hooks/useTheme';
+import { useThemedAlert } from '../hooks/useThemedAlert';
+import { ThemedAlert } from '../components/ThemedAlert';
 import {
   playbackSettingsStore,
   type MaxBitRate,
@@ -24,6 +26,7 @@ const FORMAT_OPTIONS: { value: StreamFormat; label: string }[] = [
 
 export function SettingsAudioQualityScreen() {
   const { colors } = useTheme();
+  const { alert, alertProps } = useThemedAlert();
   const [bitrateOpen, setBitrateOpen] = useState(false);
   const [formatOpen, setFormatOpen] = useState(false);
   const [dlBitrateOpen, setDlBitrateOpen] = useState(false);
@@ -44,7 +47,7 @@ export function SettingsAudioQualityScreen() {
   const isDefault = isStreamingDefault && isDownloadDefault;
 
   const handleResetDefaults = useCallback(() => {
-    Alert.alert(
+    alert(
       'Reset to Defaults',
       'This will reset all audio quality settings to their default values. Continue?',
       [
@@ -78,6 +81,7 @@ export function SettingsAudioQualityScreen() {
   );
 
   return (
+    <>
     <ScrollView
       style={[styles.container, dynamicStyles.container]}
       contentContainerStyle={styles.content}
@@ -325,6 +329,8 @@ export function SettingsAudioQualityScreen() {
         </Pressable>
       )}
     </ScrollView>
+    <ThemedAlert {...alertProps} />
+    </>
   );
 }
 

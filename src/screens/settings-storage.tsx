@@ -2,12 +2,14 @@ import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { StorageUsageBar } from '../components/StorageUsageBar';
 import { useTheme } from '../hooks/useTheme';
+import { useThemedAlert } from '../hooks/useThemedAlert';
+import { ThemedAlert } from '../components/ThemedAlert';
 import {
   createBackup,
   listBackups,
@@ -53,6 +55,7 @@ type RestoreState = 'idle' | 'restoring' | 'success' | 'error';
 export function SettingsStorageScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const { alert, alertProps } = useThemedAlert();
   const insets = useSafeAreaInsets();
   const [concurrentSheetVisible, setConcurrentSheetVisible] = useState(false);
   const [imageConcurrentSheetVisible, setImageConcurrentSheetVisible] = useState(false);
@@ -139,7 +142,7 @@ export function SettingsStorageScreen() {
   }, []);
 
   const handleClearCache = useCallback(() => {
-    Alert.alert(
+    alert(
       'Clear Image Cache',
       `This will remove ${formatBytes(totalBytes)} of cached images. Continue?\n\nThis may affect offline access to your music.`,
       [
@@ -157,7 +160,7 @@ export function SettingsStorageScreen() {
   }, [totalBytes]);
 
   const handleClearMetadataCache = useCallback(() => {
-    Alert.alert(
+    alert(
       'Clear Metadata Cache',
       `This will remove ${totalMetadataCount} cached ${totalMetadataCount === 1 ? 'item' : 'items'}. Continue?\n\nThis may affect offline access to your music.`,
       [
@@ -176,7 +179,7 @@ export function SettingsStorageScreen() {
   }, [totalMetadataCount]);
 
   const handleClearMusicCache = useCallback(() => {
-    Alert.alert(
+    alert(
       'Clear Downloaded Music',
       `This will remove ${formatBytes(musicCacheBytes)} of downloaded music. Continue?\n\nThis will stop playback and clear the current queue, as any downloaded items in the queue would fail to play. This will also break offline access to your music.`,
       [
@@ -195,7 +198,7 @@ export function SettingsStorageScreen() {
   }, [musicCacheBytes]);
 
   const handleClearAll = useCallback(() => {
-    Alert.alert(
+    alert(
       'Clear All Data',
       'This will remove ALL offline data including downloaded music, cached cover art, and metadata.\n\nThis data is needed for offline playback and efficient online functionality. Rebuilding it requires re-downloading music and re-fetching metadata from your server.\n\nDon\'t do this unless you are really sure.',
       [
@@ -227,7 +230,7 @@ export function SettingsStorageScreen() {
       await createBackup();
       await pruneBackups();
     } catch {
-      Alert.alert('Backup Failed', 'Something went wrong while creating the backup. Please try again.');
+      alert('Backup Failed', 'Something went wrong while creating the backup. Please try again.');
     } finally {
       setBackingUp(false);
     }
@@ -278,7 +281,7 @@ export function SettingsStorageScreen() {
       timeStyle: 'short',
     });
 
-    Alert.alert(
+    alert(
       'Restore Backup?',
       `This will replace your current data with the backup from ${dateStr} (${parts.join(', ')}).\n\nThis cannot be undone.`,
       [
@@ -947,6 +950,7 @@ export function SettingsStorageScreen() {
         )}
       </View>
     </Modal>
+    <ThemedAlert {...alertProps} />
     </>
   );
 }

@@ -15,7 +15,6 @@ import { usePathname, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Pressable,
   StyleSheet,
@@ -24,6 +23,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ThemedAlert } from './ThemedAlert';
+import { useThemedAlert } from '../hooks/useThemedAlert';
 import { AlbumDetailsModal } from './AlbumDetailsModal';
 import { StarRatingDisplay } from './StarRating';
 import { useDownloadStatus, type DownloadStatus } from '../hooks/useDownloadStatus';
@@ -183,6 +184,7 @@ export function MoreOptionsSheet() {
   );
 
   const { colors } = useTheme();
+  const { alert, alertProps } = useThemedAlert();
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
@@ -371,7 +373,7 @@ export function MoreOptionsSheet() {
     handleClose();
 
     setTimeout(() => {
-      Alert.alert(
+      alert(
         'Delete Playlist',
         `Are you sure you want to delete "${playlistName}"?`,
         [
@@ -1247,6 +1249,7 @@ export function MoreOptionsSheet() {
           }}
         />
       )}
+      <ThemedAlert {...alertProps} />
     </>
   );
 }
