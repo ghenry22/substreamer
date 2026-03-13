@@ -19,7 +19,7 @@ const PERSIST_KEY = 'substreamer-theme';
 export const themeStore = create<ThemeState>()(
   persist(
     (set) => ({
-      themePreference: 'system',
+      themePreference: 'dark',
       primaryColor: null,
       setThemePreference: (themePreference) => set({ themePreference }),
       setPrimaryColor: (primaryColor) => set({ primaryColor }),
