@@ -153,6 +153,23 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
         let mappedCategoryOpts = sessionCategoryOptsStr?.compactMap { SessionCategoryOptions(rawValue: $0)?.mapConfigToAVAudioSessionCategoryOptions() } ?? []
         sessionCategoryOptions = AVAudioSession.CategoryOptions(mappedCategoryOpts)
 
+        // Set the audio session category eagerly so that any subsequent implicit
+        // activation by AVPlayer (e.g. when applyAVPlayerRate() sets rate = 1.0
+        // inside play()) happens under .playback rather than the default
+        // .soloAmbient. configureAudioSession() below will deactivate the session
+        // (no current item yet), but the category persists across deactivation.
+        if #available(iOS 11.0, *) {
+            try? AVAudioSession.sharedInstance().setCategory(
+                sessionCategory, mode: sessionCategoryMode,
+                policy: sessionCategoryPolicy, options: sessionCategoryOptions
+            )
+        } else {
+            try? AVAudioSession.sharedInstance().setCategory(
+                sessionCategory, mode: sessionCategoryMode,
+                options: sessionCategoryOptions
+            )
+        }
+
         configureAudioSession()
 
         // setup event listeners
@@ -235,6 +252,15 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
         }
 
         hasInitialized = true
+
+        // Enable remote control event reception before any playback starts.
+        // This was previously dispatched lazily in handleAudioPlayerCurrentItemChange,
+        // but the async dispatch could execute after play() had already returned,
+        // leaving remote controls greyed out on the first track.
+        DispatchQueue.main.async {
+            UIApplication.shared.beginReceivingRemoteControlEvents()
+        }
+
         resolve(NSNull())
     }
 
@@ -472,6 +498,16 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
     @objc
     public func play(resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
         if (rejectWhenNotInitialized(reject: reject)) { return }
+
+        // Pre-activate the audio session BEFORE player.play() sets AVPlayer.rate.
+        // On cold start, the playWhenReady didSet chain calls applyAVPlayerRate()
+        // before configureAudioSession(), causing AVPlayer to implicitly activate
+        // the session. With the category set to .playback in setupPlayer(), this
+        // explicit activation ensures .playback is active before rate is set.
+        if player.currentItem != nil && !player.playWhenReady {
+            try? audioSessionController.activateSession()
+        }
+
         player.play()
 
         // Synchronously publish core now-playing info so lock screen controls
@@ -774,9 +810,9 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
     ) {
 
         if let item = item {
-            DispatchQueue.main.async {
-                UIApplication.shared.beginReceivingRemoteControlEvents();
-            }
+            // beginReceivingRemoteControlEvents() is called once during setupPlayer().
+            // No need to re-register on every track change.
+
             // Update now playing controller with isLiveStream option from track
             if self.player.automaticallyUpdateNowPlayingInfo {
                 let isTrackLiveStream = (item as? Track)?.isLiveStream ?? false
