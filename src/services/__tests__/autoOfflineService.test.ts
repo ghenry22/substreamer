@@ -8,6 +8,7 @@ jest.mock('@react-native-community/netinfo', () => ({
       return () => { mockNetInfoCallback = null; };
     }),
     fetch: jest.fn(),
+    refresh: jest.fn(),
   },
 }));
 
@@ -36,6 +37,7 @@ import {
   startAutoOffline,
   stopAutoOffline,
   getCurrentSSID,
+  getCurrentSSIDWithRetry,
   requestLocationPermission,
   checkLocationPermission,
   openAppSettings,
@@ -43,6 +45,7 @@ import {
 
 const mockAddEventListener = NetInfo.addEventListener as jest.Mock;
 const mockFetch = NetInfo.fetch as jest.Mock;
+const mockRefresh = (NetInfo as any).refresh as jest.Mock;
 const mockRequestForeground = Location.requestForegroundPermissionsAsync as jest.Mock;
 const mockGetForeground = Location.getForegroundPermissionsAsync as jest.Mock;
 const mockOpenURL = Linking.openURL as jest.Mock;
@@ -65,6 +68,7 @@ beforeEach(() => {
   offlineModeStore.setState({ offlineMode: false });
   mockSetOffline.mockClear();
   mockFetch.mockReset();
+  mockRefresh.mockReset();
   mockAddEventListener.mockClear();
   mockAddEventListener.mockImplementation((cb: (state: any) => void) => {
     mockNetInfoCallback = cb;
@@ -260,28 +264,69 @@ describe('store subscription – settings changes', () => {
 
 describe('getCurrentSSID', () => {
   it('returns SSID when on wifi', async () => {
-    mockFetch.mockResolvedValue({ type: 'wifi', details: { ssid: 'TestNet' } });
+    mockRefresh.mockResolvedValue({ type: 'wifi', details: { ssid: 'TestNet' } });
     expect(await getCurrentSSID()).toBe('TestNet');
   });
 
   it('returns null when not on wifi', async () => {
-    mockFetch.mockResolvedValue({ type: 'cellular', details: {} });
+    mockRefresh.mockResolvedValue({ type: 'cellular', details: {} });
     expect(await getCurrentSSID()).toBeNull();
   });
 
   it('returns null when ssid is null', async () => {
-    mockFetch.mockResolvedValue({ type: 'wifi', details: { ssid: null } });
+    mockRefresh.mockResolvedValue({ type: 'wifi', details: { ssid: null } });
     expect(await getCurrentSSID()).toBeNull();
   });
 
   it('returns null when details has no ssid property', async () => {
-    mockFetch.mockResolvedValue({ type: 'wifi', details: {} });
+    mockRefresh.mockResolvedValue({ type: 'wifi', details: {} });
     expect(await getCurrentSSID()).toBeNull();
   });
 
-  it('returns null when fetch throws', async () => {
-    mockFetch.mockRejectedValue(new Error('NetInfo error'));
+  it('returns null when refresh throws', async () => {
+    mockRefresh.mockRejectedValue(new Error('NetInfo error'));
     expect(await getCurrentSSID()).toBeNull();
+  });
+
+  it('uses NetInfo.refresh instead of fetch', async () => {
+    mockRefresh.mockResolvedValue({ type: 'wifi', details: { ssid: 'Test' } });
+    await getCurrentSSID();
+    expect(mockRefresh).toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('getCurrentSSIDWithRetry', () => {
+  it('returns SSID on first try', async () => {
+    mockRefresh.mockResolvedValue({ type: 'wifi', details: { ssid: 'HomeNet' } });
+    expect(await getCurrentSSIDWithRetry()).toBe('HomeNet');
+    // Only one call to getCurrentSSID (which calls refresh) + no extra refresh for wifi check
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns SSID after retry when first attempt has null SSID', async () => {
+    mockRefresh
+      .mockResolvedValueOnce({ type: 'wifi', details: { ssid: null } }) // getCurrentSSID attempt 1
+      .mockResolvedValueOnce({ type: 'wifi', details: { ssid: null } }) // wifi type check attempt 1
+      .mockResolvedValueOnce({ type: 'wifi', details: { ssid: 'HomeNet' } }); // getCurrentSSID attempt 2
+    expect(await getCurrentSSIDWithRetry()).toBe('HomeNet');
+  });
+
+  it('returns null after all retries exhausted', async () => {
+    mockRefresh.mockResolvedValue({ type: 'wifi', details: { ssid: null } });
+    expect(await getCurrentSSIDWithRetry()).toBeNull();
+  });
+
+  it('returns null immediately when not on wifi', async () => {
+    mockRefresh.mockResolvedValue({ type: 'cellular', details: {} });
+    expect(await getCurrentSSIDWithRetry()).toBeNull();
+    // getCurrentSSID returns null (not wifi), then wifi check also returns cellular → early exit
+    expect(mockRefresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns null when refresh throws', async () => {
+    mockRefresh.mockRejectedValue(new Error('NetInfo error'));
+    expect(await getCurrentSSIDWithRetry()).toBeNull();
   });
 });
 

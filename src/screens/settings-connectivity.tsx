@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
@@ -9,7 +10,7 @@ import { autoOfflineStore, type AutoOfflineMode } from '../store/autoOfflineStor
 import { offlineModeStore } from '../store/offlineModeStore';
 import {
   checkLocationPermission,
-  getCurrentSSID,
+  getCurrentSSIDWithRetry,
   openAppSettings,
   requestLocationPermission,
 } from '../services/autoOfflineService';
@@ -19,6 +20,7 @@ import { sslCertStore, type TrustedCertEntry } from '../store/sslCertStore';
 export function SettingsConnectivityScreen() {
   const { colors } = useTheme();
   const { alert, alertProps } = useThemedAlert();
+  const navigation = useNavigation();
 
   const offlineMode = offlineModeStore((s) => s.offlineMode);
   const toggleOfflineMode = offlineModeStore((s) => s.toggleOfflineMode);
@@ -41,7 +43,7 @@ export function SettingsConnectivityScreen() {
   useEffect(() => {
     if (autoMode === 'home-wifi') {
       checkLocationPermission().then(async (granted) => {
-        const ssid = await getCurrentSSID();
+        const ssid = await getCurrentSSIDWithRetry();
         setCurrentSSID(ssid);
         setSsidReadFailed(granted && ssid == null);
       });
@@ -54,15 +56,36 @@ export function SettingsConnectivityScreen() {
     }
   }, [currentSSID, homeSSIDs.length]);
 
-  // Revert auto-offline to disabled on unmount if home-wifi requirements aren't met
+  // Prompt to disable auto-offline when navigating away with incomplete home-wifi setup
   useEffect(() => {
-    return () => {
-      const { enabled, mode, homeSSIDs: ssids, locationPermissionGranted } = autoOfflineStore.getState();
-      if (enabled && mode === 'home-wifi' && (!locationPermissionGranted || ssids.length === 0)) {
-        autoOfflineStore.getState().setEnabled(false);
-      }
-    };
-  }, []);
+    const unsubscribe = navigation.addListener('beforeRemove', (e: any) => {
+      const { enabled, mode, homeSSIDs: ssids, locationPermissionGranted: permGranted } = autoOfflineStore.getState();
+      if (!enabled || mode !== 'home-wifi') return;
+      if (permGranted && ssids.length > 0) return;
+
+      e.preventDefault();
+      Alert.alert(
+        'Incomplete Setup',
+        'Home WiFi mode needs location permission and at least one network name to work. Disable auto-offline?',
+        [
+          {
+            text: 'Keep Enabled',
+            style: 'cancel',
+            onPress: () => navigation.dispatch(e.data.action),
+          },
+          {
+            text: 'Disable',
+            style: 'destructive',
+            onPress: () => {
+              autoOfflineStore.getState().setEnabled(false);
+              navigation.dispatch(e.data.action);
+            },
+          },
+        ],
+      );
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   const handleAutoEnabledChange = useCallback((value: boolean) => {
     autoOfflineStore.getState().setEnabled(value);
@@ -72,7 +95,7 @@ export function SettingsConnectivityScreen() {
     autoOfflineStore.getState().setMode(mode);
     if (mode === 'home-wifi') {
       checkLocationPermission().then(async (granted) => {
-        const ssid = await getCurrentSSID();
+        const ssid = await getCurrentSSIDWithRetry();
         setCurrentSSID(ssid);
         setSsidReadFailed(granted && ssid == null);
       });
@@ -82,12 +105,18 @@ export function SettingsConnectivityScreen() {
   const handleGrantPermission = useCallback(async () => {
     const granted = await requestLocationPermission();
     if (granted) {
-      const ssid = await getCurrentSSID();
+      const ssid = await getCurrentSSIDWithRetry();
       setCurrentSSID(ssid);
       setSsidReadFailed(ssid == null);
     } else {
       openAppSettings();
     }
+  }, []);
+
+  const handleRetrySSID = useCallback(async () => {
+    const ssid = await getCurrentSSIDWithRetry();
+    setCurrentSSID(ssid);
+    setSsidReadFailed(ssid == null);
   }, []);
 
   const handleAddCurrentSSID = useCallback(() => {
@@ -345,7 +374,7 @@ export function SettingsConnectivityScreen() {
                       </Text>
                     )}
                     <Pressable
-                      onPress={handleGrantPermission}
+                      onPress={homeSSIDs.length > 0 ? handleGrantPermission : handleRetrySSID}
                       style={({ pressed }) => [pressed && styles.pressed]}
                     >
                       <Text style={[styles.permissionButton, { color: colors.primary }]}>

@@ -88,12 +88,35 @@ export function stopAutoOffline(): void {
 
 export async function getCurrentSSID(): Promise<string | null> {
   try {
-    const state = await NetInfo.fetch();
+    const state = await NetInfo.refresh();
     if (state.type !== 'wifi') return null;
     return (state.details as { ssid?: string | null })?.ssid ?? null;
   } catch {
     return null;
   }
+}
+
+const RETRY_DELAY_MS = 500;
+const MAX_RETRIES = 3;
+
+export async function getCurrentSSIDWithRetry(): Promise<string | null> {
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    const ssid = await getCurrentSSID();
+    if (ssid != null) return ssid;
+
+    // If not on wifi, no point retrying
+    try {
+      const state = await NetInfo.refresh();
+      if (state.type !== 'wifi') return null;
+    } catch {
+      return null;
+    }
+
+    if (attempt < MAX_RETRIES - 1) {
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+    }
+  }
+  return null;
 }
 
 export async function requestLocationPermission(): Promise<boolean> {
