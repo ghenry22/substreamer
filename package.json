@@ -21,7 +21,8 @@
     "release:patch": "node scripts/create-release.js patch",
     "release:minor": "node scripts/create-release.js minor",
     "release:major": "node scripts/create-release.js major",
-    "terminal-log": "script -a /tmp/claude-terminal.txt"
+    "terminal-log": "script -a /tmp/claude-terminal.txt",
+    "rebase": "git fetch origin && git rebase origin/master"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
