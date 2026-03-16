@@ -23,6 +23,7 @@ import { AnimatedNumber } from '../components/AnimatedNumber';
 import { DownloadedIcon } from '../components/DownloadedIcon';
 import { EmptyState } from '../components/EmptyState';
 import { PlaylistCard } from '../components/PlaylistCard';
+import WaveformLogo from '../components/WaveformLogo';
 import { computeStreaks, dateKey } from '../hooks/usePlaybackAnalytics';
 import { useTheme } from '../hooks/useTheme';
 import type { AlbumID3, Playlist } from '../services/subsonicService';
@@ -48,25 +49,55 @@ const SECTION_CONFIG: Record<
 > = {
   recentlyAdded: {
     title: 'Recently Added',
-    emptyMessage: 'No recent albums',
+    emptyMessage: 'New albums added to your server will appear here',
     refresh: () => albumListsStore.getState().refreshRecentlyAdded(),
   },
   recentlyPlayed: {
     title: 'Recently Played',
-    emptyMessage: 'No recently played albums',
+    emptyMessage: 'Albums you listen to will appear here',
     refresh: () => albumListsStore.getState().refreshRecentlyPlayed(),
   },
   frequentlyPlayed: {
     title: 'Frequently Played',
-    emptyMessage: 'No frequently played albums',
+    emptyMessage: 'Your most played albums will show up here over time',
     refresh: () => albumListsStore.getState().refreshFrequentlyPlayed(),
   },
   randomSelection: {
     title: 'Random Selection',
-    emptyMessage: 'No albums',
+    emptyMessage: 'Add some albums to your library to get started',
     refresh: () => albumListsStore.getState().refreshRandomSelection(),
   },
 };
+
+function SectionPlaceholder({
+  message,
+  colors,
+}: {
+  message: string;
+  colors: ReturnType<typeof useTheme>['colors'];
+}) {
+  return (
+    <View style={styles.emptySection}>
+      <View style={styles.emptyCards}>
+        {[0, 1, 2].map((i) => (
+          <View key={i} style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={[styles.emptyCardImage, { backgroundColor: colors.inputBg }]}>
+              <WaveformLogo size={32} color={colors.primary + '40'} />
+            </View>
+            <View style={[styles.emptyCardLine, { backgroundColor: colors.border }]} />
+            <View style={[styles.emptyCardLineShort, { backgroundColor: colors.border }]} />
+          </View>
+        ))}
+      </View>
+      <View style={[styles.emptyOverlay, { backgroundColor: colors.background + '99' }]}>
+        <Ionicons name="musical-notes-outline" size={24} color={colors.primary} />
+        <Text style={[styles.emptyOverlayText, { color: colors.textSecondary }]}>
+          {message}
+        </Text>
+      </View>
+    </View>
+  );
+}
 
 function AlbumSection({
   listType,
@@ -151,9 +182,7 @@ function AlbumSection({
         )}
       </View>
       {albums.length === 0 ? (
-        <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-          {config.emptyMessage}
-        </Text>
+        <SectionPlaceholder message={config.emptyMessage} colors={colors} />
       ) : (
         <FlashList
           data={albums}
@@ -184,22 +213,24 @@ function DownloadedAlbumSection({
   );
   const keyExtractor = useCallback((item: AlbumID3) => item.id, []);
 
-  if (albums.length === 0) return null;
-
   return (
     <View style={styles.section}>
       <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 16 }]}>
         Downloaded Albums
       </Text>
-      <FlashList
-        data={albums}
-        renderItem={renderItem}
-        keyExtractor={keyExtractor}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.horizontalList}
-        ItemSeparatorComponent={() => <View style={{ width: CARD_GAP }} />}
-      />
+      {albums.length === 0 ? (
+        <SectionPlaceholder message="Download albums to listen offline" colors={colors} />
+      ) : (
+        <FlashList
+          data={albums}
+          renderItem={renderItem}
+          keyExtractor={keyExtractor}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.horizontalList}
+          ItemSeparatorComponent={() => <View style={{ width: CARD_GAP }} />}
+        />
+      )}
     </View>
   );
 }
@@ -219,22 +250,24 @@ function PlaylistSection({
   );
   const keyExtractor = useCallback((item: Playlist) => item.id, []);
 
-  if (playlists.length === 0) return null;
-
   return (
     <View style={styles.section}>
       <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 16 }]}>
         Downloaded Playlists
       </Text>
-      <FlashList
-        data={playlists}
-        renderItem={renderItem}
-        keyExtractor={keyExtractor}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.horizontalList}
-        ItemSeparatorComponent={() => <View style={{ width: CARD_GAP }} />}
-      />
+      {playlists.length === 0 ? (
+        <SectionPlaceholder message="Download playlists to listen offline" colors={colors} />
+      ) : (
+        <FlashList
+          data={playlists}
+          renderItem={renderItem}
+          keyExtractor={keyExtractor}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.horizontalList}
+          ItemSeparatorComponent={() => <View style={{ width: CARD_GAP }} />}
+        />
+      )}
     </View>
   );
 }
@@ -552,8 +585,50 @@ const styles = StyleSheet.create({
     fontSize: 15,
     textAlign: 'center',
   },
-  emptyText: {
-    fontSize: 16,
+  emptySection: {
+    position: 'relative' as const,
+    overflow: 'hidden' as const,
+  },
+  emptyCards: {
+    flexDirection: 'row' as const,
+    gap: CARD_GAP,
+  },
+  emptyCard: {
+    width: CARD_WIDTH,
+    borderRadius: 12,
+    padding: 8,
+    borderWidth: 1,
+  },
+  emptyCardImage: {
+    width: CARD_WIDTH - 16,
+    height: CARD_WIDTH - 16,
+    borderRadius: 8,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  emptyCardLine: {
+    height: 10,
+    borderRadius: 5,
+    marginTop: 8,
+  },
+  emptyCardLineShort: {
+    height: 8,
+    borderRadius: 4,
+    marginTop: 4,
+    width: '60%' as const,
+  },
+  emptyOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+    borderRadius: 12,
+  },
+  emptyOverlayText: {
+    fontSize: 14,
+    fontWeight: '500' as const,
+    textAlign: 'center' as const,
+    paddingHorizontal: 24,
   },
   horizontalList: {
     paddingRight: 16,
