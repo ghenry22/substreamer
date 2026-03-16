@@ -703,7 +703,10 @@ describe('PlaybackActiveTrackChanged event handler', () => {
       expect.objectContaining({ id: 't2' }),
       1,
     );
-    expect(sendNowPlaying).toHaveBeenCalledWith('t2');
+    expect(sendNowPlaying).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 't2' }),
+      undefined,
+    );
   });
 
   it('sets current track to null when track is null', async () => {
@@ -745,6 +748,7 @@ describe('PlaybackActiveTrackChanged event handler', () => {
 
     expect(addCompletedScrobble).toHaveBeenCalledWith(
       expect.objectContaining({ id: 't1' }),
+      undefined,
     );
   });
 });
@@ -768,6 +772,7 @@ describe('PlaybackEndedWithReason event handler', () => {
 
     expect(addCompletedScrobble).toHaveBeenCalledWith(
       expect.objectContaining({ id: 't1' }),
+      undefined,
     );
   });
 
@@ -786,6 +791,7 @@ describe('PlaybackEndedWithReason event handler', () => {
 
     expect(addCompletedScrobble).toHaveBeenCalledWith(
       expect.objectContaining({ id: 't1' }),
+      undefined,
     );
   });
 
@@ -1521,6 +1527,7 @@ describe('PlaybackActiveTrackChanged edge branches', () => {
 
     expect(addCompletedScrobble).toHaveBeenCalledWith(
       expect.objectContaining({ id: 't1' }),
+      undefined,
     );
 
     jest.clearAllMocks();
@@ -1534,7 +1541,10 @@ describe('PlaybackActiveTrackChanged edge branches', () => {
 
     // It should set the new track and send now playing
     expect(mockSetCurrentTrack).toHaveBeenCalled();
-    expect(sendNowPlaying).toHaveBeenCalledWith('t2');
+    expect(sendNowPlaying).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 't2' }),
+      undefined,
+    );
 
     // Now verify the flag was cleared: trigger another transition where
     // ActiveTrackChanged fires first — it should save the outgoing track
@@ -1552,6 +1562,7 @@ describe('PlaybackActiveTrackChanged edge branches', () => {
 
     expect(addCompletedScrobble).toHaveBeenCalledWith(
       expect.objectContaining({ id: 't2' }),
+      undefined,
     );
   });
 });

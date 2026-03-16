@@ -133,7 +133,7 @@ export async function addPlaylistToQueue(playlist: Playlist): Promise<void> {
     entries = full?.entry;
   }
   if (!entries?.length) return;
-  await addToQueue(entries);
+  await addToQueue(entries, playlist.id);
 }
 
 /**

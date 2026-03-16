@@ -11,6 +11,7 @@ import { albumListsStore } from '../store/albumListsStore';
 import { completedScrobbleStore } from '../store/completedScrobbleStore';
 import { offlineModeStore } from '../store/offlineModeStore';
 import { pendingScrobbleStore } from '../store/pendingScrobbleStore';
+import { scrobbleExclusionStore } from '../store/scrobbleExclusionStore';
 import { getApi, type Child } from './subsonicService';
 
 /* ------------------------------------------------------------------ */
@@ -22,6 +23,19 @@ let isProcessing = false;
 let timerHandle: ReturnType<typeof setInterval> | null = null;
 
 const PROCESS_INTERVAL_MS = 60_000; // 1 minute
+
+/* ------------------------------------------------------------------ */
+/*  Exclusion check                                                    */
+/* ------------------------------------------------------------------ */
+
+function isExcluded(song: Child, playlistId?: string): boolean {
+  const { excludedAlbums, excludedArtists, excludedPlaylists } =
+    scrobbleExclusionStore.getState();
+  if (song.albumId && song.albumId in excludedAlbums) return true;
+  if (song.artistId && song.artistId in excludedArtists) return true;
+  if (playlistId && playlistId in excludedPlaylists) return true;
+  return false;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Public API                                                         */
@@ -55,12 +69,14 @@ export function initScrobbleService(): void {
 /**
  * Send a "now playing" notification to the server (submission=false).
  * Fire-and-forget – failures are silently ignored.
+ * Skipped silently when the song matches a scrobble exclusion.
  */
-export async function sendNowPlaying(songId: string): Promise<void> {
+export async function sendNowPlaying(song: Child, playlistId?: string): Promise<void> {
+  if (isExcluded(song, playlistId)) return;
   const api = getApi();
   if (!api) return;
   try {
-    await api.scrobble({ id: songId, submission: false });
+    await api.scrobble({ id: song.id, submission: false });
   } catch {
     // Best-effort – now-playing is ephemeral.
   }
@@ -69,9 +85,11 @@ export async function sendNowPlaying(songId: string): Promise<void> {
 /**
  * Record a completed-playback scrobble.  The item is added to the
  * persisted pending queue and processing is triggered immediately.
+ * Skipped silently when the song matches a scrobble exclusion.
  */
-export function addCompletedScrobble(song: Child): void {
+export function addCompletedScrobble(song: Child, playlistId?: string): void {
   if (!song?.id || !song.title) return;
+  if (isExcluded(song, playlistId)) return;
   pendingScrobbleStore.getState().addScrobble(song, Date.now());
   processScrobbles();
 }

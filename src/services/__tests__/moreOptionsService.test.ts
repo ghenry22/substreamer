@@ -294,7 +294,7 @@ describe('addPlaylistToQueue', () => {
     await addPlaylistToQueue({ id: 'p1' } as any);
 
     expect(mockGetPlaylist).not.toHaveBeenCalled();
-    expect(mockAddToQueue).toHaveBeenCalledWith(entries);
+    expect(mockAddToQueue).toHaveBeenCalledWith(entries, 'p1');
   });
 
   it('fetches from API when not cached', async () => {
@@ -305,7 +305,7 @@ describe('addPlaylistToQueue', () => {
     await addPlaylistToQueue({ id: 'p1' } as any);
 
     expect(mockGetPlaylist).toHaveBeenCalledWith('p1');
-    expect(mockAddToQueue).toHaveBeenCalledWith(entries);
+    expect(mockAddToQueue).toHaveBeenCalledWith(entries, 'p1');
   });
 
   it('does nothing when playlist has no entries', async () => {

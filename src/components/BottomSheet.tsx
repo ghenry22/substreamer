@@ -170,7 +170,9 @@ export function BottomSheet({
   }));
 
   const backdropAnimatedStyle = useAnimatedStyle(() => ({
-    backgroundColor: `rgba(0,0,0,${backdropOpacity.value})`,
+    // toFixed(4) prevents scientific notation (e.g. 3.5e-8) which
+    // Reanimated's color parser cannot handle.
+    backgroundColor: `rgba(0,0,0,${backdropOpacity.value.toFixed(4)})`,
   }));
 
   if (!internalVisible) return null;

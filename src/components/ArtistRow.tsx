@@ -58,7 +58,6 @@ export const ArtistRow = memo(function ArtistRow({ artist }: { artist: ArtistID3
       leftActions={leftActions}
       enableFullSwipeLeft={!offlineMode}
       rowGap={8}
-      restingBackgroundColor={colors.card}
       onLongPress={handleLongPress}
       onPress={onPress}
     >

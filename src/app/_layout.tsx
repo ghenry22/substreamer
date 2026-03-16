@@ -373,6 +373,10 @@ export default function RootLayout() {
           options={{ title: 'Scrobbles', headerBackTitle: 'Back' }}
         />
         <Stack.Screen
+          name="scrobble-exclusion-browser"
+          options={{ title: 'Scrobble Exclusions', headerBackTitle: 'Back' }}
+        />
+        <Stack.Screen
           name="my-listening"
           options={{ title: 'My Listening', headerBackTitle: 'Back' }}
         />

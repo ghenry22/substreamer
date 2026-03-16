@@ -80,7 +80,6 @@ export const SongRow = memo(function SongRow({ song, onPress }: { song: Child; o
       enableFullSwipeRight
       enableFullSwipeLeft={!offlineMode}
       rowGap={8}
-      restingBackgroundColor={colors.card}
       onLongPress={handleLongPress}
       onPress={onPress}
     >

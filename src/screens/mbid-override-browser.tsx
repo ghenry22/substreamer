@@ -47,7 +47,7 @@ const OverrideRow = memo(function OverrideRow({
     }
   }, [override]);
 
-  const leftActions: SwipeAction[] = useMemo(
+  const rightActions: SwipeAction[] = useMemo(
     () =>
       offlineMode
         ? []
@@ -65,11 +65,11 @@ const OverrideRow = memo(function OverrideRow({
 
   return (
     <SwipeableRow
-      leftActions={leftActions}
-      enableFullSwipeLeft={!offlineMode}
+      rightActions={rightActions}
+      enableFullSwipeRight={!offlineMode}
       onPress={handlePress}
     >
-      <View style={[styles.row, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+      <View style={[styles.row, { borderBottomColor: colors.border }]}>
         <View style={styles.rowContent}>
           <Text style={[styles.artistName, { color: colors.textPrimary }]} numberOfLines={1}>
             {override.artistName}

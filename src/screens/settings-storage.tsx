@@ -36,6 +36,7 @@ import {
 import { playlistDetailStore } from '../store/playlistDetailStore';
 import { completedScrobbleStore } from '../store/completedScrobbleStore';
 import { mbidOverrideStore } from '../store/mbidOverrideStore';
+import { scrobbleExclusionStore } from '../store/scrobbleExclusionStore';
 import { pendingScrobbleStore } from '../store/pendingScrobbleStore';
 import { storageLimitStore, type StorageLimitMode } from '../store/storageLimitStore';
 import { formatBytes } from '../utils/formatters';
@@ -97,6 +98,11 @@ export function SettingsStorageScreen() {
   const pendingScrobbleCount = pendingScrobbleStore((s) => s.pendingScrobbles.length);
   const completedScrobbleCount = completedScrobbleStore((s) => s.completedScrobbles.length);
   const mbidOverrideCount = mbidOverrideStore((s) => Object.keys(s.overrides).length);
+  const scrobbleExclusionCount = scrobbleExclusionStore((s) =>
+    Object.keys(s.excludedAlbums).length +
+    Object.keys(s.excludedArtists).length +
+    Object.keys(s.excludedPlaylists).length,
+  );
 
   const musicCacheBytes = musicCacheStore((s) => s.totalBytes);
   const musicCachedItemCount = musicCacheStore((s) => Object.keys(s.cachedItems).length);
@@ -479,6 +485,12 @@ export function SettingsStorageScreen() {
               {completedScrobbleCount}
             </Text>
           </View>
+          <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.infoLabel, { color: colors.textPrimary }]}>Scrobble exclusions</Text>
+            <Text style={[styles.infoValue, { color: colors.textSecondary }]}>
+              {scrobbleExclusionCount}
+            </Text>
+          </View>
           <Pressable
             onPress={() => router.push('/scrobble-browser')}
             style={({ pressed }) => [
@@ -507,6 +519,22 @@ export function SettingsStorageScreen() {
               <Ionicons name="analytics-outline" size={18} color={colors.textPrimary} />
               <Text style={[styles.browseCacheText, { color: colors.textPrimary }]}>
                 My Listening
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+          </Pressable>
+          <Pressable
+            onPress={() => router.push('/scrobble-exclusion-browser')}
+            style={({ pressed }) => [
+              styles.browseCacheButton,
+              { borderTopColor: colors.border },
+              pressed && styles.pressed,
+            ]}
+          >
+            <View style={styles.browseCacheLeft}>
+              <Ionicons name="eye-off-outline" size={18} color={colors.textPrimary} />
+              <Text style={[styles.browseCacheText, { color: colors.textPrimary }]}>
+                Manage Exclusions
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />

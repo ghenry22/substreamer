@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 
 import { EmptyState } from '../components/EmptyState';
+import { SwipeableRow, type SwipeAction } from '../components/SwipeableRow';
 import { useTransitionComplete } from '../hooks/useTransitionComplete';
 import { useTheme } from '../hooks/useTheme';
 import { ThemedAlert } from '../components/ThemedAlert';
@@ -47,75 +48,82 @@ const CacheRow = memo(function CacheRow({
   const busy = status === 'refreshing';
   const offlineMode = offlineModeStore((s) => s.offlineMode);
 
+  const handleDelete = useCallback(() => {
+    onDelete(entry.coverArtId);
+  }, [entry.coverArtId, onDelete]);
+
+  const rightActions: SwipeAction[] = useMemo(
+    () => [
+      {
+        icon: 'trash-outline' as const,
+        color: colors.red,
+        label: 'Delete',
+        onPress: handleDelete,
+      },
+    ],
+    [colors.red, handleDelete],
+  );
+
   return (
-    <View style={[styles.row, { borderBottomColor: colors.border }]}>
-      <Image
-        source={{ uri: thumbUri }}
-        style={[styles.thumb, { backgroundColor: colors.border }]}
-        resizeMode="cover"
-      />
-      <View style={styles.fileList}>
-        <Text
-          style={[styles.coverArtId, { color: colors.textPrimary }]}
-          numberOfLines={1}
-        >
-          {entry.coverArtId}
-        </Text>
-        {entry.files.map((f) => (
+    <SwipeableRow rightActions={rightActions} enableFullSwipeRight>
+      <View style={[styles.row, { borderBottomColor: colors.border }]}>
+        <Image
+          source={{ uri: thumbUri }}
+          style={[styles.thumb, { backgroundColor: colors.border }]}
+          resizeMode="cover"
+        />
+        <View style={styles.fileList}>
           <Text
-            key={f.fileName}
-            style={[styles.fileName, { color: colors.textSecondary }]}
+            style={[styles.coverArtId, { color: colors.textPrimary }]}
             numberOfLines={1}
           >
-            <Text style={[styles.sizeLabel, { color: colors.textPrimary }]}>
-              {f.size}px{' '}
-            </Text>
-            {f.fileName}
+            {entry.coverArtId}
           </Text>
-        ))}
-        {status === 'refreshing' && (
-          <Text style={[styles.statusText, { color: colors.primary }]}>
-            Downloading…
-          </Text>
-        )}
-        {status === 'success' && (
-          <Text style={[styles.statusText, { color: '#00BA7C' }]}>
-            Refreshed successfully
-          </Text>
-        )}
-        {status === 'error' && (
-          <Text style={[styles.statusText, { color: colors.red }]}>
-            Refresh failed
-          </Text>
-        )}
-      </View>
-      <View style={styles.actions}>
-        {!offlineMode && (
-          busy ? (
-            <ActivityIndicator size="small" color={colors.primary} />
-          ) : (
-            <Pressable
-              onPress={() => onRefresh(entry.coverArtId)}
-              hitSlop={8}
-              style={({ pressed }) => pressed && styles.pressed}
+          {entry.files.map((f) => (
+            <Text
+              key={f.fileName}
+              style={[styles.fileName, { color: colors.textSecondary }]}
+              numberOfLines={1}
             >
-              <Ionicons name="refresh-outline" size={20} color={colors.primary} />
-            </Pressable>
-          )
+              <Text style={[styles.sizeLabel, { color: colors.textPrimary }]}>
+                {f.size}px{' '}
+              </Text>
+              {f.fileName}
+            </Text>
+          ))}
+          {status === 'refreshing' && (
+            <Text style={[styles.statusText, { color: colors.primary }]}>
+              Downloading…
+            </Text>
+          )}
+          {status === 'success' && (
+            <Text style={[styles.statusText, { color: '#00BA7C' }]}>
+              Refreshed successfully
+            </Text>
+          )}
+          {status === 'error' && (
+            <Text style={[styles.statusText, { color: colors.red }]}>
+              Refresh failed
+            </Text>
+          )}
+        </View>
+        {!offlineMode && (
+          <View style={styles.actions}>
+            {busy ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Pressable
+                onPress={() => onRefresh(entry.coverArtId)}
+                hitSlop={8}
+                style={({ pressed }) => pressed && styles.pressed}
+              >
+                <Ionicons name="refresh-outline" size={20} color={colors.primary} />
+              </Pressable>
+            )}
+          </View>
         )}
-        <Pressable
-          onPress={() => onDelete(entry.coverArtId)}
-          disabled={busy}
-          hitSlop={8}
-          style={({ pressed }) => [
-            pressed && styles.pressed,
-            busy && styles.disabled,
-          ]}
-        >
-          <Ionicons name="trash-outline" size={20} color={colors.red} />
-        </Pressable>
       </View>
-    </View>
+    </SwipeableRow>
   );
 });
 
@@ -400,9 +408,6 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.6,
-  },
-  disabled: {
-    opacity: 0.3,
   },
   clearButton: {
     fontSize: 17,

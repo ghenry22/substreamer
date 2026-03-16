@@ -12,6 +12,7 @@ import {
 
 import { CachedImage } from '../components/CachedImage';
 import { EmptyState } from '../components/EmptyState';
+import { SwipeableRow, type SwipeAction } from '../components/SwipeableRow';
 import { ThemedAlert } from '../components/ThemedAlert';
 import { useTheme } from '../hooks/useTheme';
 import { useThemedAlert } from '../hooks/useThemedAlert';
@@ -110,74 +111,81 @@ const MetadataRow = memo(function MetadataRow({
   const busy = status === 'refreshing';
   const offlineMode = offlineModeStore((s) => s.offlineMode);
 
+  const handleDelete = useCallback(() => {
+    onDelete(entry);
+  }, [entry, onDelete]);
+
+  const rightActions: SwipeAction[] = useMemo(
+    () => [
+      {
+        icon: 'trash-outline' as const,
+        color: colors.red,
+        label: 'Delete',
+        onPress: handleDelete,
+      },
+    ],
+    [colors.red, handleDelete],
+  );
+
   return (
-    <View style={[styles.row, { borderBottomColor: colors.border }]}>
-      <CachedImage
-        coverArtId={entry.coverArt}
-        size={150}
-        style={[
-          styles.thumb,
-          { backgroundColor: colors.border },
-          entry.type === 'artist' && styles.thumbRound,
-        ]}
-        resizeMode="cover"
-      />
-      <View style={styles.info}>
-        <Text
-          style={[styles.name, { color: colors.textPrimary }]}
-          numberOfLines={1}
-        >
-          {entry.name}
-        </Text>
-        <Text style={[styles.typeLabel, { color: colors.textSecondary }]}>
-          {TYPE_LABELS[entry.type]}
-        </Text>
-        <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>
-          {formatDate(entry.retrievedAt)}
-        </Text>
-        {status === 'refreshing' && (
-          <Text style={[styles.statusText, { color: colors.primary }]}>
-            Refreshing…
-          </Text>
-        )}
-        {status === 'success' && (
-          <Text style={[styles.statusText, { color: '#00BA7C' }]}>
-            Refreshed successfully
-          </Text>
-        )}
-        {status === 'error' && (
-          <Text style={[styles.statusText, { color: colors.red }]}>
-            Refresh failed
-          </Text>
-        )}
-      </View>
-      <View style={styles.actions}>
-        {!offlineMode && (
-          busy ? (
-            <ActivityIndicator size="small" color={colors.primary} />
-          ) : (
-            <Pressable
-              onPress={() => onRefresh(entry)}
-              hitSlop={8}
-              style={({ pressed }) => pressed && styles.pressed}
-            >
-              <Ionicons name="refresh-outline" size={20} color={colors.primary} />
-            </Pressable>
-          )
-        )}
-        <Pressable
-          onPress={() => onDelete(entry)}
-          disabled={busy}
-          hitSlop={8}
-          style={({ pressed }) => [
-            pressed && styles.pressed,
-            busy && styles.disabled,
+    <SwipeableRow rightActions={rightActions} enableFullSwipeRight>
+      <View style={[styles.row, { borderBottomColor: colors.border }]}>
+        <CachedImage
+          coverArtId={entry.coverArt}
+          size={150}
+          style={[
+            styles.thumb,
+            { backgroundColor: colors.border },
+            entry.type === 'artist' && styles.thumbRound,
           ]}
-        >
-          <Ionicons name="trash-outline" size={20} color={colors.red} />
-        </Pressable>
+          resizeMode="cover"
+        />
+        <View style={styles.info}>
+          <Text
+            style={[styles.name, { color: colors.textPrimary }]}
+            numberOfLines={1}
+          >
+            {entry.name}
+          </Text>
+          <Text style={[styles.typeLabel, { color: colors.textSecondary }]}>
+            {TYPE_LABELS[entry.type]}
+          </Text>
+          <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>
+            {formatDate(entry.retrievedAt)}
+          </Text>
+          {status === 'refreshing' && (
+            <Text style={[styles.statusText, { color: colors.primary }]}>
+              Refreshing…
+            </Text>
+          )}
+          {status === 'success' && (
+            <Text style={[styles.statusText, { color: '#00BA7C' }]}>
+              Refreshed successfully
+            </Text>
+          )}
+          {status === 'error' && (
+            <Text style={[styles.statusText, { color: colors.red }]}>
+              Refresh failed
+            </Text>
+          )}
+        </View>
+        {!offlineMode && (
+          <View style={styles.actions}>
+            {busy ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Pressable
+                onPress={() => onRefresh(entry)}
+                hitSlop={8}
+                style={({ pressed }) => pressed && styles.pressed}
+              >
+                <Ionicons name="refresh-outline" size={20} color={colors.primary} />
+              </Pressable>
+            )}
+          </View>
+        )}
       </View>
-    </View>
+    </SwipeableRow>
   );
 });
 
@@ -417,8 +425,5 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.6,
-  },
-  disabled: {
-    opacity: 0.3,
   },
 });

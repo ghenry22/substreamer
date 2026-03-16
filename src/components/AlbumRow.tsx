@@ -84,7 +84,6 @@ export const AlbumRow = memo(function AlbumRow({ album }: { album: AlbumID3 }) {
       enableFullSwipeRight
       enableFullSwipeLeft={!offlineMode}
       rowGap={8}
-      restingBackgroundColor={colors.card}
       onLongPress={handleLongPress}
       onPress={onPress}
     >

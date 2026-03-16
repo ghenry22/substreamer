@@ -82,7 +82,7 @@ export interface SwipeableRowProps {
   borderRadius?: number;
   /** Vertical spacing below the row, applied outside the rounded content area. */
   rowGap?: number;
-  /** Background color shown at rest beneath children (e.g. card color). Defaults to transparent. */
+  /** Background color shown at rest beneath children. Defaults to `colors.card` from the theme. Pass `'transparent'` to disable. */
   restingBackgroundColor?: string;
   /** Called when a long-press gesture activates. */
   onLongPress?: () => void;
@@ -116,12 +116,13 @@ export const SwipeableRow = memo(function SwipeableRow({
   enableFullSwipeLeft = false,
   borderRadius = 16,
   rowGap = 0,
-  restingBackgroundColor = 'transparent',
+  restingBackgroundColor,
   onLongPress,
   onPress,
   children,
 }: SwipeableRowProps) {
   const { colors } = useTheme();
+  const effectiveRestingBg = restingBackgroundColor ?? colors.card;
   const swipeableRef = useRef<SwipeableMethods>(null);
   const isOpenRef = useRef(false);
   const pendingFullSwipeCloseRef = useRef(false);
@@ -340,8 +341,8 @@ export const SwipeableRow = memo(function SwipeableRow({
         delayLongPress={400}
       >
         <Animated.View style={[pressedStyle, contentClipStyle]}>
-          {restingBackgroundColor !== 'transparent' && (
-            <View style={[styles.swipeBg, { backgroundColor: restingBackgroundColor }]} />
+          {effectiveRestingBg !== 'transparent' && (
+            <View style={[styles.swipeBg, { backgroundColor: effectiveRestingBg }]} />
           )}
           <Animated.View
             style={[styles.swipeBg, { backgroundColor: colors.inputBg }, swipeBgStyle]}

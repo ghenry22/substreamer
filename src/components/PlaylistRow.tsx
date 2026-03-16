@@ -45,7 +45,6 @@ export const PlaylistRow = memo(function PlaylistRow({ playlist }: { playlist: P
       rightActions={rightActions}
       enableFullSwipeRight
       rowGap={8}
-      restingBackgroundColor={colors.card}
       onLongPress={handleLongPress}
       onPress={onPress}
     >

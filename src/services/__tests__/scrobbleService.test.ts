@@ -10,6 +10,7 @@ jest.mock('../../store/albumListsStore', () => ({
 
 import { completedScrobbleStore } from '../../store/completedScrobbleStore';
 import { pendingScrobbleStore } from '../../store/pendingScrobbleStore';
+import { scrobbleExclusionStore } from '../../store/scrobbleExclusionStore';
 import { getApi } from '../subsonicService';
 import {
   addCompletedScrobble,
@@ -22,6 +23,7 @@ const mockGetApi = getApi as jest.Mock;
 beforeEach(() => {
   pendingScrobbleStore.setState({ pendingScrobbles: [] });
   completedScrobbleStore.setState({ completedScrobbles: [], stats: { totalPlays: 0, totalListeningSeconds: 0, uniqueArtists: {} } });
+  scrobbleExclusionStore.setState({ excludedAlbums: {}, excludedArtists: {}, excludedPlaylists: {} });
   mockGetApi.mockReturnValue(null);
 });
 
@@ -68,20 +70,20 @@ describe('addCompletedScrobble', () => {
 describe('sendNowPlaying', () => {
   it('does nothing when api is null', async () => {
     mockGetApi.mockReturnValue(null);
-    await expect(sendNowPlaying('track-1')).resolves.toBeUndefined();
+    await expect(sendNowPlaying({ id: 'track-1', title: 'T', isDir: false } as any)).resolves.toBeUndefined();
   });
 
   it('calls api.scrobble with submission=false', async () => {
     const mockScrobble = jest.fn().mockResolvedValue(undefined);
     mockGetApi.mockReturnValue({ scrobble: mockScrobble });
-    await sendNowPlaying('track-1');
+    await sendNowPlaying({ id: 'track-1', title: 'T', isDir: false } as any);
     expect(mockScrobble).toHaveBeenCalledWith({ id: 'track-1', submission: false });
   });
 
   it('swallows errors silently', async () => {
     const mockScrobble = jest.fn().mockRejectedValue(new Error('network'));
     mockGetApi.mockReturnValue({ scrobble: mockScrobble });
-    await expect(sendNowPlaying('track-1')).resolves.toBeUndefined();
+    await expect(sendNowPlaying({ id: 'track-1', title: 'T', isDir: false } as any)).resolves.toBeUndefined();
   });
 });
 
@@ -292,5 +294,75 @@ describe('initScrobbleService', () => {
     expect(mockScrobble).toHaveBeenCalledWith(
       expect.objectContaining({ id: 's3', submission: true }),
     );
+  });
+});
+
+describe('scrobble exclusions', () => {
+  describe('sendNowPlaying', () => {
+    it('skips API call when albumId is excluded', async () => {
+      scrobbleExclusionStore.getState().addExclusion('album', 'al1', 'Excluded Album');
+      const mockScrobble = jest.fn().mockResolvedValue(undefined);
+      mockGetApi.mockReturnValue({ scrobble: mockScrobble });
+      await sendNowPlaying({ id: 's1', title: 'T', albumId: 'al1', isDir: false } as any);
+      expect(mockScrobble).not.toHaveBeenCalled();
+    });
+
+    it('skips API call when artistId is excluded', async () => {
+      scrobbleExclusionStore.getState().addExclusion('artist', 'ar1', 'Excluded Artist');
+      const mockScrobble = jest.fn().mockResolvedValue(undefined);
+      mockGetApi.mockReturnValue({ scrobble: mockScrobble });
+      await sendNowPlaying({ id: 's1', title: 'T', artistId: 'ar1', isDir: false } as any);
+      expect(mockScrobble).not.toHaveBeenCalled();
+    });
+
+    it('skips API call when playlistId is excluded', async () => {
+      scrobbleExclusionStore.getState().addExclusion('playlist', 'pl1', 'Sleep Playlist');
+      const mockScrobble = jest.fn().mockResolvedValue(undefined);
+      mockGetApi.mockReturnValue({ scrobble: mockScrobble });
+      await sendNowPlaying({ id: 's1', title: 'T', isDir: false } as any, 'pl1');
+      expect(mockScrobble).not.toHaveBeenCalled();
+    });
+
+    it('proceeds normally when no exclusions match', async () => {
+      scrobbleExclusionStore.getState().addExclusion('album', 'al-other', 'Other Album');
+      const mockScrobble = jest.fn().mockResolvedValue(undefined);
+      mockGetApi.mockReturnValue({ scrobble: mockScrobble });
+      await sendNowPlaying({ id: 's1', title: 'T', albumId: 'al1', isDir: false } as any);
+      expect(mockScrobble).toHaveBeenCalledWith({ id: 's1', submission: false });
+    });
+
+    it('does not check playlist exclusion when playlistId not provided', async () => {
+      scrobbleExclusionStore.getState().addExclusion('playlist', 'pl1', 'Sleep Playlist');
+      const mockScrobble = jest.fn().mockResolvedValue(undefined);
+      mockGetApi.mockReturnValue({ scrobble: mockScrobble });
+      await sendNowPlaying({ id: 's1', title: 'T', isDir: false } as any);
+      expect(mockScrobble).toHaveBeenCalled();
+    });
+  });
+
+  describe('addCompletedScrobble', () => {
+    it('does not add to pending store when excluded by album', () => {
+      scrobbleExclusionStore.getState().addExclusion('album', 'al1', 'Excluded Album');
+      addCompletedScrobble({ id: 's1', title: 'Song', artist: 'A', albumId: 'al1' } as any);
+      expect(pendingScrobbleStore.getState().pendingScrobbles).toHaveLength(0);
+    });
+
+    it('does not add to pending store when excluded by artist', () => {
+      scrobbleExclusionStore.getState().addExclusion('artist', 'ar1', 'Excluded Artist');
+      addCompletedScrobble({ id: 's1', title: 'Song', artist: 'A', artistId: 'ar1' } as any);
+      expect(pendingScrobbleStore.getState().pendingScrobbles).toHaveLength(0);
+    });
+
+    it('does not add to pending store when excluded by playlist', () => {
+      scrobbleExclusionStore.getState().addExclusion('playlist', 'pl1', 'Sleep');
+      addCompletedScrobble({ id: 's1', title: 'Song', artist: 'A' } as any, 'pl1');
+      expect(pendingScrobbleStore.getState().pendingScrobbles).toHaveLength(0);
+    });
+
+    it('adds normally when no exclusions match', () => {
+      scrobbleExclusionStore.getState().addExclusion('album', 'al-other', 'Other');
+      addCompletedScrobble({ id: 's1', title: 'Song', artist: 'A', albumId: 'al1' } as any);
+      expect(pendingScrobbleStore.getState().pendingScrobbles).toHaveLength(1);
+    });
   });
 });

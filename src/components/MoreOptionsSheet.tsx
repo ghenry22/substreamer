@@ -54,6 +54,7 @@ import {
 } from '../services/subsonicService';
 import { addToPlaylistStore } from '../store/addToPlaylistStore';
 import { artistDetailStore } from '../store/artistDetailStore';
+import { scrobbleExclusionStore, type ScrobbleExclusionType } from '../store/scrobbleExclusionStore';
 import { createShareStore } from '../store/createShareStore';
 import { mbidOverrideStore } from '../store/mbidOverrideStore';
 import { mbidSearchStore } from '../store/mbidSearchStore';
@@ -162,6 +163,10 @@ function isRatable(entity: MoreOptionsEntity): boolean {
   return entity.type === 'song' || entity.type === 'album' || entity.type === 'artist';
 }
 
+function canExcludeFromScrobbling(entity: MoreOptionsEntity): boolean {
+  return entity.type === 'album' || entity.type === 'artist' || entity.type === 'playlist';
+}
+
 function getEntityUserRating(entity: MoreOptionsEntity | null): number | undefined {
   if (!entity) return undefined;
   if (entity.type === 'playlist') return undefined;
@@ -194,6 +199,16 @@ export function MoreOptionsSheet() {
   const { alert, alertProps } = useThemedAlert();
   const router = useRouter();
   const pathname = usePathname();
+
+  const isScrobbleExcluded = scrobbleExclusionStore((s) => {
+    if (!entity || !canExcludeFromScrobbling(entity)) return false;
+    switch (entity.type) {
+      case 'album': return entity.item.id in s.excludedAlbums;
+      case 'artist': return entity.item.id in s.excludedArtists;
+      case 'playlist': return entity.item.id in s.excludedPlaylists;
+      default: return false;
+    }
+  });
 
   const [busy, setBusy] = useState(false);
   const [detailsVisible, setDetailsVisible] = useState(false);
@@ -423,6 +438,18 @@ export function MoreOptionsSheet() {
     }, 350);
   }, [entity, handleClose, pathname, router]);
 
+  const handleToggleScrobbleExclusion = useCallback(() => {
+    if (!entity || !canExcludeFromScrobbling(entity)) return;
+    const type = entity.type as ScrobbleExclusionType;
+    const name = (entity.item as AlbumID3 | Playlist).name ?? '';
+    if (isScrobbleExcluded) {
+      scrobbleExclusionStore.getState().removeExclusion(type, entity.item.id);
+    } else {
+      scrobbleExclusionStore.getState().addExclusion(type, entity.item.id, name);
+    }
+    handleClose();
+  }, [entity, isScrobbleExcluded, handleClose]);
+
   if (!entity) {
     return (
       <>
@@ -461,13 +488,14 @@ export function MoreOptionsSheet() {
   const showPlaySimilarArtistsMix = !offline && canPlaySimilarArtistsMix(entity) && !isVA;
   const showPlayMoreByArtist = canPlayMoreByArtist(entity) && !isVA;
   const showSetMbid = entity?.type === 'artist' && !isVA;
+  const showScrobbleExclusion = canExcludeFromScrobbling(entity);
 
   const hasAnyOption =
     starrable || showRating || showAddToPlaylist || showAddQueueToPlaylist ||
     showAddToQueue || showPlayMoreLikeThis || showPlaySimilarArtistsMix ||
     showPlayMoreByArtist || showDownload ||
     showAlbumLink || showArtistLink || showShare || showDetails || showDelete ||
-    showSaveTopSongsPlaylist || showSetMbid;
+    showSaveTopSongsPlaylist || showSetMbid || showScrobbleExclusion;
 
   return (
     <>
@@ -804,6 +832,27 @@ export function MoreOptionsSheet() {
                   />
                   <Text style={[styles.optionLabel, { color: colors.textPrimary }]}>
                     Album Details
+                  </Text>
+                </Pressable>
+              )}
+
+              {/* Exclude / Include in Scrobbling */}
+              {showScrobbleExclusion && (
+                <Pressable
+                  onPress={handleToggleScrobbleExclusion}
+                  style={({ pressed }) => [
+                    styles.option,
+                    pressed && styles.optionPressed,
+                  ]}
+                >
+                  <Ionicons
+                    name={isScrobbleExcluded ? 'eye-outline' : 'eye-off-outline'}
+                    size={22}
+                    color={colors.textPrimary}
+                    style={styles.optionIcon}
+                  />
+                  <Text style={[styles.optionLabel, { color: colors.textPrimary }]}>
+                    {isScrobbleExcluded ? 'Include in Scrobbling' : 'Exclude from Scrobbling'}
                   </Text>
                 </Pressable>
               )}
@@ -1194,6 +1243,27 @@ export function MoreOptionsSheet() {
                   />
                   <Text style={[styles.optionLabel, { color: colors.textPrimary }]}>
                     Album Details
+                  </Text>
+                </Pressable>
+              )}
+
+              {/* Exclude / Include in Scrobbling */}
+              {showScrobbleExclusion && (
+                <Pressable
+                  onPress={handleToggleScrobbleExclusion}
+                  style={({ pressed }) => [
+                    styles.option,
+                    pressed && styles.optionPressed,
+                  ]}
+                >
+                  <Ionicons
+                    name={isScrobbleExcluded ? 'eye-outline' : 'eye-off-outline'}
+                    size={22}
+                    color={colors.textPrimary}
+                    style={styles.optionIcon}
+                  />
+                  <Text style={[styles.optionLabel, { color: colors.textPrimary }]}>
+                    {isScrobbleExcluded ? 'Include in Scrobbling' : 'Exclude from Scrobbling'}
                   </Text>
                 </Pressable>
               )}

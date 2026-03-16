@@ -106,6 +106,8 @@ function childToTrack(child: Child): Track {
 let isPlayerReady = false;
 /** The Child[] backing the current RNTP queue, indexed by position. */
 let currentChildQueue: Child[] = [];
+/** Maps trackId → playlistId for tracks that originated from a playlist. */
+const trackPlaylistMap = new Map<string, string>();
 /**
  * Highest buffered position (in seconds) observed for the current track.
  * The native player sometimes reports a stale or lower `buffered` value
@@ -401,7 +403,7 @@ export async function initPlayer(): Promise<void> {
       (e.reason === 'playedUntilEnd' || e.reason === 'PLAYED_UNTIL_END') &&
       trackThatEnded
     ) {
-      addCompletedScrobble(trackThatEnded);
+      addCompletedScrobble(trackThatEnded, trackPlaylistMap.get(trackThatEnded.id));
     }
 
     // If savedTrackForScrobble was null, we fired before ActiveTrackChanged —
@@ -455,7 +457,9 @@ export async function initPlayer(): Promise<void> {
       playerStore.getState().setCurrentTrack(resolvedChild, activeIndex ?? null);
 
       // Scrobble: send "now playing" for the new track.
-      sendNowPlaying(track.id);
+      if (resolvedChild) {
+        sendNowPlaying(resolvedChild, trackPlaylistMap.get(resolvedChild.id));
+      }
     } else {
       playerStore.getState().setCurrentTrack(null, null);
     }
@@ -531,8 +535,15 @@ function resetScrobbleCoordination() {
  *
  * Resets the RNTP queue, loads all tracks, skips to the tapped index,
  * and begins playback.
+ *
+ * @param sourcePlaylistId  When playback originates from a playlist,
+ *   pass its ID so per-track scrobble exclusions work correctly.
  */
-export async function playTrack(track: Child, queue: Child[]): Promise<void> {
+export async function playTrack(
+  track: Child,
+  queue: Child[],
+  sourcePlaylistId?: string | null,
+): Promise<void> {
   resetScrobbleCoordination();
   isUserSkipping = true;
   isSettingQueue = true;
@@ -544,6 +555,10 @@ export async function playTrack(track: Child, queue: Child[]): Promise<void> {
     await ensureCoverArtAuth();
 
     currentChildQueue = queue;
+    trackPlaylistMap.clear();
+    if (sourcePlaylistId) {
+      for (const child of queue) trackPlaylistMap.set(child.id, sourcePlaylistId);
+    }
     playerStore.getState().setQueue(queue);
 
     const rnTracks = queue.map(childToTrack);
@@ -669,6 +684,7 @@ export async function clearQueue(): Promise<void> {
   isRecoveringStream = false;
   previousActiveChild = null;
   currentChildQueue = [];
+  trackPlaylistMap.clear();
 
   await TrackPlayer.reset();
 
@@ -688,12 +704,15 @@ export async function clearQueue(): Promise<void> {
  * first track in the supplied array.  Otherwise the tracks are silently
  * appended and playback continues uninterrupted.
  */
-export async function addToQueue(tracks: Child[]): Promise<void> {
+export async function addToQueue(
+  tracks: Child[],
+  sourcePlaylistId?: string | null,
+): Promise<void> {
   if (tracks.length === 0) return;
 
   // Nothing loaded yet – start fresh playback with these tracks.
   if (currentChildQueue.length === 0) {
-    await playTrack(tracks[0], tracks);
+    await playTrack(tracks[0], tracks, sourcePlaylistId);
     return;
   }
 
@@ -701,6 +720,10 @@ export async function addToQueue(tracks: Child[]): Promise<void> {
 
   const rnTracks = tracks.map(childToTrack);
   await TrackPlayer.add(rnTracks);
+
+  if (sourcePlaylistId) {
+    for (const child of tracks) trackPlaylistMap.set(child.id, sourcePlaylistId);
+  }
 
   currentChildQueue = [...currentChildQueue, ...tracks];
   playerStore.getState().setQueue(currentChildQueue);
@@ -722,8 +745,10 @@ export async function removeFromQueue(index: number): Promise<void> {
     return;
   }
 
+  const removedChild = currentChildQueue[index];
   await TrackPlayer.remove(index);
 
+  trackPlaylistMap.delete(removedChild.id);
   currentChildQueue = currentChildQueue.filter((_, i) => i !== index);
   playerStore.getState().setQueue(currentChildQueue);
 

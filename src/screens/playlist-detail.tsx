@@ -254,7 +254,7 @@ export function PlaylistDetailScreen() {
           track={item}
           trackNumber={`${index + 1}. `}
           colors={colors}
-          onPress={() => playTrack(item, tracks)}
+          onPress={() => playTrack(item, tracks, id)}
           showCoverArt
           showAlbumName
         />
@@ -274,11 +274,11 @@ export function PlaylistDetailScreen() {
       return (
         <ScaleDecorator activeScale={1.03}>
           <ShadowDecorator>
-            <SwipeableRow rightActions={rightActions} enableFullSwipeRight>
+            <SwipeableRow rightActions={rightActions} enableFullSwipeRight restingBackgroundColor={colors.background}>
               <View
                 style={[
                   styles.editRow,
-                  { borderBottomColor: colors.border, backgroundColor: colors.background },
+                  { borderBottomColor: colors.border },
                 ]}
               >
                 <CachedImage
@@ -371,7 +371,7 @@ export function PlaylistDetailScreen() {
           </View>
           {!editing && displayTracks.length > 0 && (
             <Pressable
-              onPress={() => playTrack(displayTracks[0], displayTracks)}
+              onPress={() => playTrack(displayTracks[0], displayTracks, id)}
               style={({ pressed }) => [
                 styles.playAllButton,
                 { backgroundColor: colors.primary },
