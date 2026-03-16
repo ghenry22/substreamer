@@ -23,9 +23,11 @@ import { closeOpenRow } from '../components/SwipeableRow';
 import { TrackRow } from '../components/TrackRow';
 import { useColorExtraction } from '../hooks/useColorExtraction';
 import { useDownloadStatus } from '../hooks/useDownloadStatus';
+import { useIsStarred } from '../hooks/useIsStarred';
 import { useTheme } from '../hooks/useTheme';
 import { useTransitionComplete } from '../hooks/useTransitionComplete';
 import { refreshCachedImage } from '../services/imageCacheService';
+import { toggleStar } from '../services/moreOptionsService';
 import { enqueueAlbumDownload } from '../services/musicCacheService';
 import { minDelay } from '../utils/stringHelpers';
 import { playTrack } from '../services/playerService';
@@ -70,8 +72,13 @@ export function AlbumDetailScreen() {
   const [loading, setLoading] = useState(!cachedEntry);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const starred = useIsStarred('album', id ?? '');
   const transitionComplete = useTransitionComplete();
   const downloadStatus = useDownloadStatus('album', Platform.OS === 'ios' ? (id ?? '') : '');
+
+  const handleToggleStar = useCallback(() => {
+    if (id) toggleStar('album', id);
+  }, [id]);
 
   const { coverBackgroundColor, gradientOpacity } = useColorExtraction(
     album?.coverArt,
@@ -85,6 +92,15 @@ export function AlbumDetailScreen() {
     navigation.setOptions({
       headerRight: () => (
         <View style={styles.headerRight}>
+          {!offlineMode && (
+            <Pressable onPress={handleToggleStar} hitSlop={8} style={styles.starButton}>
+              <Ionicons
+                name={starred ? 'heart' : 'heart-outline'}
+                size={22}
+                color={starred ? colors.red : colors.textPrimary}
+              />
+            </Pressable>
+          )}
           <DownloadButton itemId={id} type="album" />
           <MoreOptionsButton
             onPress={() =>
@@ -95,7 +111,7 @@ export function AlbumDetailScreen() {
         </View>
       ),
     });
-  }, [album, id, navigation, colors.textPrimary]);
+  }, [album, id, navigation, colors.textPrimary, colors.red, starred, offlineMode, handleToggleStar]);
 
   /* ---- Data fetching ---- */
   const { fetchAlbum } = albumDetailStore.getState();
@@ -281,6 +297,17 @@ export function AlbumDetailScreen() {
     <>
       {Platform.OS === 'ios' && album && id && (
         <Stack.Toolbar placement="right">
+          {!offlineMode && (
+            <Stack.Toolbar.View>
+              <Pressable onPress={handleToggleStar} hitSlop={8}>
+                <Ionicons
+                  name={starred ? 'heart' : 'heart-outline'}
+                  size={22}
+                  color={starred ? colors.red : colors.textPrimary}
+                />
+              </Pressable>
+            </Stack.Toolbar.View>
+          )}
           {downloadStatus === 'none' ? (
             <Stack.Toolbar.Button
               icon="arrow.down.circle"
@@ -381,6 +408,11 @@ const styles = StyleSheet.create({
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
+  },
+  starButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
   },
   playAllButton: {
     width: 52,

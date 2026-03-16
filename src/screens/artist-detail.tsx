@@ -23,9 +23,11 @@ import { SectionTitle } from '../components/SectionTitle';
 import { SongCard } from '../components/SongCard';
 import { closeOpenRow } from '../components/SwipeableRow';
 import { useColorExtraction } from '../hooks/useColorExtraction';
+import { useIsStarred } from '../hooks/useIsStarred';
 import { useTheme } from '../hooks/useTheme';
 import { useTransitionComplete } from '../hooks/useTransitionComplete';
 import { refreshCachedImage } from '../services/imageCacheService';
+import { toggleStar } from '../services/moreOptionsService';
 import { minDelay } from '../utils/stringHelpers';
 import { playTrack } from '../services/playerService';
 import { artistDetailStore } from '../store/artistDetailStore';
@@ -57,6 +59,11 @@ export function ArtistDetailScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const starred = useIsStarred('artist', id ?? '');
+
+  const handleToggleStar = useCallback(() => {
+    if (id) toggleStar('artist', id);
+  }, [id]);
 
   const cachedEntry = artistDetailStore((s) => (id ? s.artists[id] : undefined));
   const [artist, setArtist] = useState<ArtistWithAlbumsID3 | null>(cachedEntry?.artist ?? null);
@@ -97,15 +104,26 @@ export function ArtistDetailScreen() {
     if (!artist) return;
     navigation.setOptions({
       headerRight: () => (
-        <MoreOptionsButton
-          onPress={() =>
-            moreOptionsStore.getState().show({ type: 'artist', item: artist })
-          }
-          color={colors.textPrimary}
-        />
+        <View style={styles.headerRight}>
+          {!offlineMode && (
+            <Pressable onPress={handleToggleStar} hitSlop={8} style={styles.starButton}>
+              <Ionicons
+                name={starred ? 'heart' : 'heart-outline'}
+                size={22}
+                color={starred ? colors.red : colors.textPrimary}
+              />
+            </Pressable>
+          )}
+          <MoreOptionsButton
+            onPress={() =>
+              moreOptionsStore.getState().show({ type: 'artist', item: artist })
+            }
+            color={colors.textPrimary}
+          />
+        </View>
       ),
     });
-  }, [artist, navigation, colors.textPrimary]);
+  }, [artist, navigation, colors.textPrimary, colors.red, starred, offlineMode, handleToggleStar]);
 
   /* ---- Data fetching ---- */
   const { fetchArtist } = artistDetailStore.getState();
@@ -372,6 +390,17 @@ export function ArtistDetailScreen() {
     <>
       {Platform.OS === 'ios' && artist && (
         <Stack.Toolbar placement="right">
+          {!offlineMode && (
+            <Stack.Toolbar.View>
+              <Pressable onPress={handleToggleStar} hitSlop={8}>
+                <Ionicons
+                  name={starred ? 'heart' : 'heart-outline'}
+                  size={22}
+                  color={starred ? colors.red : colors.textPrimary}
+                />
+              </Pressable>
+            </Stack.Toolbar.View>
+          )}
           <Stack.Toolbar.Button
             icon="ellipsis"
             onPress={() => moreOptionsStore.getState().show({ type: 'artist', item: artist })}
@@ -449,6 +478,15 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 16,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  starButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
   },
   pressed: {
     opacity: 0.8,
