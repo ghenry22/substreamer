@@ -19,6 +19,10 @@ jest.mock('@expo/vector-icons', () => {
   return { Ionicons: (props: { name: string }) => <Text>{props.name}</Text> };
 });
 
+jest.mock('../../services/connectivityService', () => ({
+  handleSslCertPrompt: jest.fn(),
+}));
+
 jest.mock('react-native-reanimated', () => {
   const { View } = require('react-native');
   return {
@@ -83,5 +87,11 @@ describe('ConnectivityBanner', () => {
     });
     const { getByText } = render(<ConnectivityBanner />);
     expect(getByText('No internet connection')).toBeTruthy();
+  });
+
+  it('shows "Certificate changed" when ssl-error', () => {
+    connectivityStore.setState({ bannerState: 'ssl-error' });
+    const { getByText } = render(<ConnectivityBanner />);
+    expect(getByText('Certificate changed')).toBeTruthy();
   });
 });

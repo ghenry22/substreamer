@@ -132,7 +132,7 @@ describe('trustCertificateForHost', () => {
 
     await trustCertificateForHost('music.example.com', 'FF:EE:DD');
 
-    expect(mockTrustCertificateAction).toHaveBeenCalledWith('music.example.com', 'FF:EE:DD');
+    expect(mockTrustCertificateAction).toHaveBeenCalledWith('music.example.com', 'FF:EE:DD', undefined);
     expect(mockNativeTrustCertificate).toHaveBeenCalledWith('music.example.com', 'FF:EE:DD');
   });
 });

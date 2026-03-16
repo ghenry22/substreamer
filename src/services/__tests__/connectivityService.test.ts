@@ -35,11 +35,31 @@ jest.mock('../../store/connectivityStore', () => ({
   },
 }));
 
+jest.mock('../../store/authStore', () => ({
+  authStore: { getState: jest.fn(() => ({ serverUrl: null })) },
+}));
+
+jest.mock('../../store/sslCertStore', () => ({
+  sslCertStore: { getState: jest.fn(() => ({ trustedCerts: {} })) },
+}));
+
+jest.mock('../../store/certPromptStore', () => ({
+  certPromptStore: { getState: jest.fn(() => ({ show: jest.fn(), hide: jest.fn() })) },
+}));
+
+jest.mock('../../../modules/expo-ssl-trust/src', () => ({
+  isSSLError: jest.fn(() => false),
+  getCertificateInfo: jest.fn(),
+}));
+
 const mockPing = jest.fn();
 jest.mock('../subsonicService');
 
+import { isSSLError } from '../../../modules/expo-ssl-trust/src';
 import { getApiUnchecked } from '../subsonicService';
 import { startMonitoring, stopMonitoring } from '../connectivityService';
+
+const mockIsSSLError = isSSLError as jest.Mock;
 
 const mockGetApi = getApiUnchecked as jest.Mock;
 
@@ -56,6 +76,7 @@ beforeEach(() => {
   const NetInfo = require('@react-native-community/netinfo').default;
   NetInfo.addEventListener.mockClear();
   mockPing.mockReset();
+  mockIsSSLError.mockReturnValue(false);
   mockGetApi.mockReturnValue({ ping: mockPing });
   mockNetInfoCallback = null;
   mockAppStateCallback = null;
@@ -213,5 +234,30 @@ describe('ping guard', () => {
     await jest.advanceTimersByTimeAsync(100);
 
     expect(mockPing).not.toHaveBeenCalled();
+  });
+});
+
+describe('SSL error detection', () => {
+  it('shows ssl-error banner when ping fails with SSL error', async () => {
+    mockPing.mockRejectedValue(new Error('javax.net.ssl.SSLHandshakeException'));
+    mockIsSSLError.mockReturnValue(true);
+    startMonitoring();
+
+    mockNetInfoCallback!({ isInternetReachable: true });
+    await jest.advanceTimersByTimeAsync(100);
+
+    expect(mockStoreState.setBannerState).toHaveBeenCalledWith('ssl-error');
+    expect(mockStoreState.setServerReachable).toHaveBeenCalledWith(false);
+  });
+
+  it('shows unreachable banner for non-SSL errors', async () => {
+    mockPing.mockRejectedValue(new Error('Network timeout'));
+    mockIsSSLError.mockReturnValue(false);
+    startMonitoring();
+
+    mockNetInfoCallback!({ isInternetReachable: true });
+    await jest.advanceTimersByTimeAsync(100);
+
+    expect(mockStoreState.setBannerState).toHaveBeenCalledWith('unreachable');
   });
 });

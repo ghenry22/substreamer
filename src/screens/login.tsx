@@ -14,14 +14,13 @@ import {
 import { CertificatePromptModal } from '../components/CertificatePromptModal';
 import WaveformLogo from '../components/WaveformLogo';
 import { fetchServerInfo, login as subsonicLogin } from '../services/subsonicService';
+import { trustCertificateForHost } from '../services/sslTrustService';
 import { authStore } from '../store/authStore';
 import { serverInfoStore } from '../store/serverInfoStore';
-import { sslCertStore } from '../store/sslCertStore';
 
 import {
   getCertificateInfo,
   isSSLError,
-  trustCertificate,
   type CertificateInfo,
 } from '../../modules/expo-ssl-trust/src';
 
@@ -52,13 +51,8 @@ export function LoginScreen() {
     setError(null);
 
     try {
-      // Trust the certificate at the native level
-      await trustCertificate(certHostname, certInfo.sha256Fingerprint);
-
-      // Also persist in the Zustand store
-      sslCertStore
-        .getState()
-        .trustCertificate(certHostname, certInfo.sha256Fingerprint);
+      // Trust the certificate (persists in Zustand + syncs to native)
+      await trustCertificateForHost(certHostname, certInfo.sha256Fingerprint, certInfo.validTo);
 
       // Retry the login
       const url = serverUrl.trim();

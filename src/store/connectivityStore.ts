@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type BannerState = 'hidden' | 'unreachable' | 'reconnected';
+export type BannerState = 'hidden' | 'unreachable' | 'reconnected' | 'ssl-error';
 
 export interface ConnectivityState {
   isInternetReachable: boolean;

@@ -1,7 +1,11 @@
 import NetInfo, { type NetInfoState } from '@react-native-community/netinfo';
 import { AppState, type NativeEventSubscription } from 'react-native';
 
+import { getCertificateInfo, isSSLError } from '../../modules/expo-ssl-trust/src';
+import { authStore } from '../store/authStore';
+import { certPromptStore } from '../store/certPromptStore';
 import { connectivityStore } from '../store/connectivityStore';
+import { sslCertStore } from '../store/sslCertStore';
 import { getApiUnchecked } from './subsonicService';
 
 const PING_INTERVAL_REACHABLE_MS = 10_000;
@@ -64,8 +68,13 @@ async function pingServer(): Promise<void> {
   try {
     const response = await withTimeout(api.ping(), PING_TIMEOUT_MS);
     handleServerResult(response.status === 'ok');
-  } catch {
-    handleServerResult(false);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (isSSLError(message)) {
+      handleSslError();
+    } else {
+      handleServerResult(false);
+    }
   } finally {
     pingInFlight = false;
   }
@@ -94,6 +103,38 @@ function handleServerResult(reachable: boolean): void {
 
   initialCheck = false;
   schedulePing();
+}
+
+function handleSslError(): void {
+  const store = connectivityStore.getState();
+  store.setServerReachable(false);
+  store.setBannerState('ssl-error');
+  initialCheck = false;
+  schedulePing();
+}
+
+/**
+ * Fetch the server's current certificate and show the cert prompt.
+ * Called when the user taps the "Certificate changed" banner.
+ */
+export async function handleSslCertPrompt(): Promise<void> {
+  const { serverUrl } = authStore.getState();
+  if (!serverUrl) return;
+
+  let hostname: string;
+  try {
+    hostname = new URL(serverUrl).hostname;
+  } catch {
+    return;
+  }
+
+  try {
+    const certInfo = await getCertificateInfo(serverUrl);
+    const isRotation = hostname in sslCertStore.getState().trustedCerts;
+    certPromptStore.getState().show(certInfo, hostname, isRotation);
+  } catch {
+    /* Server unreachable — banner stays, user can retry */
+  }
 }
 
 function handleNetInfoChange(state: NetInfoState): void {

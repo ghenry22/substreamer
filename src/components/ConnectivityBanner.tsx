@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { memo, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { memo, useCallback, useEffect, useRef } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -10,6 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useTheme } from '../hooks/useTheme';
+import { handleSslCertPrompt } from '../services/connectivityService';
 import { connectivityStore, type BannerState } from '../store/connectivityStore';
 
 const BANNER_HEIGHT = 36;
@@ -38,6 +39,9 @@ function getConfig(
   if (bannerState === 'reconnected') {
     return { iconColor: SUCCESS, icon: 'checkmark-circle', message: 'Connected' };
   }
+  if (bannerState === 'ssl-error') {
+    return { iconColor: red, icon: 'shield-outline', message: 'Certificate changed' };
+  }
   if (!isInternetReachable) {
     return { iconColor: red, icon: 'cloud-offline', message: 'No internet connection' };
   }
@@ -55,11 +59,16 @@ export const ConnectivityBanner = memo(function ConnectivityBanner() {
   const contentTranslateY = useSharedValue(0);
 
   const visible = bannerState !== 'hidden';
+  const tappable = bannerState === 'ssl-error';
 
   const liveConfig = getConfig(bannerState, isInternetReachable, colors.red);
   const frozenConfig = useRef(liveConfig);
   if (visible) frozenConfig.current = liveConfig;
   const config = visible ? liveConfig : frozenConfig.current;
+
+  const handlePress = useCallback(() => {
+    if (tappable) handleSslCertPrompt();
+  }, [tappable]);
 
   useEffect(() => {
     const wasVisible = prev.current !== 'hidden';
@@ -93,14 +102,18 @@ export const ConnectivityBanner = memo(function ConnectivityBanner() {
 
   return (
     <Animated.View style={[{ backgroundColor: colors.background }, wrapperStyle]}>
-      <View style={[styles.pill, { backgroundColor: colors.inputBg }]}>
+      <Pressable
+        style={({ pressed }) => [styles.pill, { backgroundColor: colors.inputBg }, tappable && pressed && styles.pressed]}
+        onPress={handlePress}
+        disabled={!tappable}
+      >
         <Animated.View style={[styles.content, contentStyle]}>
           <Ionicons name={config.icon} size={14} color={config.iconColor} style={styles.icon} />
           <Text style={[styles.text, { color: colors.textSecondary }]} numberOfLines={1}>
             {config.message}
           </Text>
         </Animated.View>
-      </View>
+      </Pressable>
     </Animated.View>
   );
 });
@@ -124,5 +137,8 @@ const styles = StyleSheet.create({
   text: {
     fontSize: 13,
     fontWeight: '500',
+  },
+  pressed: {
+    opacity: 0.8,
   },
 });

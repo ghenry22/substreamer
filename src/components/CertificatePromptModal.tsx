@@ -21,6 +21,8 @@ export interface CertificatePromptModalProps {
   hostname: string;
   /** Whether this is a certificate rotation (fingerprint changed) */
   isRotation?: boolean;
+  /** Whether the user is manually adding this cert from settings (non-alarming tone for valid certs) */
+  isManualAdd?: boolean;
   /** Called when the user accepts the certificate */
   onTrust: () => void;
   /** Called when the user cancels */
@@ -32,6 +34,7 @@ export const CertificatePromptModal = memo(function CertificatePromptModal({
   certInfo,
   hostname,
   isRotation = false,
+  isManualAdd = false,
   onTrust,
   onCancel,
 }: CertificatePromptModalProps) {
@@ -53,15 +56,15 @@ export const CertificatePromptModal = memo(function CertificatePromptModal({
         style={styles.content}
         showsVerticalScrollIndicator={false}
       >
-          {/* Warning Header */}
+          {/* Header */}
           <View style={styles.headerRow}>
             <Ionicons
-              name={isRotation ? 'alert-circle' : 'shield-outline'}
+              name={isRotation ? 'alert-circle' : isManualAdd && !certInfo.isSelfSigned ? 'shield-checkmark-outline' : 'shield-outline'}
               size={28}
-              color={isRotation ? '#F44336' : '#FF9800'}
+              color={isRotation ? '#F44336' : isManualAdd && !certInfo.isSelfSigned ? colors.primary : '#FF9800'}
             />
             <Text style={[styles.title, { color: colors.textPrimary }]}>
-              {isRotation ? 'Certificate Changed' : 'Untrusted Certificate'}
+              {isRotation ? 'Certificate Changed' : isManualAdd && !certInfo.isSelfSigned ? 'Certificate Details' : 'Untrusted Certificate'}
             </Text>
           </View>
 
@@ -71,6 +74,12 @@ export const CertificatePromptModal = memo(function CertificatePromptModal({
               last connected. This could indicate a server reconfiguration, but
               could also mean someone is intercepting your connection. Only
               proceed if you trust this server.
+            </Text>
+          ) : isManualAdd && !certInfo.isSelfSigned ? (
+            <Text style={[styles.description, { color: colors.textSecondary }]}>
+              The server at {hostname} has a valid certificate signed by a
+              trusted authority. You can add it to your trusted list to pin this
+              specific certificate for extra security.
             </Text>
           ) : (
             <Text style={[styles.description, { color: colors.textSecondary }]}>
@@ -148,7 +157,7 @@ export const CertificatePromptModal = memo(function CertificatePromptModal({
             style={({ pressed }) => [
               styles.trustButton,
               {
-                backgroundColor: isRotation ? '#F44336' : '#FF9800',
+                backgroundColor: isRotation ? '#F44336' : isManualAdd && !certInfo.isSelfSigned ? colors.primary : '#FF9800',
               },
               pressed && styles.buttonPressed,
             ]}

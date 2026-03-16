@@ -1,12 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
+import { CertificatePromptModal } from '../components/CertificatePromptModal';
 import { useTheme } from '../hooks/useTheme';
 import { useThemedAlert } from '../hooks/useThemedAlert';
 import { ThemedAlert } from '../components/ThemedAlert';
 import { autoOfflineStore, type AutoOfflineMode } from '../store/autoOfflineStore';
+import { authStore } from '../store/authStore';
 import { offlineModeStore } from '../store/offlineModeStore';
 import {
   checkLocationPermission,
@@ -19,8 +21,9 @@ import {
   requestBatteryOptimizationExemption,
 } from '../services/batteryOptimizationService';
 import { batteryOptimizationStore } from '../store/batteryOptimizationStore';
-import { removeTrustForHost } from '../services/sslTrustService';
+import { removeTrustForHost, trustCertificateForHost } from '../services/sslTrustService';
 import { sslCertStore, type TrustedCertEntry } from '../store/sslCertStore';
+import { getCertificateInfo, type CertificateInfo } from '../../modules/expo-ssl-trust/src';
 
 export function SettingsConnectivityScreen() {
   const { colors } = useTheme();
@@ -38,12 +41,26 @@ export function SettingsConnectivityScreen() {
   const homeSSIDs = autoOfflineStore((s) => s.homeSSIDs);
   const locationGranted = autoOfflineStore((s) => s.locationPermissionGranted);
 
+  const serverUrl = authStore((s) => s.serverUrl);
+  const activeHostname = useMemo(() => {
+    if (!serverUrl) return null;
+    try { return new URL(serverUrl).hostname; } catch { return null; }
+  }, [serverUrl]);
+
   const [currentSSID, setCurrentSSID] = useState<string | null>(null);
   const [ssidPromptVisible, setSsidPromptVisible] = useState(false);
   const [ssidPromptValue, setSsidPromptValue] = useState('');
   const [ssidEditTarget, setSsidEditTarget] = useState<string | null>(null);
   const [ssidSetupValue, setSsidSetupValue] = useState('');
   const [ssidReadFailed, setSsidReadFailed] = useState(false);
+
+  // --- Add Certificate flow ---
+  const [certUrlPromptVisible, setCertUrlPromptVisible] = useState(false);
+  const [certUrlValue, setCertUrlValue] = useState('');
+  const [certFetching, setCertFetching] = useState(false);
+  const [certModalVisible, setCertModalVisible] = useState(false);
+  const [certInfo, setCertInfo] = useState<CertificateInfo | null>(null);
+  const [certHostname, setCertHostname] = useState('');
 
   // --- Battery Optimization (Android only) ---
   const batteryOptRestricted = batteryOptimizationStore((s) => s.restricted);
@@ -226,12 +243,22 @@ export function SettingsConnectivityScreen() {
     !homeSSIDs.includes(currentSSID);
 
   const trustedCerts = sslCertStore((s) => s.trustedCerts);
-  const trustedCertEntries = Object.entries(trustedCerts) as [string, TrustedCertEntry][];
+  const trustedCertEntries = useMemo(() => {
+    const entries = Object.entries(trustedCerts) as [string, TrustedCertEntry][];
+    return entries.sort((a, b) => {
+      if (a[0] === activeHostname) return -1;
+      if (b[0] === activeHostname) return 1;
+      return b[1].acceptedAt - a[1].acceptedAt;
+    });
+  }, [trustedCerts, activeHostname]);
 
   const handleRemoveTrustedCert = useCallback((hostname: string) => {
+    const isActive = hostname === activeHostname;
     alert(
-      'Remove Trusted Certificate',
-      `Remove the trusted certificate for ${hostname}? You will need to re-accept the certificate on next connection.`,
+      isActive ? 'Remove Active Certificate' : 'Remove Trusted Certificate',
+      isActive
+        ? `This certificate is used to connect to your current server. Removing it may prevent the app from communicating with ${hostname} until you re-accept the certificate.`
+        : `Remove the trusted certificate for ${hostname}? You will need to re-accept the certificate on next connection.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -239,13 +266,64 @@ export function SettingsConnectivityScreen() {
           style: 'destructive',
           onPress: () => {
             removeTrustForHost(hostname).catch(() => {
-              // Best-effort removal
+              /* best-effort removal */
             });
           },
         },
       ],
     );
-  }, [alert]);
+  }, [alert, activeHostname]);
+
+  const normalizeUrl = useCallback((input: string): { url: string; hostname: string } | null => {
+    const trimmed = input.trim();
+    if (!trimmed) return null;
+    const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    try {
+      const parsed = new URL(withScheme);
+      // Always use https — fetching a TLS certificate requires a secure connection
+      parsed.protocol = 'https:';
+      return { url: parsed.toString(), hostname: parsed.hostname };
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const handleAddCertificate = useCallback(() => {
+    setCertUrlValue('');
+    setCertUrlPromptVisible(true);
+  }, []);
+
+  const handleFetchCertificate = useCallback(async () => {
+    const result = normalizeUrl(certUrlValue);
+    if (!result) {
+      alert('Invalid URL', 'Please enter a valid server address.');
+      return;
+    }
+    setCertUrlPromptVisible(false);
+    setCertFetching(true);
+    try {
+      const info = await getCertificateInfo(result.url);
+      setCertInfo(info);
+      setCertHostname(result.hostname);
+      setCertModalVisible(true);
+    } catch (e) {
+      alert('Certificate Error', e instanceof Error ? e.message : 'Failed to fetch certificate from server.');
+    } finally {
+      setCertFetching(false);
+    }
+  }, [certUrlValue, normalizeUrl, alert]);
+
+  const handleTrustFetchedCert = useCallback(async () => {
+    if (!certInfo || !certHostname) return;
+    await trustCertificateForHost(certHostname, certInfo.sha256Fingerprint, certInfo.validTo);
+    setCertModalVisible(false);
+    setCertInfo(null);
+  }, [certInfo, certHostname]);
+
+  const handleCancelCert = useCallback(() => {
+    setCertModalVisible(false);
+    setCertInfo(null);
+  }, []);
 
   const dynamicStyles = useMemo(
     () =>
@@ -578,48 +656,127 @@ export function SettingsConnectivityScreen() {
         <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>Trusted certificates</Text>
         <View style={[styles.card, dynamicStyles.card]}>
           {trustedCertEntries.length > 0 ? (
-            trustedCertEntries.map(([hostname, entry], index) => (
-              <View
-                key={hostname}
-                style={[
-                  styles.trustedCertRow,
-                  index < trustedCertEntries.length - 1 && {
-                    borderBottomWidth: StyleSheet.hairlineWidth,
-                    borderBottomColor: colors.border,
-                  },
-                ]}
-              >
-                <View style={styles.trustedCertInfo}>
-                  <View style={styles.trustedCertHeader}>
-                    <Ionicons name="shield-checkmark-outline" size={16} color={colors.primary} />
-                    <Text style={[styles.trustedCertHostname, { color: colors.textPrimary }]}>
-                      {hostname}
+            trustedCertEntries.map(([hostname, entry], index) => {
+              const isActive = hostname === activeHostname;
+              return (
+                <View
+                  key={hostname}
+                  style={[
+                    styles.trustedCertRow,
+                    { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+                  ]}
+                >
+                  <View style={styles.trustedCertInfo}>
+                    <View style={styles.trustedCertHeader}>
+                      <Ionicons
+                        name={isActive ? 'shield-checkmark' : 'shield-checkmark-outline'}
+                        size={16}
+                        color={colors.primary}
+                      />
+                      <Text style={[styles.trustedCertHostname, { color: colors.textPrimary }]}>
+                        {hostname}
+                      </Text>
+                      {isActive && (
+                        <View style={[styles.activeDot, { backgroundColor: colors.primary }]} />
+                      )}
+                    </View>
+                    <Text style={[styles.trustedCertFingerprint, { color: colors.textSecondary }]} numberOfLines={1}>
+                      {entry.sha256.substring(0, 23)}...
+                    </Text>
+                    <Text style={[styles.trustedCertDate, { color: colors.textSecondary }]}>
+                      Trusted {new Date(entry.acceptedAt).toLocaleDateString()}
+                      {entry.validTo && entry.validTo !== 'Unknown'
+                        ? `  ·  Expires ${new Date(entry.validTo).toLocaleDateString()}`
+                        : ''}
                     </Text>
                   </View>
-                  <Text style={[styles.trustedCertFingerprint, { color: colors.textSecondary }]} numberOfLines={1}>
-                    {entry.sha256.substring(0, 23)}...
-                  </Text>
-                  <Text style={[styles.trustedCertDate, { color: colors.textSecondary }]}>
-                    Trusted {new Date(entry.acceptedAt).toLocaleDateString()}
-                  </Text>
+                  <Pressable
+                    onPress={() => handleRemoveTrustedCert(hostname)}
+                    hitSlop={8}
+                    style={({ pressed }) => [pressed && styles.pressed]}
+                  >
+                    <Ionicons name="close-circle-outline" size={22} color={colors.red} />
+                  </Pressable>
                 </View>
-                <Pressable
-                  onPress={() => handleRemoveTrustedCert(hostname)}
-                  hitSlop={8}
-                  style={({ pressed }) => [pressed && styles.pressed]}
-                >
-                  <Ionicons name="close-circle-outline" size={22} color={colors.red} />
-                </Pressable>
-              </View>
-            ))
+              );
+            })
           ) : (
             <Text style={[styles.placeholder, dynamicStyles.placeholder]}>
               No trusted certificates. Self-signed certificates accepted during login will appear here.
             </Text>
           )}
+          {certFetching ? (
+            <View style={styles.addCertRow}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={[styles.addCertText, { color: colors.primary }]}>Fetching Certificate...</Text>
+            </View>
+          ) : (
+            <Pressable
+              onPress={handleAddCertificate}
+              style={({ pressed }) => [styles.addCertRow, pressed && styles.pressed]}
+            >
+              <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
+              <Text style={[styles.addCertText, { color: colors.primary }]}>Add Certificate</Text>
+            </Pressable>
+          )}
         </View>
       </View>
     </ScrollView>
+
+    {/* Certificate URL input modal */}
+    <Modal
+      visible={certUrlPromptVisible}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setCertUrlPromptVisible(false)}
+    >
+      <Pressable style={styles.modalBackdrop} onPress={() => setCertUrlPromptVisible(false)}>
+        <Pressable style={[styles.modalCard, { backgroundColor: colors.card }]} onPress={() => {}}>
+          <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
+            Add Certificate
+          </Text>
+          <Text style={[styles.certUrlHint, { color: colors.textSecondary }]}>
+            Enter the server address to fetch its SSL certificate.
+          </Text>
+          <TextInput
+            style={[styles.modalInput, { color: colors.textPrimary, backgroundColor: colors.inputBg, borderColor: colors.border }]}
+            value={certUrlValue}
+            onChangeText={setCertUrlValue}
+            placeholder="https://music.example.com"
+            placeholderTextColor={colors.textSecondary}
+            autoFocus
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            onSubmitEditing={handleFetchCertificate}
+          />
+          <View style={styles.modalButtons}>
+            <Pressable
+              onPress={() => setCertUrlPromptVisible(false)}
+              style={({ pressed }) => [styles.modalButton, pressed && styles.pressed]}
+            >
+              <Text style={[styles.modalButtonText, { color: colors.textSecondary }]}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              onPress={handleFetchCertificate}
+              style={({ pressed }) => [styles.modalButton, pressed && styles.pressed]}
+            >
+              <Text style={[styles.modalButtonText, { color: colors.primary }]}>Fetch</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+
+    <CertificatePromptModal
+      visible={certModalVisible}
+      certInfo={certInfo}
+      hostname={certHostname}
+      isManualAdd
+      onTrust={handleTrustFetchedCert}
+      onCancel={handleCancelCert}
+    />
+
     <ThemedAlert {...alertProps} />
     </>
   );
@@ -778,6 +935,25 @@ const styles = StyleSheet.create({
   addSsidText: {
     fontSize: 15,
     fontWeight: '500',
+  },
+  addCertRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 12,
+  },
+  addCertText: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  certUrlHint: {
+    fontSize: 13,
+    marginBottom: 12,
+  },
+  activeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   modalBackdrop: {
     flex: 1,

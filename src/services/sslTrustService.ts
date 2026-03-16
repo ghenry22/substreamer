@@ -51,10 +51,11 @@ async function syncToNative(): Promise<void> {
  */
 export async function trustCertificateForHost(
   hostname: string,
-  sha256Fingerprint: string
+  sha256Fingerprint: string,
+  validTo?: string,
 ): Promise<void> {
   // Persist in Zustand store (SQLite)
-  sslCertStore.getState().trustCertificate(hostname, sha256Fingerprint);
+  sslCertStore.getState().trustCertificate(hostname, sha256Fingerprint, validTo);
   // Sync to native store
   await nativeTrustCertificate(hostname, sha256Fingerprint);
 }

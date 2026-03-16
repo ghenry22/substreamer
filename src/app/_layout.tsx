@@ -25,6 +25,7 @@ LogBox.ignoreLogs([
 
 import { AddToPlaylistSheet } from '../components/AddToPlaylistSheet';
 import AnimatedSplashScreen from '../components/AnimatedSplashScreen';
+import { CertificatePromptModal } from '../components/CertificatePromptModal';
 import { CreateShareSheet } from '../components/CreateShareSheet';
 import { MbidSearchSheet } from '../components/MbidSearchSheet';
 import { MoreOptionsSheet } from '../components/MoreOptionsSheet';
@@ -42,7 +43,7 @@ import { fetchScanStatus } from '../services/scanService';
 import NetInfo from '@react-native-community/netinfo';
 import { startMonitoring, stopMonitoring } from '../services/connectivityService';
 import { initScrobbleService } from '../services/scrobbleService';
-import { initSslTrustStore } from '../services/sslTrustService';
+import { initSslTrustStore, trustCertificateForHost } from '../services/sslTrustService';
 import { runAutoBackupIfNeeded } from '../services/backupService';
 import { startAutoOffline, stopAutoOffline } from '../services/autoOfflineService';
 import { excludeFromBackup } from 'expo-backup-exclusions';
@@ -55,6 +56,7 @@ import { musicCacheStore } from '../store/musicCacheStore';
 import { authStore } from '../store/authStore';
 import { favoritesStore } from '../store/favoritesStore';
 import { autoOfflineStore } from '../store/autoOfflineStore';
+import { certPromptStore } from '../store/certPromptStore';
 import { offlineModeStore } from '../store/offlineModeStore';
 import { playlistLibraryStore } from '../store/playlistLibraryStore';
 import { fetchServerInfo } from '../services/subsonicService';
@@ -96,6 +98,23 @@ export default function RootLayout() {
 
   useDownloadKeepAwake();
   useDownloadBackgroundNotification();
+
+  // --- Global SSL cert prompt driven by certPromptStore ---
+  const certPromptVisible = certPromptStore((s) => s.visible);
+  const certPromptInfo = certPromptStore((s) => s.certInfo);
+  const certPromptHostname = certPromptStore((s) => s.hostname);
+  const certPromptIsRotation = certPromptStore((s) => s.isRotation);
+
+  const handleCertTrust = useCallback(async () => {
+    const { certInfo, hostname } = certPromptStore.getState();
+    if (!certInfo || !hostname) return;
+    await trustCertificateForHost(hostname, certInfo.sha256Fingerprint, certInfo.validTo);
+    certPromptStore.getState().hide();
+  }, []);
+
+  const handleCertCancel = useCallback(() => {
+    certPromptStore.getState().hide();
+  }, []);
 
   // --- Exclude cache dirs from iCloud backup (iOS); no-op on Android ---
   useEffect(() => {
@@ -385,6 +404,16 @@ export default function RootLayout() {
 
       {/* Global MBID search sheet driven by mbidSearchStore */}
       <MbidSearchSheet />
+
+      {/* Global SSL certificate prompt driven by certPromptStore */}
+      <CertificatePromptModal
+        visible={certPromptVisible}
+        certInfo={certPromptInfo}
+        hostname={certPromptHostname}
+        isRotation={certPromptIsRotation}
+        onTrust={handleCertTrust}
+        onCancel={handleCertCancel}
+      />
 
       {/* Global processing overlay for async operations (delete, etc.) */}
       <ProcessingOverlay />
