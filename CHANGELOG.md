@@ -1,5 +1,16 @@
 # Changelog
 
+## [8.0.29] - 2026-03-17
+
+- detail pages: request error place holder
+- RNTP: cover some edge cases for playback transitions and put in some debug logging
+- clean up: quick clean up and refactor, fix some type safety work arounds and old comments and general tidy and consistency
+- ci: update coverage badge [skip ci]
+- Discovery: music discovery based on playback history
+- refactor search online and search offline ready for carplay/android auto. genres: fix genres metadata passing prefer the genres field when available, fall back to the old single genre field. genres: add Play some... to the home page to quickly make genre based playlists.  Leverages your top genres from my listening and if that  does not have at least 8 then tops up from the genres with the most songs on the server, avoiding duplicates.
+- ci: update coverage badge [skip ci]
+- playback: scrobble exclusions, you can set an album, artist or playlist to be excluded from playback history (good for things like ambient listening at night, kids songs etc) UI: update swipeablerow shared component to handle swiped content shading rather than having it duplicated into every instance.
+- ci: update coverage badge [skip ci]
 ## [8.0.28] - 2026-03-16
 
 - data: convenient clear all for image and music cache in the list view
