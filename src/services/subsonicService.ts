@@ -118,6 +118,12 @@ export function clearApiCache(): void {
 
 export type { AlbumID3, AlbumWithSongsID3, ArtistID3, ArtistInfo2, ArtistWithAlbumsID3, Child, Genre, Playlist, PlaylistWithSongs, ScanStatus, Share };
 
+/**
+ * Extended ArtistID3 with the `userRating` field that Subsonic/Navidrome
+ * servers return at runtime but the `subsonic-api` library omits from its type.
+ */
+export type ArtistID3WithRating = ArtistID3 & { userRating?: number };
+
 // ------------------------------------------------------------------ //
 //  Various Artists pseudo-artist                                      //
 // ------------------------------------------------------------------ //

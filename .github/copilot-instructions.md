@@ -146,11 +146,13 @@ Avoid tests that only confirm the trivial success case. If a function has branch
 
 ## AI Instruction Files — Keep in Sync
 
-Three files contain AI agent instructions and must always stay identical in content:
+Three files contain AI agent instructions and must always stay identical in **instructional content**:
 
 - `.cursor/rules/project-overview.mdc` (Cursor)
 - `.github/copilot-instructions.md` (GitHub Copilot)
 - `CLAUDE.md` (Claude Code)
+
+Tool-specific headers are expected to differ (e.g. Cursor's `.mdc` YAML frontmatter). The instructional body must match across all three files.
 
 **When any one of these files is updated, the same change must be applied to all three.** This is non-negotiable. Never update one without updating the others in the same operation.
 

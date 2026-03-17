@@ -5,6 +5,7 @@ import {
   performOfflineSearch,
   type SearchResults,
 } from '../services/searchService';
+import { type ArtistID3WithRating } from '../services/subsonicService';
 import { offlineModeStore } from './offlineModeStore';
 import { ratingStore } from './ratingStore';
 
@@ -72,7 +73,7 @@ export const searchStore = create<SearchState>()((set, get) => ({
       const results = await performOnlineSearch(query);
       const ratingEntries: Array<{ id: string; serverRating: number }> = [
         ...results.albums.map((a) => ({ id: a.id, serverRating: a.userRating ?? 0 })),
-        ...results.artists.map((a) => ({ id: a.id, serverRating: (a as { userRating?: number }).userRating ?? 0 })),
+        ...results.artists.map((a) => ({ id: a.id, serverRating: (a as ArtistID3WithRating).userRating ?? 0 })),
         ...results.songs.map((s) => ({ id: s.id, serverRating: s.userRating ?? 0 })),
       ];
       ratingStore.getState().reconcileRatings(ratingEntries);

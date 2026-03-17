@@ -36,7 +36,6 @@ import { connectivityStore } from '../store/connectivityStore';
 import { favoritesStore } from '../store/favoritesStore';
 import { genreStore } from '../store/genreStore';
 import { offlineModeStore } from '../store/offlineModeStore';
-import { musicCacheStore } from '../store/musicCacheStore';
 import { useTheme } from '../hooks/useTheme';
 import { useTransitionComplete } from '../hooks/useTransitionComplete';
 import { type ThemeColors } from '../constants/theme';
@@ -565,7 +564,6 @@ export function DiscoveryScreen() {
 
     if (!online) {
       // Offline: only genres present in cached tracks
-      const cachedItems = musicCacheStore.getState().cachedItems;
       const offlineGenres = new Set<string>();
       for (const genre of historyGenres) {
         const songs = getOfflineSongsByGenre(genre);

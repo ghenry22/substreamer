@@ -8,6 +8,7 @@ import {
   getStarred2,
   type AlbumID3,
   type ArtistID3,
+  type ArtistID3WithRating,
   type Child,
 } from '../services/subsonicService';
 import { ratingStore } from './ratingStore';
@@ -66,7 +67,7 @@ export const favoritesStore = create<FavoritesState>()(
           const ratingEntries: Array<{ id: string; serverRating: number }> = [
             ...songs.map((s) => ({ id: s.id, serverRating: s.userRating ?? 0 })),
             ...albums.map((a) => ({ id: a.id, serverRating: a.userRating ?? 0 })),
-            ...artists.map((a) => ({ id: a.id, serverRating: (a as { userRating?: number }).userRating ?? 0 })),
+            ...artists.map((a) => ({ id: a.id, serverRating: (a as ArtistID3WithRating).userRating ?? 0 })),
           ];
           ratingStore.getState().reconcileRatings(ratingEntries);
 

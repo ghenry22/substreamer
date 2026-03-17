@@ -7,6 +7,7 @@ import {
   ensureCoverArtAuth,
   getAllArtists,
   type ArtistID3,
+  type ArtistID3WithRating,
 } from '../services/subsonicService';
 import { ratingStore } from './ratingStore';
 
@@ -46,7 +47,7 @@ export const artistLibraryStore = create<ArtistLibraryState>()(
           const artists = await getAllArtists();
 
           ratingStore.getState().reconcileRatings(
-            artists.map((a) => ({ id: a.id, serverRating: (a as { userRating?: number }).userRating ?? 0 }))
+            artists.map((a) => ({ id: a.id, serverRating: (a as ArtistID3WithRating).userRating ?? 0 }))
           );
           set({
             artists,

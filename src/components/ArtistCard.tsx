@@ -9,7 +9,7 @@ import { StarRatingDisplay } from './StarRating';
 import { useIsStarred } from '../hooks/useIsStarred';
 import { useRating } from '../hooks/useRating';
 import { useTheme } from '../hooks/useTheme';
-import { type ArtistID3 } from '../services/subsonicService';
+import { type ArtistID3WithRating } from '../services/subsonicService';
 import { moreOptionsStore } from '../store/moreOptionsStore';
 
 const COVER_SIZE = 300;
@@ -18,13 +18,13 @@ export const ArtistCard = memo(function ArtistCard({
   artist,
   width,
 }: {
-  artist: ArtistID3;
+  artist: ArtistID3WithRating;
   width: number;
 }) {
   const { colors } = useTheme();
   const router = useRouter();
   const starred = useIsStarred('artist', artist.id);
-  const rating = useRating(artist.id, (artist as unknown as { userRating?: number }).userRating);
+  const rating = useRating(artist.id, artist.userRating);
   const imageSize = width - 16; // 8px padding on each side
 
   const onPress = useCallback(() => {

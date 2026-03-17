@@ -103,6 +103,17 @@ export function PlaylistListView({
 
   const keyExtractor = useCallback((item: Playlist) => item.id, []);
 
+  const EmptyComponent = useMemo(
+    () => (
+      <EmptyState
+        icon={emptyIcon as any}
+        title={emptyMessage}
+        subtitle={emptySubtitle}
+      />
+    ),
+    [emptyIcon, emptyMessage, emptySubtitle]
+  );
+
   /* ---- Alphabet scroller support ---- */
   const scrollerVisible = showAlphabetScroller && playlists.length > 0;
 
@@ -163,13 +174,7 @@ export function PlaylistListView({
         drawDistance={300}
         onRefresh={onRefresh}
         refreshing={refreshing}
-        ListEmptyComponent={
-          <EmptyState
-            icon={emptyIcon as any}
-            title={emptyMessage}
-            subtitle={emptySubtitle}
-          />
-        }
+        ListEmptyComponent={EmptyComponent}
       />
       {scrollerVisible && (
         <AlphabetScroller

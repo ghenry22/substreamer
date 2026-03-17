@@ -12,6 +12,7 @@ import {
   isVariousArtists,
   VARIOUS_ARTISTS_BIO,
   VARIOUS_ARTISTS_COVER_ART_ID,
+  type ArtistID3WithRating,
   type ArtistInfo2,
   type ArtistWithAlbumsID3,
   type Child,
@@ -114,7 +115,7 @@ export const artistDetailStore = create<ArtistDetailState>()(
         };
 
         const ratingEntries: Array<{ id: string; serverRating: number }> = [
-          { id, serverRating: (artistData as { userRating?: number }).userRating ?? 0 },
+          { id, serverRating: (artistData as ArtistID3WithRating).userRating ?? 0 },
           ...topSongs.map((s) => ({ id: s.id, serverRating: s.userRating ?? 0 })),
           ...(artistData.album ?? []).map((a) => ({ id: a.id, serverRating: a.userRating ?? 0 })),
         ];
