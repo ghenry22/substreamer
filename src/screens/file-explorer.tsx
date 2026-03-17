@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Directory, File, Paths } from 'expo-file-system';
+import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -13,6 +14,7 @@ import {
 import { listDirectoryAsync } from 'expo-async-fs';
 import { EmptyState } from '../components/EmptyState';
 import { useTheme } from '../hooks/useTheme';
+import { isViewableFile } from './file-viewer';
 
 interface RootEntry {
   label: string;
@@ -73,6 +75,7 @@ async function listDirectoryEntries(dir: Directory): Promise<Entry[]> {
 
 export function FileExplorerScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
   const [path, setPath] = useState<string[] | null>(null);
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -118,11 +121,17 @@ export function FileExplorerScreen() {
 
   const handleEntryPress = useCallback(
     (entry: Entry) => {
-      if (!entry.isDirectory) return;
-      const dirName = entry.name.replace(/\/$/, '');
-      setPath((prev) => (prev ? [...prev, dirName] : null));
+      if (entry.isDirectory) {
+        const dirName = entry.name.replace(/\/$/, '');
+        setPath((prev) => (prev ? [...prev, dirName] : null));
+      } else if (isViewableFile(entry.name)) {
+        router.push({
+          pathname: '/file-viewer',
+          params: { uri: entry.uri, name: entry.name },
+        });
+      }
     },
-    [],
+    [router],
   );
 
   const handleRootPress = useCallback((index: number) => {
@@ -130,44 +139,47 @@ export function FileExplorerScreen() {
   }, []);
 
   const renderEntry = useCallback(
-    ({ item }: { item: Entry }) => (
-      <Pressable
-        onPress={() => handleEntryPress(item)}
-        disabled={!item.isDirectory}
-        style={({ pressed }) => [
-          styles.row,
-          {
-            borderBottomColor: colors.border,
-          },
-          pressed && item.isDirectory && styles.pressed,
-        ]}
-      >
-        <Ionicons
-          name={item.isDirectory ? 'folder' : 'document-outline'}
-          size={20}
-          color={item.isDirectory ? colors.primary : colors.textSecondary}
-          style={styles.icon}
-        />
-        <Text
-          style={[styles.name, { color: colors.textPrimary }]}
-          numberOfLines={1}
+    ({ item }: { item: Entry }) => {
+      const tappable = item.isDirectory || isViewableFile(item.name);
+      return (
+        <Pressable
+          onPress={() => handleEntryPress(item)}
+          disabled={!tappable}
+          style={({ pressed }) => [
+            styles.row,
+            {
+              borderBottomColor: colors.border,
+            },
+            pressed && tappable && styles.pressed,
+          ]}
         >
-          {item.name}
-        </Text>
-        {item.size != null && (
-          <Text style={[styles.size, { color: colors.textSecondary }]}>
-            {formatBytes(item.size)}
-          </Text>
-        )}
-        {item.isDirectory && (
           <Ionicons
-            name="chevron-forward"
-            size={16}
-            color={colors.textSecondary}
+            name={item.isDirectory ? 'folder' : 'document-outline'}
+            size={20}
+            color={item.isDirectory ? colors.primary : colors.textSecondary}
+            style={styles.icon}
           />
-        )}
-      </Pressable>
-    ),
+          <Text
+            style={[styles.name, { color: colors.textPrimary }]}
+            numberOfLines={1}
+          >
+            {item.name}
+          </Text>
+          {item.size != null && (
+            <Text style={[styles.size, { color: colors.textSecondary }]}>
+              {formatBytes(item.size)}
+            </Text>
+          )}
+          {tappable && (
+            <Ionicons
+              name="chevron-forward"
+              size={16}
+              color={colors.textSecondary}
+            />
+          )}
+        </Pressable>
+      );
+    },
     [colors, handleEntryPress],
   );
 

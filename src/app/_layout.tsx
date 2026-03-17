@@ -396,6 +396,10 @@ export default function RootLayout() {
           options={{ title: 'File Explorer', headerBackTitle: 'Settings' }}
         />
         <Stack.Screen
+          name="file-viewer"
+          options={{ title: '', headerBackTitle: 'Back' }}
+        />
+        <Stack.Screen
           name="migration-log"
           options={{ title: 'Migration Log', headerBackTitle: 'Back' }}
         />

@@ -98,6 +98,7 @@ export const TrackRow = memo(function TrackRow({ track, trackNumber, colors, onP
       leftActions={leftActions}
       enableFullSwipeRight
       enableFullSwipeLeft={!offlineMode}
+      restingBackgroundColor="transparent"
       onLongPress={handleLongPress}
       onPress={onPress}
     >

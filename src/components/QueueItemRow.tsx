@@ -116,7 +116,7 @@ export const QueueItemRow = memo(function QueueItemRow({
   );
 
   return (
-    <SwipeableRow rightActions={rightActions} leftActions={leftActions} enableFullSwipeRight enableFullSwipeLeft={!offlineMode} onPress={handlePress} onLongPress={onLongPress ? handleLongPress : undefined}>
+    <SwipeableRow rightActions={rightActions} leftActions={leftActions} enableFullSwipeRight enableFullSwipeLeft={!offlineMode} restingBackgroundColor="transparent" onPress={handlePress} onLongPress={onLongPress ? handleLongPress : undefined}>
       <View style={[styles.row, { borderBottomColor: colors.border }]}>
         {/* Cover art with now-playing overlay */}
         <View style={styles.coverWrap}>
