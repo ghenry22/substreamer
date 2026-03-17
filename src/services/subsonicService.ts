@@ -808,6 +808,27 @@ export async function getRandomSongs(
   }
 }
 
+export async function getRandomSongsFiltered(args: {
+  size?: number;
+  genre?: string;
+  fromYear?: number;
+  toYear?: number;
+}): Promise<Child[] | null> {
+  const api = getApi();
+  if (!api) return null;
+  try {
+    const params: { size?: number; genre?: string; fromYear?: number; toYear?: number } = {};
+    if (args.size != null) params.size = args.size;
+    if (args.genre != null) params.genre = args.genre;
+    if (args.fromYear != null) params.fromYear = args.fromYear;
+    if (args.toYear != null) params.toYear = args.toYear;
+    const response = await api.getRandomSongs(params);
+    return response.randomSongs?.song ?? [];
+  } catch {
+    return null;
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /*  Shares                                                             */
 /* ------------------------------------------------------------------ */

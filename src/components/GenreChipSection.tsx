@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'expo-router';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -18,14 +19,10 @@ import Animated, {
 
 import { type ThemeColors } from '../constants/theme';
 import { getOfflineSongsByGenre } from '../services/searchService';
-import {
-  getGenres,
-  getRandomSongs,
-  type Child,
-  type Genre,
-} from '../services/subsonicService';
+import { getRandomSongs, type Child } from '../services/subsonicService';
 import { playTrack } from '../services/playerService';
 import { connectivityStore } from '../store/connectivityStore';
+import { genreStore } from '../store/genreStore';
 import { offlineModeStore } from '../store/offlineModeStore';
 import { selectionAsync } from '../utils/haptics';
 
@@ -166,18 +163,11 @@ export const GenreChipSection = memo(function GenreChipSection({
   genreCounts,
   colors,
 }: GenreChipSectionProps) {
-  const [serverGenres, setServerGenres] = useState<Genre[] | null>(null);
-  const fetchedRef = useRef(false);
-
-  // Fetch server genres once when online
-  useEffect(() => {
-    if (fetchedRef.current) return;
-    if (!isOnline()) return;
-    fetchedRef.current = true;
-    getGenres().then((genres) => {
-      if (genres) setServerGenres(genres);
-    });
-  }, []);
+  const router = useRouter();
+  const serverGenres = genreStore((s) => s.genres);
+  const offlineMode = offlineModeStore((s) => s.offlineMode);
+  const isServerReachable = connectivityStore((s) => s.isServerReachable);
+  const online = !offlineMode && isServerReachable;
 
   const genres = useMemo(() => {
     // Start with listening history genres sorted by play count
@@ -193,7 +183,7 @@ export const GenreChipSection = memo(function GenreChipSection({
     const existing = new Set(historyGenres.map((g) => g.toLowerCase()));
     const result = [...historyGenres];
 
-    if (serverGenres) {
+    if (serverGenres.length > 0) {
       const sorted = [...serverGenres].sort(
         (a, b) => (b.songCount ?? 0) - (a.songCount ?? 0)
       );
@@ -209,13 +199,42 @@ export const GenreChipSection = memo(function GenreChipSection({
     return result;
   }, [genreCounts, serverGenres]);
 
+  const handleDiscoveryPress = useCallback(() => {
+    router.push('/discovery');
+  }, [router]);
+
   if (genres.length === 0) return null;
 
   return (
     <View style={styles.section}>
-      <Text style={[styles.title, { color: colors.textPrimary }]}>
-        Play Some…
-      </Text>
+      <View style={styles.header}>
+        {online ? (
+          <Pressable
+            onPress={handleDiscoveryPress}
+            style={({ pressed }) => [{ flex: 1 }, pressed && styles.headerPressed]}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Open Discovery Mix"
+          >
+            <Text style={[styles.title, { color: colors.textPrimary }]}>
+              Discovery
+            </Text>
+          </Pressable>
+        ) : (
+          <Text style={[styles.title, { color: colors.textPrimary, flex: 1 }]}>
+            Discovery
+          </Text>
+        )}
+        {online && (
+          <Pressable
+            onPress={handleDiscoveryPress}
+            style={({ pressed }) => [styles.chevronButton, pressed && styles.headerPressed]}
+            hitSlop={8}
+          >
+            <Ionicons name="chevron-forward" size={24} color={colors.textSecondary} />
+          </Pressable>
+        )}
+      </View>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -238,10 +257,21 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: 24,
   },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  headerPressed: {
+    opacity: 0.6,
+  },
   title: {
     fontSize: 22,
     fontWeight: '700',
-    marginBottom: 14,
+  },
+  chevronButton: {
+    padding: 4,
   },
   chipRow: {
     gap: 10,

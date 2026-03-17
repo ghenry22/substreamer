@@ -57,6 +57,7 @@ import { authStore } from '../store/authStore';
 import { favoritesStore } from '../store/favoritesStore';
 import { autoOfflineStore } from '../store/autoOfflineStore';
 import { certPromptStore } from '../store/certPromptStore';
+import { genreStore } from '../store/genreStore';
 import { offlineModeStore } from '../store/offlineModeStore';
 import { playlistLibraryStore } from '../store/playlistLibraryStore';
 import { fetchServerInfo } from '../services/subsonicService';
@@ -185,6 +186,7 @@ export default function RootLayout() {
       if (playlistLibraryStore.getState().playlists.length === 0) {
         playlistLibraryStore.getState().fetchAllPlaylists();
       }
+      genreStore.getState().fetchGenres();
     }
 
     const unsubAutoOffline = autoOfflineStore.subscribe((state, prev) => {
@@ -216,6 +218,7 @@ export default function RootLayout() {
         if (playlistLibraryStore.getState().playlists.length === 0) {
           playlistLibraryStore.getState().fetchAllPlaylists();
         }
+        genreStore.getState().fetchGenres();
       } else if (!prev.offlineMode && state.offlineMode) {
         stopMonitoring();
       }
@@ -379,6 +382,10 @@ export default function RootLayout() {
         <Stack.Screen
           name="my-listening"
           options={{ title: 'My Listening', headerBackTitle: 'Back' }}
+        />
+        <Stack.Screen
+          name="discovery"
+          options={{ title: 'Discovery', headerBackTitle: 'Back' }}
         />
         <Stack.Screen
           name="settings-audio-quality"
