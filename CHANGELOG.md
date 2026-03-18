@@ -1,5 +1,8 @@
 # Changelog
 
+## [8.0.31] - 2026-03-18
+
+- theming: soft background gradient based on primary theme preference on pages without hero image.
 ## [8.0.30] - 2026-03-18
 
 - ci: update coverage badge [skip ci]
