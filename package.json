@@ -88,10 +88,8 @@
     "install": {
       "exclude": [
         "@react-native-community/netinfo",
-        "@react-native-picker/picker",
         "@shopify/flash-list",
         "react-native-bootsplash",
-        "react-native-gesture-handler",
         "react-native-reanimated",
         "react-native-safe-area-context",
         "react-native-screens",
