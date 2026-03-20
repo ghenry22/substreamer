@@ -1,15 +1,26 @@
-Substreamer is a music streaming client for Subsonic-compatible servers including Navidrome, Airsonic, Gonic, and more.
+Your music. Your server. Everywhere you go.
 
-Features:
-- Stream your entire music library from anywhere
-- Background playback with lock screen controls
-- Offline mode with automatic music caching
-- Browse by album, artist, playlist, or genre
-- Search across your entire library
-- Scrobbling support (including offline scrobbles!)
-- Customizable themes (light/dark mode)
-- High-quality streaming with configurable bitrate
-- Share tracks and albums
-- Star and rate your favorite music
+Substreamer turns your Subsonic-compatible server into a personal streaming service. Browse, play, and download your entire music library on iPhone and iPad — free, with no ads, no subscriptions, and no data collection.
 
-Substreamer connects to any server that implements the Subsonic API, giving you full control over your music collection.
+Works with Navidrome, Airsonic, Gonic, Ampache, Funkwhale, Supysonic, and any server that supports the Subsonic API.
+
+STREAM & DOWNLOAD
+Stream in full quality or choose a bitrate that suits your connection. Download albums and playlists for offline listening with background queue processing and automatic recovery. Substreamer switches to offline mode automatically when your server is unreachable.
+
+TUNED IN — SMART MIXES
+Personalised playlists powered by your listening history. Time-of-day mixes, deep cuts from similar artists, decade time machines, genre blends, favorites radio, and a custom mix builder — all generated from your own library, not an algorithm trained on someone else's taste.
+
+LISTENING ANALYTICS
+See your play history, top artists, albums, and songs, most active listening hours, activity heatmaps, and listening streaks. Scrobbles queue locally when you're offline and sync automatically when you reconnect. Exclude specific albums or artists so one-off plays don't skew your stats.
+
+LIBRARY MANAGEMENT
+Browse by album, artist, or playlist. List and grid views with alphabetical quick-scroll for large libraries. 5-star ratings and favorites sync with your server. Create and manage playlists, reorder tracks, or save your current queue as a new playlist.
+
+PLAYBACK
+Background playback with full lock screen and notification controls. Adjustable playback speed, shuffle, and repeat. Share albums or playlists with configurable links.
+
+BEAUTIFUL & PRIVATE
+Light, dark, and system themes with custom accent colors. Album art color extraction for immersive detail views. No tracking, no analytics, no account required — your music stays between you and your server.
+
+OPEN SOURCE
+Substreamer is open source under the GPL-3.0 license. Browse the code, report issues, or contribute at github.com/ghenry22/substreamer.

@@ -141,10 +141,7 @@ fastlane/
   screenshots/
     en-US/
       iPhone 6.9" Display/          # 1320x2868 — REQUIRED (primary iPhone size)
-      iPhone 6.7" Display/          # 1290x2796 — optional
-      iPhone 6.1" Display/          # 1179x2556 — optional
       iPad Pro 13" Display/         # 2064x2752 — REQUIRED (primary iPad size)
-      iPad Pro 11" Display/         # 1668x2388 — optional
 ```
 
 ## iOS Screenshots
@@ -159,9 +156,20 @@ Apple requires screenshots for two sizes. All smaller sizes auto-scale from thes
 | iPhone 6.1" | 1179 x 2556 | No | Smaller iPhones |
 | iPad Pro 11" | 1668 x 2388 | No | Smaller iPads |
 
-Provide 2-10 screenshots per size. Placeholder images are included in each folder — replace them with real screenshots before pushing to the store.
+Provide 2-10 screenshots per size. Only the two required sizes need directories — Apple auto-scales from these for all other device sizes, so there is no need to provide separate screenshots for smaller displays.
 
 Fastlane identifies the target device by image resolution, not folder name. The folder names are for organization only.
+
+### Capturing iOS screenshots
+
+Use the iOS Simulator with the device models below to produce the correct resolutions. Take screenshots with **Cmd+S** in the Simulator (saves to Desktop by default).
+
+| Size | Simulator Device | Resolution | Launch Command |
+|------|-----------------|------------|----------------|
+| **iPhone 6.9"** | iPhone 17 Pro Max | 1320 x 2868 | `npm run ios -- --device "iPhone 17 Pro Max"` |
+| **iPad Pro 13"** | iPad Pro 13-inch (M5) | 2064 x 2752 | `npm run ios -- --device "iPad Pro 13-inch (M5)"` |
+
+List available simulators with `xcrun simctl list devices available`. If a device is missing, install the iOS runtime via **Xcode → Settings → Platforms**.
 
 ## Android Screenshots
 
@@ -171,12 +179,28 @@ Fastlane identifies the target device by image resolution, not folder name. The 
 | `sevenInchScreenshots/` | 1200 x 1920 | No (unlocks "Designed for tablets" badge) |
 | `tenInchScreenshots/` | 1920 x 2560 | No (unlocks badge) |
 
+Google Play does **not** auto-scale between sizes. If you want the tablet badge, you must provide separate tablet screenshots.
+
 Google Play dimension rules for all screenshot types:
 - **Minimum:** 320px on the shortest side
 - **Maximum:** 3840px on the longest side
 - **Aspect ratio:** Cannot exceed 2:1
 - **Format:** JPEG or 24-bit PNG (no alpha/transparency)
 - **Max file size:** 8 MB per image
+
+### Capturing Android screenshots
+
+Use the Android Emulator with the device profiles below. Take screenshots with the camera button in the emulator toolbar, or run `adb exec-out screencap -p > screenshot.png`.
+
+Google Play enforces a strict **2:1 maximum aspect ratio** — screenshots from modern tall-screen phones (e.g. Pixel 9 Pro at 1280x2856, ratio 2.23:1) will be rejected. Use the devices below which produce the exact recommended dimensions.
+
+| Folder | Emulator Device | Resolution | Launch Command |
+|--------|----------------|------------|----------------|
+| `phoneScreenshots/` | Pixel 2 | 1080 x 1920 | `npm run android -- --device "Pixel_2"` |
+| `sevenInchScreenshots/` | Nexus 7 | 1200 x 1920 | `npm run android -- --device "Nexus_7_2013"` |
+| `tenInchScreenshots/` | Pixel C | 1800 x 2560 | `npm run android -- --device "Pixel_C"` |
+
+List available emulators with `emulator -list-avds`. Create new AVDs via **Android Studio → Device Manager** if needed. These older device profiles are still available in Android Studio and produce the exact resolutions Google Play expects.
 
 Additional image assets in `metadata/android/en-US/images/`:
 - `icon.png` — 512 x 512 hi-res icon

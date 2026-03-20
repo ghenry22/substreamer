@@ -1,1 +1,1 @@
-Stream music from your own Subsonic or Navidrome server.
+Free, open source music streaming from your personal server. Offline downloads, smart mixes, listening analytics, and 5-star ratings — all synced with your library.

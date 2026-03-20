@@ -29,7 +29,7 @@
           <svg class="heart-icon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
             <path d="M4.25 2.5c-1.336 0-2.75 1.164-2.75 3 0 2.15 1.58 4.144 3.365 5.682A20.565 20.565 0 008 13.393a20.561 20.561 0 003.135-2.211C12.92 9.644 14.5 7.65 14.5 5.5c0-1.836-1.414-3-2.75-3-1.373 0-2.609.986-3.029 2.456a.75.75 0 01-1.442 0C6.859 3.486 5.623 2.5 4.25 2.5z"/>
           </svg>
-          Sponsor
+          <span class="sponsor-label">Sponsor</span>
         </a>
         <a href="#getting-started" class="btn btn-primary">Get Started</a>
       </div>
@@ -55,7 +55,7 @@
         <img src="https://img.shields.io/badge/platform-iOS%20%7C%20Android-lightgrey" alt="Platform: iOS | Android">
       </div>
       <div class="hero-image">
-        <img src="assets/images/placeholder-hero.svg" alt="Substreamer app preview">
+        <img src="assets/images/screenshots/hero_diagonal.jpg" alt="Substreamer app preview">
       </div>
     </div>
   </section>
@@ -84,7 +84,12 @@
         <div class="feature-card">
           <span class="feature-icon">&#128202;</span>
           <h3>Listening Analytics</h3>
-          <p>Automatic scrobbling with offline support — scrobbles queue locally and submit when you reconnect. Listening history, activity heatmaps, top artists, albums, and songs by play count, most active hours, and listening streaks.</p>
+          <p>Automatic scrobbling with offline support — scrobbles queue locally and submit when you reconnect. Listening history, activity heatmaps, top artists, albums, and songs by play count, most active hours, and listening streaks. Scrobble exclusions let you hide specific albums or artists so one-off plays like ambient sounds or kids' music don't skew your stats or recommendations.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">&#127911;</span>
+          <h3>Tuned In</h3>
+          <p>Personalised smart mixes powered by your listening history. Time-of-day playlists, deep cuts from similar artists, decade time machines, favorites radio, genre blends, and a custom mix builder — all generated from your own library.</p>
         </div>
         <div class="feature-card">
           <span class="feature-icon">&#128269;</span>
@@ -125,19 +130,32 @@
     <div class="container section-center">
       <h2 class="section-title">Screenshots</h2>
       <p class="section-subtitle">A quick look at Substreamer in action.</p>
-      <div class="screenshots-row">
-        <div class="screenshot-frame">
-          <img src="assets/images/placeholder-screenshot-1.svg" alt="Home Screen">
+      <div class="screenshots-carousel">
+        <button class="carousel-arrow carousel-arrow-left" aria-label="Scroll left">&#8249;</button>
+        <div class="screenshots-row">
+          <div class="screenshot-frame">
+            <img src="assets/images/screenshots/home.jpg" alt="Home Screen">
+          </div>
+          <div class="screenshot-frame">
+            <img src="assets/images/screenshots/library_albums_grid.jpg" alt="Library — Album Grid">
+          </div>
+          <div class="screenshot-frame">
+            <img src="assets/images/screenshots/albums_library_list.jpg" alt="Library — Album List">
+          </div>
+          <div class="screenshot-frame">
+            <img src="assets/images/screenshots/album_detail.jpg" alt="Album Detail">
+          </div>
+          <div class="screenshot-frame">
+            <img src="assets/images/screenshots/artist_detail.jpg" alt="Artist Detail">
+          </div>
+          <div class="screenshot-frame">
+            <img src="assets/images/screenshots/player.jpg" alt="Now Playing">
+          </div>
+          <div class="screenshot-frame">
+            <img src="assets/images/screenshots/tuned_in.jpg" alt="Tuned In">
+          </div>
         </div>
-        <div class="screenshot-frame">
-          <img src="assets/images/placeholder-screenshot-2.svg" alt="Library">
-        </div>
-        <div class="screenshot-frame">
-          <img src="assets/images/placeholder-screenshot-3.svg" alt="Now Playing">
-        </div>
-        <div class="screenshot-frame">
-          <img src="assets/images/placeholder-screenshot-4.svg" alt="Album Detail">
-        </div>
+        <button class="carousel-arrow carousel-arrow-right" aria-label="Scroll right">&#8250;</button>
       </div>
     </div>
   </section>
@@ -240,8 +258,36 @@
         <a href="privacy.html">Privacy</a>
         <a href="https://www.reddit.com/r/substreamer/">Reddit</a>
       </div>
+      <p class="footer-credit">Screenshots taken using the <a href="https://www.navidrome.org/">Navidrome</a> demo server. Music on the demo server is royalty-free and Creative Commons licensed, provided by <a href="https://www.jamendo.com/">Jamendo</a>.</p>
     </div>
   </footer>
+
+  <script>
+    (function () {
+      var row = document.querySelector('.screenshots-row');
+      var left = document.querySelector('.carousel-arrow-left');
+      var right = document.querySelector('.carousel-arrow-right');
+      var scrollAmount = 240;
+
+      function updateArrows() {
+        left.style.opacity = row.scrollLeft <= 0 ? '0' : '1';
+        left.style.pointerEvents = row.scrollLeft <= 0 ? 'none' : 'auto';
+        var atEnd = row.scrollLeft + row.clientWidth >= row.scrollWidth - 1;
+        right.style.opacity = atEnd ? '0' : '1';
+        right.style.pointerEvents = atEnd ? 'none' : 'auto';
+      }
+
+      left.addEventListener('click', function () {
+        row.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
+      });
+      right.addEventListener('click', function () {
+        row.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+      });
+
+      row.addEventListener('scroll', updateArrows);
+      updateArrows();
+    })();
+  </script>
 
 </body>
 </html>

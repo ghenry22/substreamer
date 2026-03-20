@@ -1,7 +1,7 @@
 :root {
-  --bg-primary: #0d1117;
-  --bg-secondary: #161b22;
-  --bg-card: #1c2128;
+  --bg-primary: #0f1729;
+  --bg-secondary: #162036;
+  --bg-card: #1c2940;
   --text-primary: #f0f6fc;
   --text-secondary: #8b949e;
   --accent: #1D9BF0;
@@ -105,6 +105,7 @@ img {
   border-radius: 8px;
   font-size: 14px;
   font-weight: 600;
+  white-space: nowrap;
   transition: background 0.2s, transform 0.1s;
   border: none;
   cursor: pointer;
@@ -289,12 +290,56 @@ section:nth-child(even) {
 }
 
 /* Screenshots */
+.screenshots-carousel {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
 .screenshots-row {
   display: flex;
-  justify-content: center;
   gap: 20px;
   overflow-x: auto;
   padding: 8px 0;
+  scroll-snap-type: x mandatory;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.screenshots-row::-webkit-scrollbar {
+  display: none;
+}
+
+.carousel-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  transition: opacity 0.3s, background 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.carousel-arrow:hover {
+  background: var(--bg-card);
+}
+
+.carousel-arrow-left {
+  left: -22px;
+}
+
+.carousel-arrow-right {
+  right: -22px;
 }
 
 .screenshot-frame {
@@ -304,6 +349,7 @@ section:nth-child(even) {
   overflow: hidden;
   border: 2px solid var(--border);
   transition: transform 0.3s, border-color 0.3s;
+  scroll-snap-align: center;
 }
 
 .screenshot-frame:hover {
@@ -486,6 +532,22 @@ section:nth-child(even) {
   color: var(--text-primary);
 }
 
+.footer-credit {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+
+.footer-credit a {
+  color: var(--text-secondary);
+  text-decoration: underline;
+}
+
+.footer-credit a:hover {
+  color: var(--text-primary);
+}
+
 /* GitHub icon */
 .github-icon {
   width: 20px;
@@ -557,6 +619,20 @@ section:nth-child(even) {
     width: 160px;
   }
 
+  .carousel-arrow {
+    width: 36px;
+    height: 36px;
+    font-size: 20px;
+  }
+
+  .carousel-arrow-left {
+    left: -8px;
+  }
+
+  .carousel-arrow-right {
+    right: -8px;
+  }
+
   section {
     padding: 56px 20px;
   }
@@ -572,5 +648,22 @@ section:nth-child(even) {
 
   .nav-links .nav-link-text {
     display: none;
+  }
+
+  .nav-links {
+    gap: 8px;
+  }
+
+  .nav-links .btn {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  .nav-links .btn-sponsor .sponsor-label {
+    display: none;
+  }
+
+  .nav-links .btn-sponsor {
+    padding: 8px;
   }
 }
