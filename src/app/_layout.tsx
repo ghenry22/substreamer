@@ -445,7 +445,7 @@ export default function RootLayout() {
           options={{ ...blurHeaderOptions, title: 'My Listening', headerBackTitle: 'Back' }}
         />
         <Stack.Screen
-          name="discovery"
+          name="tuned-in"
           options={{ ...blurHeaderOptions, title: 'Tuned In', headerBackTitle: 'Back' }}
         />
         <Stack.Screen

@@ -20,7 +20,8 @@ export type FetchStrategy =
   | { type: 'similarToSong'; songId: string; count: number }
   | { type: 'multiGenreBlend'; genres: { name: string; size: number }[] }
   | { type: 'random'; size: number }
-  | { type: 'offline'; genre?: string };
+  | { type: 'offline'; genre?: string }
+  | { type: 'recentTopSongs'; songs: Child[] };
 
 export interface MixDefinition {
   id: string;
@@ -135,14 +136,38 @@ export function getTopDecade(
     decadeCounts[decade] = (decadeCounts[decade] ?? 0) + entry.count;
   }
 
-  const sorted = Object.entries(decadeCounts)
-    .map(([d, count]) => ({ decade: Number(d), count }))
-    .sort((a, b) => b.count - a.count);
+  const decadeCandidates = Object.entries(decadeCounts)
+    .map(([d, count]) => ({ decade: Number(d), count }));
 
-  if (sorted.length === 0) return null;
+  if (decadeCandidates.length === 0) return null;
 
-  const decade = sorted[0].decade;
-  return { decade, fromYear: decade, toYear: decade + 9 };
+  // Compress weights with sqrt so the top decade doesn't dominate.
+  // e.g. counts 100/10/5 become weights ~10/3.2/2.2 instead of 100/10/5.
+  const softened = decadeCandidates.map((c) => ({ ...c, weight: Math.sqrt(c.count) }));
+
+  // Include the generic "Time Machine" (null) weighted at the average
+  // so it occasionally appears even when decade data exists.
+  const avgWeight = softened.reduce((sum, c) => sum + c.weight, 0) / softened.length;
+  const candidates: { decade: number | null; weight: number }[] = [
+    ...softened,
+    { decade: null, weight: avgWeight },
+  ];
+
+  // Weighted random selection — more-listened decades still appear more
+  // often but the gap between top and bottom is narrower
+  const totalWeight = candidates.reduce((sum, c) => sum + c.weight, 0);
+  let roll = Math.random() * totalWeight;
+  let picked = candidates[0];
+  for (const c of candidates) {
+    roll -= c.weight;
+    if (roll <= 0) {
+      picked = c;
+      break;
+    }
+  }
+
+  if (picked.decade === null) return null;
+  return { decade: picked.decade, fromYear: picked.decade, toYear: picked.decade + 9 };
 }
 
 /* ------------------------------------------------------------------ */
@@ -196,21 +221,53 @@ export function generateMixes(input: GenerateMixesInput): MixDefinition[] {
 
   // 2. "Deep Cuts" — Similar Artist Discovery (online only)
   if (isOnline) {
-    const topArtist = Object.entries(artistCounts).sort(([, a], [, b]) => b - a)[0];
-    // Find a scrobble with an artistId for the top artist
-    const topArtistScrobble = topArtist
-      ? scrobbles.find((s) => s.song.artist === topArtist[0] && s.song.artistId)
-      : null;
+    // Build weighted artist candidates from those with an artistId in scrobbles
+    const artistIdMap = new Map<string, string>();
+    for (const s of scrobbles) {
+      if (s.song.artist && s.song.artistId && !artistIdMap.has(s.song.artist)) {
+        artistIdMap.set(s.song.artist, s.song.artistId);
+      }
+    }
 
-    if (topArtistScrobble?.song.artistId) {
-      mixes.push({
-        id: 'deep-cuts',
-        name: 'Deep Cuts',
-        subtitle: `Artists like ${topArtist[0]} you might love`,
-        icon: 'compass-outline',
-        gradientColors: ['#7C3AED', '#4338CA'],
-        fetchStrategy: { type: 'similarToArtist', artistId: topArtistScrobble.song.artistId, count: 20 },
-      });
+    const artistCandidates = Object.entries(artistCounts)
+      .filter(([name]) => artistIdMap.has(name))
+      .map(([name, count]) => ({ name, artistId: artistIdMap.get(name)!, count }));
+
+    if (artistCandidates.length > 0) {
+      // Include "Surprise Me" fallback weighted at the average
+      const avgCount = artistCandidates.reduce((sum, c) => sum + c.count, 0) / artistCandidates.length;
+      const pool: { name: string | null; artistId: string | null; count: number }[] = [
+        ...artistCandidates,
+        { name: null, artistId: null, count: avgCount },
+      ];
+
+      const totalWeight = pool.reduce((sum, c) => sum + c.count, 0);
+      let roll = Math.random() * totalWeight;
+      let picked = pool[0];
+      for (const c of pool) {
+        roll -= c.count;
+        if (roll <= 0) { picked = c; break; }
+      }
+
+      if (picked.artistId) {
+        mixes.push({
+          id: 'deep-cuts',
+          name: 'Deep Cuts',
+          subtitle: `Artists like ${picked.name} you might love`,
+          icon: 'compass-outline',
+          gradientColors: ['#7C3AED', '#4338CA'],
+          fetchStrategy: { type: 'similarToArtist', artistId: picked.artistId, count: 20 },
+        });
+      } else {
+        mixes.push({
+          id: 'deep-cuts',
+          name: 'Surprise Me',
+          subtitle: 'A random selection from your library',
+          icon: 'shuffle-outline',
+          gradientColors: ['#7C3AED', '#4338CA'],
+          fetchStrategy: { type: 'random', size: 20 },
+        });
+      }
     } else {
       mixes.push({
         id: 'deep-cuts',
@@ -225,9 +282,9 @@ export function generateMixes(input: GenerateMixesInput): MixDefinition[] {
 
   // 3. "Time Machine" — Decade Mix (online only)
   if (isOnline) {
-    const topDecade = getTopDecade(songCounts);
-    if (topDecade) {
-      const decadeLabel = `${topDecade.decade}s`;
+    const pickedDecade = getTopDecade(songCounts);
+    if (pickedDecade) {
+      const decadeLabel = `${pickedDecade.decade}s`;
       mixes.push({
         id: 'time-machine',
         name: `The ${decadeLabel}`,
@@ -236,8 +293,8 @@ export function generateMixes(input: GenerateMixesInput): MixDefinition[] {
         gradientColors: ['#D97706', '#EA580C'],
         fetchStrategy: {
           type: 'randomByDecade',
-          fromYear: topDecade.fromYear,
-          toYear: topDecade.toYear,
+          fromYear: pickedDecade.fromYear,
+          toYear: pickedDecade.toYear,
           size: 20,
         },
       });
@@ -289,6 +346,37 @@ export function generateMixes(input: GenerateMixesInput): MixDefinition[] {
             ],
           }
         : { type: 'offline', genre: genre1 },
+    });
+  }
+
+  // 6. "Heavy Rotation" — Most played songs in last 7 days (local data only)
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const recentCounts = new Map<string, { song: Child; count: number }>();
+  for (const s of scrobbles) {
+    if (s.time < sevenDaysAgo) continue;
+    const song = s.song as Child;
+    if (!song.id) continue;
+    const existing = recentCounts.get(song.id);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      recentCounts.set(song.id, { song, count: 1 });
+    }
+  }
+
+  const heavyRotationSongs = [...recentCounts.values()]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 20)
+    .map((entry) => entry.song);
+
+  if (heavyRotationSongs.length >= 5) {
+    mixes.push({
+      id: 'heavy-rotation',
+      name: 'Heavy Rotation',
+      subtitle: 'Your most played this week',
+      icon: 'repeat',
+      gradientColors: ['#6366F1', '#4F46E5'],
+      fetchStrategy: { type: 'recentTopSongs', songs: heavyRotationSongs },
     });
   }
 
@@ -344,6 +432,9 @@ export async function fetchMixSongs(strategy: FetchStrategy): Promise<Child[]> {
       }
       case 'random': {
         return (await getRandomSongs(strategy.size)) ?? [];
+      }
+      case 'recentTopSongs': {
+        return strategy.songs;
       }
       case 'offline': {
         if (strategy.genre) {
@@ -422,8 +513,9 @@ export function getTimeIcon(hour: number): keyof typeof Ionicons.glyphMap {
 
 export function getTimeGradient(hour: number): [string, string] {
   if (hour >= 5 && hour < 8) return ['#F59E0B', '#F97316'];
-  if (hour >= 8 && hour < 14) return ['#3B82F6', '#2563EB'];
-  if (hour >= 14 && hour < 17) return ['#0EA5E9', '#0284C7'];
+  if (hour >= 8 && hour < 11) return ['#F97316', '#3B82F6'];
+  if (hour >= 11 && hour < 14) return ['#3B82F6', '#2563EB'];
+  if (hour >= 14 && hour < 17) return ['#2563EB', '#0EA5E9'];
   if (hour >= 17 && hour < 20) return ['#F97316', '#DC2626'];
   if (hour >= 20 && hour < 23) return ['#6366F1', '#4F46E5'];
   return ['#312E81', '#1E1B4B'];

@@ -10,7 +10,7 @@ import {
   getTopGenreForHour,
   type FetchStrategy,
   type MixDefinition,
-} from '../discoveryService';
+} from '../tunedInService';
 import { type Child } from '../subsonicService';
 
 /* ------------------------------------------------------------------ */
@@ -162,14 +162,22 @@ describe('getTopGenreForHour', () => {
 /* ------------------------------------------------------------------ */
 
 describe('getTopDecade', () => {
-  it('returns the decade with the highest play count', () => {
+  it('returns a valid decade or null from the candidates (weighted random)', () => {
     const songCounts = {
       s1: { song: makeSong({ year: 1992 }), count: 5 },
       s2: { song: makeSong({ year: 1995 }), count: 8 },
       s3: { song: makeSong({ year: 2005 }), count: 3 },
     };
-    const result = getTopDecade(songCounts);
-    expect(result).toEqual({ decade: 1990, fromYear: 1990, toYear: 1999 });
+    // Run multiple times to account for randomness
+    const decades = new Set<number | null>();
+    for (let i = 0; i < 100; i++) {
+      const result = getTopDecade(songCounts);
+      decades.add(result?.decade ?? null);
+    }
+    // Should only produce valid candidates or null (generic fallback)
+    for (const d of decades) {
+      if (d !== null) expect([1990, 2000]).toContain(d);
+    }
   });
 
   it('returns null when no songs have year data', () => {
@@ -189,19 +197,52 @@ describe('getTopDecade', () => {
       s1: { song: makeSong({ year: 1920 }), count: 100 },
       s2: { song: makeSong({ year: 2010 }), count: 2 },
     };
+    // Only the 2010s is valid; null (generic fallback) also possible
     const result = getTopDecade(songCounts);
-    expect(result).toEqual({ decade: 2010, fromYear: 2010, toYear: 2019 });
+    if (result !== null) {
+      expect(result).toEqual({ decade: 2010, fromYear: 2010, toYear: 2019 });
+    }
   });
 
-  it('breaks ties by returning the first highest', () => {
+  it('returns a valid decade or null when counts are tied', () => {
     const songCounts = {
       s1: { song: makeSong({ year: 1985 }), count: 5 },
       s2: { song: makeSong({ year: 1995 }), count: 5 },
     };
     const result = getTopDecade(songCounts);
-    // Both have count 5, order depends on Object.values iteration
-    expect(result).not.toBeNull();
-    expect(result!.toYear - result!.fromYear).toBe(9);
+    if (result !== null) {
+      expect([1980, 1990]).toContain(result.decade);
+      expect(result.toYear - result.fromYear).toBe(9);
+    }
+  });
+
+  it('favors higher-count decades over many runs', () => {
+    const songCounts = {
+      s1: { song: makeSong({ year: 1992 }), count: 100 },
+      s2: { song: makeSong({ year: 2005 }), count: 1 },
+    };
+    const results = new Map<string, number>();
+    for (let i = 0; i < 500; i++) {
+      const r = getTopDecade(songCounts);
+      const key = r?.decade?.toString() ?? 'null';
+      results.set(key, (results.get(key) ?? 0) + 1);
+    }
+    // 1990s should appear far more often than 2000s
+    expect(results.get('1990')!).toBeGreaterThan(results.get('2000') ?? 0);
+  });
+
+  it('sometimes returns null (generic fallback) even when decades exist', () => {
+    const songCounts = {
+      s1: { song: makeSong({ year: 1992 }), count: 10 },
+      s2: { song: makeSong({ year: 2005 }), count: 10 },
+    };
+    let nullCount = 0;
+    for (let i = 0; i < 500; i++) {
+      if (getTopDecade(songCounts) === null) nullCount++;
+    }
+    // Generic fallback should appear sometimes but not dominate
+    expect(nullCount).toBeGreaterThan(0);
+    expect(nullCount).toBeLessThan(400);
   });
 });
 
@@ -240,7 +281,7 @@ describe('generateMixes', () => {
     expect(deepCuts.fetchStrategy.type).toBe('random');
   });
 
-  it('uses similarToArtist strategy when top artist has artistId', () => {
+  it('uses similarToArtist or Surprise Me when artist has artistId (weighted random)', () => {
     const input = {
       ...baseInput,
       artistCounts: { 'Pink Floyd': 20 },
@@ -250,15 +291,21 @@ describe('generateMixes', () => {
     };
     const mixes = generateMixes(input);
     const deepCuts = mixes.find((m) => m.id === 'deep-cuts')!;
-    expect(deepCuts.fetchStrategy).toEqual({
-      type: 'similarToArtist',
-      artistId: 'ar-1',
-      count: 20,
-    });
-    expect(deepCuts.subtitle).toContain('Pink Floyd');
+    // Weighted random: could be the artist or the generic fallback
+    if (deepCuts.fetchStrategy.type === 'similarToArtist') {
+      expect(deepCuts.fetchStrategy).toEqual({
+        type: 'similarToArtist',
+        artistId: 'ar-1',
+        count: 20,
+      });
+      expect(deepCuts.subtitle).toContain('Pink Floyd');
+    } else {
+      expect(deepCuts.name).toBe('Surprise Me');
+      expect(deepCuts.fetchStrategy.type).toBe('random');
+    }
   });
 
-  it('includes Time Machine with decade when song history has years', () => {
+  it('includes Time Machine when song history has years', () => {
     const input = {
       ...baseInput,
       songCounts: {
@@ -268,13 +315,19 @@ describe('generateMixes', () => {
     };
     const mixes = generateMixes(input);
     const timeMachine = mixes.find((m) => m.id === 'time-machine')!;
-    expect(timeMachine.name).toBe('The 1980s');
-    expect(timeMachine.fetchStrategy).toEqual({
-      type: 'randomByDecade',
-      fromYear: 1980,
-      toYear: 1989,
-      size: 20,
-    });
+    expect(timeMachine).toBeDefined();
+    // Weighted random: could be a specific decade or the generic fallback
+    if (timeMachine.name === 'The 1980s') {
+      expect(timeMachine.fetchStrategy).toEqual({
+        type: 'randomByDecade',
+        fromYear: 1980,
+        toYear: 1989,
+        size: 20,
+      });
+    } else {
+      expect(timeMachine.name).toBe('Time Machine');
+      expect(timeMachine.fetchStrategy).toEqual({ type: 'random', size: 20 });
+    }
   });
 
   it('excludes Favorites Radio when no starred songs', () => {
@@ -368,6 +421,83 @@ describe('generateMixes', () => {
     const mixes = generateMixes(baseInput);
     const rightNow = mixes[0];
     expect(rightNow.fetchStrategy.type).toBe('random');
+  });
+
+  describe('Heavy Rotation', () => {
+    const now = Date.now();
+    const recentTime = now - 2 * 24 * 60 * 60 * 1000; // 2 days ago
+
+    it('includes Heavy Rotation when 5+ songs played in last 7 days', () => {
+      const scrobbles = Array.from({ length: 8 }, (_, i) => ({
+        time: recentTime + i * 1000,
+        song: { id: `song-${i % 5}`, title: `Song ${i % 5}`, artist: 'Artist', genre: 'Rock' },
+      }));
+      const input = { ...baseInput, scrobbles };
+      const mixes = generateMixes(input);
+      const hr = mixes.find((m) => m.id === 'heavy-rotation');
+      expect(hr).toBeDefined();
+      expect(hr!.name).toBe('Heavy Rotation');
+      expect(hr!.fetchStrategy.type).toBe('recentTopSongs');
+    });
+
+    it('excludes Heavy Rotation when fewer than 5 songs played recently', () => {
+      const scrobbles = Array.from({ length: 3 }, (_, i) => ({
+        time: recentTime + i * 1000,
+        song: { id: `song-${i}`, title: `Song ${i}`, artist: 'Artist', genre: 'Rock' },
+      }));
+      const input = { ...baseInput, scrobbles };
+      const mixes = generateMixes(input);
+      expect(mixes.find((m) => m.id === 'heavy-rotation')).toBeUndefined();
+    });
+
+    it('excludes songs older than 7 days', () => {
+      const oldTime = now - 10 * 24 * 60 * 60 * 1000; // 10 days ago
+      const scrobbles = Array.from({ length: 10 }, (_, i) => ({
+        time: oldTime + i * 1000,
+        song: { id: `song-${i}`, title: `Song ${i}`, artist: 'Artist', genre: 'Rock' },
+      }));
+      const input = { ...baseInput, scrobbles };
+      const mixes = generateMixes(input);
+      expect(mixes.find((m) => m.id === 'heavy-rotation')).toBeUndefined();
+    });
+
+    it('sorts songs by play count descending', () => {
+      // song-0 played 5 times, song-1 played 2 times, others once
+      const scrobbles = [
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: recentTime + i * 1000,
+          song: { id: 'song-0', title: 'Top Song', artist: 'Artist', genre: 'Rock' },
+        })),
+        ...Array.from({ length: 2 }, (_, i) => ({
+          time: recentTime + (5 + i) * 1000,
+          song: { id: 'song-1', title: 'Second Song', artist: 'Artist', genre: 'Rock' },
+        })),
+        ...Array.from({ length: 3 }, (_, i) => ({
+          time: recentTime + (7 + i) * 1000,
+          song: { id: `song-${2 + i}`, title: `Song ${2 + i}`, artist: 'Artist', genre: 'Rock' },
+        })),
+      ];
+      const input = { ...baseInput, scrobbles };
+      const mixes = generateMixes(input);
+      const hr = mixes.find((m) => m.id === 'heavy-rotation')!;
+      expect(hr).toBeDefined();
+      if (hr.fetchStrategy.type === 'recentTopSongs') {
+        expect(hr.fetchStrategy.songs[0].id).toBe('song-0');
+        expect(hr.fetchStrategy.songs[1].id).toBe('song-1');
+      }
+    });
+
+    it('works in offline mode', () => {
+      const scrobbles = Array.from({ length: 8 }, (_, i) => ({
+        time: recentTime + i * 1000,
+        song: { id: `song-${i % 5}`, title: `Song ${i % 5}`, artist: 'Artist', genre: 'Rock' },
+      }));
+      const input = { ...baseInput, isOnline: false, scrobbles };
+      const mixes = generateMixes(input);
+      const hr = mixes.find((m) => m.id === 'heavy-rotation');
+      expect(hr).toBeDefined();
+      expect(hr!.fetchStrategy.type).toBe('recentTopSongs');
+    });
   });
 });
 
@@ -491,6 +621,15 @@ describe('fetchMixSongs', () => {
     const result = await fetchMixSongs({ type: 'randomByGenre', genre: 'Rock', size: 20 });
     expect(result).toEqual([]);
   });
+
+  it('returns embedded songs for recentTopSongs strategy', async () => {
+    const songs = [makeSong({ id: 'a' }), makeSong({ id: 'b' })];
+    const result = await fetchMixSongs({ type: 'recentTopSongs', songs });
+    expect(result).toEqual(songs);
+    // No API calls should be made
+    expect(mockGetRandomSongs).not.toHaveBeenCalled();
+    expect(mockGetRandomSongsFiltered).not.toHaveBeenCalled();
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -591,14 +730,21 @@ describe('getTimeGradient', () => {
     expect(c1).toBe('#F59E0B');
   });
 
-  it('returns blue gradient for morning (8-13)', () => {
-    const [c1] = getTimeGradient(8);
+  it('returns warm-to-blue gradient for morning (8-10)', () => {
+    const [c1, c2] = getTimeGradient(8);
+    expect(c1).toBe('#F97316');
+    expect(c2).toBe('#3B82F6');
+  });
+
+  it('returns blue gradient for midday (11-13)', () => {
+    const [c1] = getTimeGradient(11);
     expect(c1).toBe('#3B82F6');
   });
 
-  it('returns sky gradient for afternoon (14-16)', () => {
-    const [c1] = getTimeGradient(14);
-    expect(c1).toBe('#0EA5E9');
+  it('returns blue-to-sky gradient for afternoon (14-16)', () => {
+    const [c1, c2] = getTimeGradient(14);
+    expect(c1).toBe('#2563EB');
+    expect(c2).toBe('#0EA5E9');
   });
 
   it('returns orange gradient for evening (17-19)', () => {

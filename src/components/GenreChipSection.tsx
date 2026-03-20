@@ -199,8 +199,8 @@ export const GenreChipSection = memo(function GenreChipSection({
     return result;
   }, [genreCounts, serverGenres]);
 
-  const handleDiscoveryPress = useCallback(() => {
-    router.push('/discovery');
+  const handleTunedInPress = useCallback(() => {
+    router.push('/tuned-in');
   }, [router]);
 
   if (genres.length === 0) return null;
@@ -210,7 +210,7 @@ export const GenreChipSection = memo(function GenreChipSection({
       <View style={styles.header}>
         {online ? (
           <Pressable
-            onPress={handleDiscoveryPress}
+            onPress={handleTunedInPress}
             style={({ pressed }) => [{ flex: 1 }, pressed && styles.headerPressed]}
             hitSlop={8}
             accessibilityRole="button"
@@ -227,7 +227,7 @@ export const GenreChipSection = memo(function GenreChipSection({
         )}
         {online && (
           <Pressable
-            onPress={handleDiscoveryPress}
+            onPress={handleTunedInPress}
             style={({ pressed }) => [styles.chevronButton, pressed && styles.headerPressed]}
             hitSlop={8}
           >
