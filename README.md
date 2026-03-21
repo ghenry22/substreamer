@@ -14,20 +14,20 @@
 [![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-db61a2?style=social)](https://github.com/sponsors/ghenry22)
 ![GitHub Stars](https://img.shields.io/github/stars/ghenry22/substreamer?style=social)
 
-<img src="docs/assets/images/placeholder-hero.svg" alt="Substreamer app preview" width="700">
+<img src="docs/assets/images/screenshots/hero_diagonal.jpg" alt="Substreamer app preview" width="700">
 
 </div>
 
 ## Screenshots
 
 <p align="center">
-  <img src="docs/assets/images/placeholder-screenshot-1.svg" alt="Home Screen" width="180">
+  <img src="docs/assets/images/screenshots/home.jpg" alt="Home Screen" width="180">
   &nbsp;
-  <img src="docs/assets/images/placeholder-screenshot-2.svg" alt="Library" width="180">
+  <img src="docs/assets/images/screenshots/library_albums_grid.jpg" alt="Library" width="180">
   &nbsp;
-  <img src="docs/assets/images/placeholder-screenshot-3.svg" alt="Now Playing" width="180">
+  <img src="docs/assets/images/screenshots/player.jpg" alt="Now Playing" width="180">
   &nbsp;
-  <img src="docs/assets/images/placeholder-screenshot-4.svg" alt="Album Detail" width="180">
+  <img src="docs/assets/images/screenshots/album_detail.jpg" alt="Album Detail" width="180">
 </p>
 
 ## Highlights
