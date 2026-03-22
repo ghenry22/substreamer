@@ -140,8 +140,8 @@ fastlane/
         marketing_url.txt           # Marketing URL
   screenshots/
     en-US/
-      iPhone 6.9" Display/          # 1320x2868 — REQUIRED (primary iPhone size)
-      iPad Pro 13" Display/         # 2064x2752 — REQUIRED (primary iPad size)
+      iphone_1_home.png             # Fastlane detects device type by resolution
+      ipad_1_home.png               # Prefix with iphone_/ipad_ to avoid name collisions
 ```
 
 ## iOS Screenshots
@@ -156,13 +156,13 @@ Apple requires screenshots for two sizes. All smaller sizes auto-scale from thes
 | iPhone 6.1" | 1179 x 2556 | No | Smaller iPhones |
 | iPad Pro 11" | 1668 x 2388 | No | Smaller iPads |
 
-Provide 2-10 screenshots per size. Only the two required sizes need directories — Apple auto-scales from these for all other device sizes, so there is no need to provide separate screenshots for smaller displays.
+Provide 2-10 screenshots per size. Only the two required sizes are needed — Apple auto-scales from these for all other device sizes, so there is no need to provide separate screenshots for smaller displays.
 
-Fastlane identifies the target device by image resolution, not folder name. The folder names are for organization only.
+Fastlane identifies the target device by image resolution, not folder name. All screenshot files must be placed **directly inside the language folder** (e.g. `screenshots/en-US/`), not in device-named subdirectories. Fastlane's loader only scans for images at the language folder level. Prefix filenames with `iphone_` / `ipad_` to avoid naming collisions between device types.
 
 ### Capturing iOS screenshots
 
-Use the iOS Simulator with the device models below to produce the correct resolutions. Take screenshots with **Cmd+S** in the Simulator (saves to Desktop by default).
+Use the iOS Simulator with the device models below to produce the correct resolutions. Take screenshots with **Cmd+S** in the Simulator (saves to Desktop by default). Name files with a numeric prefix for ordering and a device prefix: `iphone_1_home.png`, `ipad_1_home.png`, etc.
 
 | Size | Simulator Device | Resolution | Launch Command |
 |------|-----------------|------------|----------------|

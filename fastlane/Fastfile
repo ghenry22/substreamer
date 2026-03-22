@@ -42,6 +42,7 @@ platform :ios do
       force: true,
       submit_for_review: false,
       precheck_include_in_app_purchases: false,
+      overwrite_screenshots: true,
       metadata_path: push_path,
       screenshots_path: File.join(project_root, "fastlane", "screenshots")
     }
