@@ -1,5 +1,15 @@
 # Changelog
 
+## [8.0.36] - 2026-03-22
+
+- ci: update coverage badge [skip ci]
+- release: v8.0.35
+- ci: update coverage badge [skip ci]
+- favorite songs download: fix downloaded state of favorite songs being lost on restart
+- diagnostics: off by default
+- ci: update coverage badge [skip ci]
+- publishing: fix ios screenshot uploading
+- Create CNAME
 ## [8.0.35] - 2026-03-22
 
 - favorite songs download: fix downloaded state of favorite songs being lost on restart
