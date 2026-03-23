@@ -1,1 +1,1 @@
-substreamer - Subsonic Client
+Substreamer - Music Streamer

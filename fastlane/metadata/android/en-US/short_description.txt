@@ -1,1 +1,1 @@
-Your music when you want it, how you want it with substreamer
+Stream your music library from Subsonic & Navidrome servers, online or offline.

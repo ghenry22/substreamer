@@ -1,0 +1,7 @@
+Tuned In: personalised smart mixes powered by your listening history — time-of-day playlists, genre blends, decade time machines, and more.
+
+Listening analytics with play history, top artists, activity heatmaps, and streaks.
+
+Scrobble exclusions: hide specific albums or artists from your stats.
+
+Fresh new UI with smooth animations, album art color extraction, and improved tablet support.
