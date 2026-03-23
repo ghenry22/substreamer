@@ -1,5 +1,15 @@
 # Changelog
 
+## [8.0.37] - 2026-03-23
+
+- ci: update coverage badge [skip ci]
+- onboarding: add first time onboarding guide
+- ci: update coverage badge [skip ci]
+- storage lists: fix swipe actions
+- header buttons: always white
+- fix: android metadata fastlane path
+- publishing: play store updates
+- alphabet scroller: add haptic feedback
 ## [8.0.36] - 2026-03-22
 
 - ci: update coverage badge [skip ci]
