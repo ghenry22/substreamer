@@ -58,21 +58,18 @@ const CacheRow = memo(function CacheRow({
   }, [entry.coverArtId, onRefresh]);
 
   const rightActions: SwipeAction[] = useMemo(
-    () => [
-      ...(!offlineMode ? [{ icon: 'refresh-outline' as const, color: colors.primary, label: 'Refresh', onPress: handleRefreshAction }] : []),
-      {
-        icon: 'trash-outline' as const,
-        color: colors.red,
-        label: 'Delete',
-        onPress: handleDelete,
-      },
-    ],
-    [offlineMode, colors.primary, colors.red, handleRefreshAction, handleDelete],
+    () => [{ icon: 'trash-outline' as const, color: colors.red, label: 'Delete', onPress: handleDelete }],
+    [colors.red, handleDelete],
+  );
+
+  const leftActions: SwipeAction[] = useMemo(
+    () => offlineMode ? [] : [{ icon: 'refresh-outline' as const, color: colors.primary, label: 'Refresh', onPress: handleRefreshAction }],
+    [offlineMode, colors.primary, handleRefreshAction],
   );
 
   return (
     <View style={styles.rowWrapper}>
-      <SwipeableRow rightActions={rightActions} enableFullSwipeRight borderRadius={12}>
+      <SwipeableRow rightActions={rightActions} leftActions={leftActions} enableFullSwipeRight enableFullSwipeLeft={!offlineMode} borderRadius={12}>
         <View style={styles.row}>
           <Image
             source={{ uri: thumbUri }}

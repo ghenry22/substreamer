@@ -146,16 +146,18 @@ const CacheRow = memo(function CacheRow({
   }, [item.itemId, onToggle]);
 
   const rightActions: SwipeAction[] = useMemo(
-    () => [
-      ...(!offlineMode ? [{ icon: 'refresh-outline' as const, color: colors.primary, label: 'Refresh', onPress: handleRedownload }] : []),
-      { icon: 'trash-outline' as const, color: colors.red, label: 'Delete', onPress: handleDelete, removesRow: true },
-    ],
-    [offlineMode, colors.primary, colors.red, handleRedownload, handleDelete],
+    () => [{ icon: 'trash-outline' as const, color: colors.red, label: 'Delete', onPress: handleDelete, removesRow: true }],
+    [colors.red, handleDelete],
+  );
+
+  const leftActions: SwipeAction[] = useMemo(
+    () => offlineMode ? [] : [{ icon: 'refresh-outline' as const, color: colors.primary, label: 'Refresh', onPress: handleRedownload }],
+    [offlineMode, colors.primary, handleRedownload],
   );
 
   return (
     <View style={styles.rowWrapper}>
-      <SwipeableRow rightActions={rightActions} enableFullSwipeRight onPress={handleToggle} borderRadius={12}>
+      <SwipeableRow rightActions={rightActions} leftActions={leftActions} enableFullSwipeRight enableFullSwipeLeft={!offlineMode} onPress={handleToggle} borderRadius={12}>
         <View style={styles.rowContainer}>
           <View style={styles.row}>
             <CachedImage

@@ -51,26 +51,23 @@ const OverrideRow = memo(function OverrideRow({
   }, [override]);
 
   const rightActions: SwipeAction[] = useMemo(
-    () =>
-      offlineMode
-        ? []
-        : [
-            {
-              icon: 'trash-outline' as const,
-              color: colors.red,
-              label: 'Delete',
-              onPress: handleDelete,
-              removesRow: true,
-            },
-          ],
-    [colors.red, handleDelete, offlineMode],
+    () => [
+      {
+        icon: 'trash-outline' as const,
+        color: colors.red,
+        label: 'Delete',
+        onPress: handleDelete,
+        removesRow: true,
+      },
+    ],
+    [colors.red, handleDelete],
   );
 
   return (
     <View style={styles.rowWrapper}>
       <SwipeableRow
         rightActions={rightActions}
-        enableFullSwipeRight={!offlineMode}
+        enableFullSwipeRight
         onPress={handlePress}
         borderRadius={12}
       >
