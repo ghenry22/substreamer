@@ -211,6 +211,7 @@ export function SettingsSharesScreen() {
               refreshing={refreshing}
               onRefresh={handleRefresh}
               tintColor={colors.textSecondary}
+              progressViewOffset={headerHeight}
             />
           )
         }

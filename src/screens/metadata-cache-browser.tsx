@@ -4,6 +4,7 @@ import { HeaderHeightContext } from '@react-navigation/elements';
 import { memo, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  RefreshControl,
   StyleSheet,
   Text,
   TextInput,
@@ -344,8 +345,14 @@ export function MetadataCacheBrowserScreen() {
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         extraData={statusMap}
-        refreshing={refreshing}
-        onRefresh={handlePullRefresh}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handlePullRefresh}
+            tintColor={colors.primary}
+            progressViewOffset={headerHeight}
+          />
+        }
         contentContainerStyle={{
           paddingTop: headerHeight,
           paddingBottom: 32,

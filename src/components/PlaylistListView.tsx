@@ -2,6 +2,7 @@ import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { useCallback, useMemo, useRef } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   RefreshControl,
   StyleSheet,
   Text,
@@ -177,16 +178,20 @@ export function PlaylistListView({
           scrollerVisible && styles.listContentWithScroller,
           playlists.length === 0 && styles.emptyListContent,
         ]}
-        onScroll={contentInsetTop > 0 ? handleScroll : undefined}
-        scrollEventThrottle={contentInsetTop > 0 ? 16 : undefined}
+        onScroll={contentInsetTop > 0 && Platform.OS === 'ios' ? handleScroll : undefined}
+        scrollEventThrottle={contentInsetTop > 0 && Platform.OS === 'ios' ? 16 : undefined}
         ListHeaderComponent={
           contentInsetTop > 0 ? (
-            <InsetRefreshSpacer
-              height={contentInsetTop}
-              refreshing={refreshing}
-              scrollY={scrollY}
-              color={colors.primary}
-            />
+            Platform.OS === 'ios' ? (
+              <InsetRefreshSpacer
+                height={contentInsetTop}
+                refreshing={refreshing}
+                scrollY={scrollY}
+                color={colors.primary}
+              />
+            ) : (
+              <View style={{ height: contentInsetTop }} />
+            )
           ) : undefined
         }
         refreshControl={
@@ -195,7 +200,8 @@ export function PlaylistListView({
               refreshing={refreshing}
               onRefresh={onRefresh}
               tintColor={contentInsetTop > 0 ? 'transparent' : colors.primary}
-              colors={contentInsetTop > 0 ? ['transparent'] : [colors.primary]}
+              colors={[colors.primary]}
+              progressViewOffset={contentInsetTop}
             />
           ) : undefined
         }

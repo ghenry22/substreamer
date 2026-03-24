@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import Animated, {
   interpolate,
@@ -21,7 +21,9 @@ export const InsetRefreshSpacer = memo(function InsetRefreshSpacer({
   color: string;
 }) {
   const isRefreshing = useSharedValue(refreshing);
-  isRefreshing.value = refreshing;
+  useEffect(() => {
+    isRefreshing.value = refreshing;
+  }, [refreshing, isRefreshing]);
 
   const animatedStyle = useAnimatedStyle(() => {
     if (isRefreshing.value) {

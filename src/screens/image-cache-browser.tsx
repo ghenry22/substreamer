@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Image,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   TextInput,
@@ -321,8 +322,16 @@ export function ImageCacheBrowserScreen() {
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         extraData={statusMap}
-        refreshing={refreshing}
-        onRefresh={loading ? undefined : handlePullRefresh}
+        refreshControl={
+          loading ? undefined : (
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handlePullRefresh}
+              tintColor={colors.primary}
+              progressViewOffset={headerHeight}
+            />
+          )
+        }
         contentContainerStyle={{
           paddingTop: headerHeight,
           paddingBottom: 32,
