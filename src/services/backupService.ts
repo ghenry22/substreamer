@@ -250,6 +250,7 @@ export async function restoreBackup(
     const scrobbles: CompletedScrobble[] = JSON.parse(json);
     completedScrobbleStore.setState({ completedScrobbles: scrobbles });
     completedScrobbleStore.getState().rebuildStats();
+    completedScrobbleStore.getState().rebuildAggregates();
     scrobbleCount = scrobbles.length;
   }
 
