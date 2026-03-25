@@ -5,8 +5,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { useTheme } from '../hooks/useTheme';
+import { supports } from '../services/serverCapabilityService';
 import { audioDiagnosticsStore } from '../store/audioDiagnosticsStore';
 import { devOptionsStore } from '../store/devOptionsStore';
+import { offlineModeStore } from '../store/offlineModeStore';
 import { onboardingStore } from '../store/onboardingStore';
 import { searchStore } from '../store/searchStore';
 import { processingOverlayStore } from '../store/processingOverlayStore';
@@ -103,10 +105,13 @@ export function SettingsScreen() {
     onboardingStore.getState().show();
   }, []);
 
-  const visibleLinks = useMemo(
-    () => (devEnabled ? [...SETTINGS_LINKS, ...DEV_SETTINGS_LINKS] : SETTINGS_LINKS),
-    [devEnabled]
-  );
+  const offline = offlineModeStore((s) => s.offlineMode);
+
+  const visibleLinks = useMemo(() => {
+    const hideShares = offline || !supports('shares');
+    const base = hideShares ? SETTINGS_LINKS.filter((l) => l.route !== '/settings-shares') : SETTINGS_LINKS;
+    return devEnabled ? [...base, ...DEV_SETTINGS_LINKS] : base;
+  }, [devEnabled, offline]);
 
   return (
     <ScrollView
