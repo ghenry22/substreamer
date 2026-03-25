@@ -2,7 +2,7 @@ Your music. Your server. Everywhere you go.
 
 Substreamer turns your Subsonic-compatible server into a personal streaming service. Browse, play, and download your entire music library on iPhone and iPad — free, with no ads, no subscriptions, and no data collection.
 
-Works with Navidrome, Airsonic, Gonic, Ampache, Funkwhale, Supysonic, and any server that supports the Subsonic API.
+Verified with Navidrome, Subsonic, and Gonic. Also compatible with Airsonic-Advanced, Ampache, Funkwhale, Supysonic, and other Subsonic API servers.
 
 STREAM & DOWNLOAD
 Stream in full quality or choose a bitrate that suits your connection. Download albums and playlists for offline listening with background queue processing and automatic recovery. Substreamer switches to offline mode automatically when your server is unreachable.

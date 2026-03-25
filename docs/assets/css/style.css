@@ -389,6 +389,29 @@ section:nth-child(even) {
   color: var(--accent);
 }
 
+.server-tag.verified {
+  border-color: var(--accent);
+}
+
+.server-tag.untested {
+  opacity: 0.55;
+}
+
+.server-tier {
+  width: 100%;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-top: 12px;
+}
+
+.server-tier:first-child {
+  margin-top: 0;
+}
+
 /* Steps */
 .steps {
   display: flex;

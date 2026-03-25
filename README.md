@@ -46,7 +46,7 @@
 
 **Playlist Management** - Add any song to any playlist or create a new one on the fly, remove or re-order tracks in any saved playlist, quick access to save Artist Top Songs as a new playlist or save your current player queue as a new playlist.
 
-**Sharing** - full support for sharing albums or playlists (currently Navidrome only), allows you to set a server address override in case you have a different public address for people to access what you share with them, quick copy to clipboard so you can share it anywhere.  Full share management functionality in settings.
+**Sharing** - full support for sharing albums or playlists (server support dependant), allows you to set a server address override in case you have a different public address for people to access what you share with them, quick copy to clipboard so you can share it anywhere.  Full share management functionality in settings.
 
 **Metadata** - Allow MusicbrainzID (MBID) overrides to be set in app, users can search on the artist detail screen to easily correct an incorrect match or choose the right MBID if the server does not provide one.
 
@@ -58,17 +58,35 @@
 
 ## Compatible Servers
 
-Substreamer works with any server implementing the [Subsonic API](http://www.subsonic.org/pages/api.jsp).
+Substreamer works with any server implementing the [Subsonic API](http://www.subsonic.org/pages/api.jsp). Features are automatically adjusted based on what each server supports.
+
+### Verified
+
+Tested and actively supported. Features are gated based on each server's capabilities.
 
 | Server | Notes |
 |--------|-------|
 | [Navidrome](https://www.navidrome.org/) | Recommended. Full API support including OpenSubsonic extensions. |
-| [Gonic](https://github.com/sentriz/gonic) | Lightweight, full API support. |
-| [Airsonic-Advanced](https://github.com/airsonic-advanced/airsonic-advanced) | Community fork of Airsonic. |
-| [Ampache](https://ampache.org/) | Supports Subsonic API compatibility mode. |
+| [Subsonic](http://www.subsonic.org/) | The original Subsonic server. Tested against the official demo. |
+| [Gonic](https://github.com/sentriz/gonic) | Lightweight, OpenSubsonic compatible. Some features limited (no shares, no scan). |
+
+### Compatible
+
+Expected to work based on API version support. Not regularly tested.
+
+| Server | Notes |
+|--------|-------|
+| [Airsonic-Advanced](https://github.com/airsonic-advanced/airsonic-advanced) | Community fork of Airsonic. Classic Subsonic API. |
+
+### Untested
+
+These servers implement the Subsonic API but have not been tested with Substreamer. They may work but your experience may vary.
+
+| Server | Notes |
+|--------|-------|
+| [Ampache](https://ampache.org/) | Subsonic API compatibility mode. |
+| [Funkwhale](https://funkwhale.audio/) | Subsonic API compatibility mode. |
 | [Supysonic](https://github.com/spl0k/supysonic) | Python-based, lightweight. |
-| [Funkwhale](https://funkwhale.audio/) | Supports Subsonic API compatibility mode. |
-| [Subsonic](http://www.subsonic.org/) | The original. |
 
 ## Getting Started
 
