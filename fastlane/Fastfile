@@ -61,11 +61,19 @@ platform :ios do
       UI.message("Found editable version #{edit_version.version_string} — pushing metadata")
       deliver_params[:skip_app_version_update] = true
     else
-      # Create a new editable version using the app version from app.json
-      app_json = JSON.parse(File.read(File.join(project_root, "app.json")))
-      app_version = app_json.dig("expo", "version")
-      UI.message("No editable version found — creating version #{app_version} and pushing metadata")
-      deliver_params[:app_version] = app_version
+      # No editable version — create the next patch version
+      live_version = app.get_live_app_store_version(platform: Spaceship::ConnectAPI::Platform::IOS)
+      if live_version
+        current = live_version.version_string
+      else
+        app_json = JSON.parse(File.read(File.join(project_root, "app.json")))
+        current = app_json.dig("expo", "version")
+      end
+      parts = current.split(".").map(&:to_i)
+      parts[2] = (parts[2] || 0) + 1
+      next_version = parts.join(".")
+      UI.message("No editable version found — creating #{next_version} for metadata push")
+      deliver_params[:app_version] = next_version
     end
 
     deliver(deliver_params)
