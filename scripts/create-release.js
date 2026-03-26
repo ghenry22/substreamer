@@ -9,6 +9,14 @@ const APP_JSON = path.join(ROOT, 'app.json');
 const PKG_JSON = path.join(ROOT, 'package.json');
 const CHANGELOG = path.join(ROOT, 'CHANGELOG.md');
 const CHANGELOG_HEADER = '# Changelog\n\nAll notable changes to this project will be documented in this file.\n';
+const IOS_RELEASE_NOTES = path.join(ROOT, 'fastlane/metadata/ios/en-US/release_notes.txt');
+const ANDROID_CHANGELOG = path.join(ROOT, 'fastlane/metadata/android/en-US/changelogs/default.txt');
+
+const STORE_MAX_LENGTH = 4000;
+const EXCLUDED_PREFIXES = [
+  'ci', 'test', 'tests', 'docs', 'chore', 'build', 'style',
+  'release', 'publishing', 'clean up', 'refactor',
+];
 
 function run(cmd, opts = {}) {
   const result = execSync(cmd, { cwd: ROOT, encoding: 'utf-8', ...opts });
@@ -127,6 +135,81 @@ function updateChangelog(entry) {
   fs.writeFileSync(CHANGELOG, header + entry + body);
 }
 
+// --- Store Changelog ---
+
+function filterStoreCommits(commits) {
+  const seen = new Set();
+  return commits.filter((msg) => {
+    const lower = msg.toLowerCase();
+
+    // Exclude duplicates
+    if (seen.has(lower)) return false;
+    seen.add(lower);
+
+    // Exclude commits that are just noise (e.g. "Create CNAME", "update readme")
+    if (/^(create|update)\s+(cname|readme)/i.test(msg)) return false;
+
+    // Exclude by prefix
+    const colonIdx = msg.indexOf(':');
+    if (colonIdx > -1) {
+      const prefix = msg.substring(0, colonIdx).toLowerCase().trim();
+      if (EXCLUDED_PREFIXES.includes(prefix)) return false;
+    }
+
+    return true;
+  });
+}
+
+function formatStoreCommit(msg) {
+  // Strip "area: " prefix
+  const colonIdx = msg.indexOf(':');
+  let text = colonIdx > -1 ? msg.substring(colonIdx + 1).trim() : msg.trim();
+
+  // Remove GitHub issue references (e.g. "closes #33", "fixes #12")
+  text = text.replace(/\s*(closes?|fixes?|resolves?)\s+#\d+/gi, '').trim();
+
+  // Capitalize first letter
+  if (text.length > 0) {
+    text = text.charAt(0).toUpperCase() + text.substring(1);
+  }
+
+  return text;
+}
+
+function updateStoreChangelog(commits, filePath) {
+  const filtered = filterStoreCommits(commits);
+  if (filtered.length === 0) return false;
+
+  const formatted = filtered.map(formatStoreCommit).filter((line) => line.length > 0);
+  if (formatted.length === 0) return false;
+
+  // Read existing content for accumulation
+  let existing = '';
+  if (fs.existsSync(filePath)) {
+    existing = fs.readFileSync(filePath, 'utf-8').trim();
+  }
+
+  // Deduplicate against existing lines
+  const existingLines = new Set(existing.split('\n').map((l) => l.trim().toLowerCase()));
+  const newLines = formatted.filter((line) => !existingLines.has(line.toLowerCase()));
+
+  if (newLines.length === 0) return false;
+
+  // Prepend new entries above existing content
+  let content = newLines.join('\n');
+  if (existing.length > 0) {
+    content = content + '\n\n' + existing;
+  }
+
+  // Truncate to store limit
+  if (content.length > STORE_MAX_LENGTH) {
+    content = content.substring(0, STORE_MAX_LENGTH - 3).trimEnd() + '...';
+  }
+
+  fs.writeFileSync(filePath, content + '\n');
+  return true;
+}
+
 // --- Main ---
 
 const VALID_TYPES = ['patch', 'minor', 'major'];
@@ -163,6 +246,14 @@ const entry = buildChangelogEntry(newVersion, commits);
 updateChangelog(entry);
 console.log('  ✓ Updated CHANGELOG.md');
 
+const iosUpdated = updateStoreChangelog(commits, IOS_RELEASE_NOTES);
+const androidUpdated = updateStoreChangelog(commits, ANDROID_CHANGELOG);
+if (iosUpdated || androidUpdated) {
+  console.log('  ✓ Updated store release notes');
+} else {
+  console.log('  ⊘ No user-facing changes for store release notes');
+}
+
 appJson.expo.version = newVersion;
 const currentBuildNum = parseInt(appJson.expo.ios.buildNumber, 10);
 appJson.expo.ios.buildNumber = String(currentBuildNum + 1);
@@ -175,7 +266,7 @@ pkgJson.version = newVersion;
 writeJSON(PKG_JSON, pkgJson);
 console.log('  ✓ Updated package.json');
 
-run('git add app.json package.json CHANGELOG.md');
+run('git add app.json package.json CHANGELOG.md fastlane/metadata/ios/en-US/release_notes.txt fastlane/metadata/android/en-US/changelogs/default.txt');
 run(`git commit -m "release: ${tag}"`, { stdio: 'inherit' });
 console.log(`  ✓ Committed release: ${tag}`);
 
