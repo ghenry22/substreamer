@@ -1,3 +1,6 @@
+Update banner spacing animation
+Support legacy auth for Nextcloud Music & Ampache
+
 Empty state placeholder when offline with no downloaded content
 Can't manage shares when offline as requires API access
 Onboarding centered on larger screens and tablets

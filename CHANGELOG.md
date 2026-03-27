@@ -1,5 +1,14 @@
 # Changelog
 
+## [8.0.40] - 2026-03-27
+
+- UI: Update banner spacing animation
+- auth: support legacy auth for Nextcloud Music & Ampache
+- DOCS: AI Project instructions
+- ci: update coverage badge [skip ci]
+- publishing: get store release notes up to date for next version
+- ci: update coverage badge [skip ci]
+- ci: release notes for app stores
 ## [8.0.39] - 2026-03-26
 
 - playlists: empty state placeholder when offline with no downloaded content
