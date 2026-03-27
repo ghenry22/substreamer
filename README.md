@@ -69,6 +69,8 @@ Tested and actively supported. Features are gated based on each server's capabil
 | [Navidrome](https://www.navidrome.org/) | Recommended. Full API support including OpenSubsonic extensions. |
 | [Subsonic](http://www.subsonic.org/) | The original Subsonic server. Tested against the official demo. |
 | [Gonic](https://github.com/sentriz/gonic) | Lightweight, OpenSubsonic compatible. Some features limited (no shares, no scan). |
+| [Nextcloud Music](https://github.com/owncloud/music) | Nextcloud app. Requires legacy authentication (toggle in Advanced options on login). No shares or scan. |
+| [Ampache](https://ampache.org/) | Subsonic API compatibility mode. Requires legacy authentication (toggle in Advanced options on login). No shares or scan. |
 
 ### Compatible
 
@@ -84,7 +86,6 @@ These servers implement the Subsonic API but have not been tested with Substream
 
 | Server | Notes |
 |--------|-------|
-| [Ampache](https://ampache.org/) | Subsonic API compatibility mode. |
 | [Funkwhale](https://funkwhale.audio/) | Subsonic API compatibility mode. |
 | [Supysonic](https://github.com/spl0k/supysonic) | Python-based, lightweight. |
 

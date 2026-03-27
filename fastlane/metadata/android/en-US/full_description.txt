@@ -1,6 +1,6 @@
 Substreamer is a free, open-source music streamer for your personal Subsonic-compatible server. Stream, browse, and download your entire music library on Android — no ads, no subscriptions, and no data collection.
 
-Verified with Navidrome, Subsonic, and Gonic. Also compatible with Airsonic-Advanced, Ampache, Funkwhale, Supysonic, and other Subsonic API servers.
+Verified with Navidrome, Subsonic, Gonic, Nextcloud Music, and Ampache. Also compatible with Airsonic-Advanced, Funkwhale, Supysonic, and other Subsonic API servers.
 
 <b>STREAM & DOWNLOAD</b>
 Stream music in full quality or choose a bitrate that suits your connection. Supports FLAC, MP3, AAC, and other lossless and lossy formats. Download albums, playlists, and favorite songs for offline listening with background queue processing and automatic recovery. Substreamer switches to offline mode automatically when your server is unreachable — your downloaded music keeps playing without interruption.
@@ -21,7 +21,7 @@ Background playback with full lock screen and notification controls. Adjustable 
 Light, dark, and system themes with custom accent colors. Album art color extraction for immersive detail views. Your self-hosted music stays between you and your server — no tracking, no analytics collected, no account required.
 
 <b>COMPATIBLE SERVERS</b>
-Verified with Navidrome, Subsonic, and Gonic. Also compatible with Airsonic-Advanced, Ampache, Funkwhale, Supysonic, and other Subsonic API servers. Built for the self-hosted music community.
+Verified with Navidrome, Subsonic, Gonic, Nextcloud Music, and Ampache. Also compatible with Airsonic-Advanced, Funkwhale, Supysonic, and other Subsonic API servers. Built for the self-hosted music community.
 
 <b>OPEN SOURCE</b>
 Substreamer is free and open source under the GPL-3.0 license. A personal music player that puts you in control — browse the code, report issues, or contribute at github.com/ghenry22/substreamer.
