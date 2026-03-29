@@ -29,9 +29,17 @@ import { MarqueeText } from '../components/MarqueeText';
 import { MoreOptionsButton } from '../components/MoreOptionsButton';
 import { closeOpenRow, SwipeableRow, type SwipeAction } from '../components/SwipeableRow';
 import { TrackRow } from '../components/TrackRow';
-import { useColorExtraction } from '../hooks/useColorExtraction';
+import {
+  DARK_MIX,
+  GRADIENT_LOCATIONS,
+  GRADIENT_MIX_CURVE,
+  LIGHT_MIX,
+} from '../components/GradientBackground';
+import { SKIP_COLOR_EXTRACTION, useColorExtraction } from '../hooks/useColorExtraction';
 import { useDownloadStatus } from '../hooks/useDownloadStatus';
+import { usePlayerPanelVisible } from '../hooks/usePlayerPanelVisible';
 import { useTheme } from '../hooks/useTheme';
+import { mixHexColors } from '../utils/colors';
 import { useTransitionComplete } from '../hooks/useTransitionComplete';
 import { cacheAllSizes, refreshCachedImage } from '../services/imageCacheService';
 import { enqueuePlaylistDownload, syncCachedPlaylistTracks } from '../services/musicCacheService';
@@ -54,7 +62,7 @@ const HEADER_BAR_HEIGHT = 44;
 const EDIT_ROW_HEIGHT = 64;
 
 export function PlaylistDetailScreen() {
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -65,6 +73,7 @@ export function PlaylistDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const transitionComplete = useTransitionComplete();
   const downloadStatus = useDownloadStatus('playlist', Platform.OS === 'ios' ? (id ?? '') : '');
+  const panelVisible = usePlayerPanelVisible();
 
   const offlineMode = offlineModeStore((s) => s.offlineMode);
   const [editing, setEditing] = useState(false);
@@ -72,9 +81,17 @@ export function PlaylistDetailScreen() {
   const [saving, setSaving] = useState(false);
 
   const { coverBackgroundColor, gradientOpacity } = useColorExtraction(
-    playlist?.coverArt,
+    panelVisible ? SKIP_COLOR_EXTRACTION : playlist?.coverArt,
     colors.background,
   );
+
+  const themeGradientColors = useMemo(() => {
+    if (!panelVisible) return null;
+    const peak = theme === 'dark' ? DARK_MIX : LIGHT_MIX;
+    return GRADIENT_MIX_CURVE.map((m) =>
+      mixHexColors(colors.background, colors.primary, peak * m),
+    ) as [string, string, ...string[]];
+  }, [panelVisible, theme, colors.primary, colors.background]);
 
   /* ---- Data fetching ---- */
   const { fetchPlaylist } = playlistDetailStore.getState();
@@ -492,6 +509,14 @@ export function PlaylistDetailScreen() {
           style={StyleSheet.absoluteFillObject}
         />
       </Animated.View>
+        {themeGradientColors && (
+          <LinearGradient
+            colors={themeGradientColors}
+            locations={[...GRADIENT_LOCATIONS]}
+            style={gradientFillStyle}
+            pointerEvents="none"
+          />
+        )}
 
       {editing ? (
         <DraggableFlatList

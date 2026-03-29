@@ -163,6 +163,14 @@ export default function RootLayout() {
     }
   }, [isWide]);
 
+  // Dismiss the phone /player modal when rotating into wide mode, since
+  // the player panel takes over and having both visible is confusing.
+  useEffect(() => {
+    if (isWide && segments[0] === 'player') {
+      router.back();
+    }
+  }, [isWide, segments, router]);
+
   // Sync the app's theme preference to the native UIKit layer so that native
   // UI elements (e.g. iOS 26 liquid glass containers) render with the correct
   // color scheme immediately, avoiding a white flash during navigation transitions.
@@ -522,6 +530,10 @@ export default function RootLayout() {
         <Stack.Screen
           name="settings-audio-quality"
           options={{ ...blurHeaderOptions, title: 'Audio Quality', headerBackTitle: 'Settings' }}
+        />
+        <Stack.Screen
+          name="settings-playback"
+          options={{ ...blurHeaderOptions, title: 'Playback', headerBackTitle: 'Settings' }}
         />
         <Stack.Screen
           name="file-explorer"

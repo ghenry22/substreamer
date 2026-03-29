@@ -15,4 +15,12 @@ module.exports = async function playbackService() {
   TrackPlayer.addEventListener(Event.RemoteNext, () => TrackPlayer.skipToNext());
   TrackPlayer.addEventListener(Event.RemotePrevious, () => TrackPlayer.skipToPrevious());
   TrackPlayer.addEventListener(Event.RemoteSeek, (e) => TrackPlayer.seekTo(e.position));
+  TrackPlayer.addEventListener(Event.RemoteJumpForward, async (e) => {
+    const { position } = await TrackPlayer.getProgress();
+    await TrackPlayer.seekTo(position + e.interval);
+  });
+  TrackPlayer.addEventListener(Event.RemoteJumpBackward, async (e) => {
+    const { position } = await TrackPlayer.getProgress();
+    await TrackPlayer.seekTo(Math.max(0, position - e.interval));
+  });
 };

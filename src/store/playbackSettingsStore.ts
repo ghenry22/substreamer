@@ -13,6 +13,13 @@ export type RepeatModeSetting = 'off' | 'all' | 'one';
 export const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 export type PlaybackRate = (typeof PLAYBACK_RATES)[number];
 
+/** Supported skip interval durations in seconds. */
+export const SKIP_INTERVALS = [5, 10, 15, 30, 45, 60] as const;
+export type SkipInterval = (typeof SKIP_INTERVALS)[number];
+
+/** Whether lock screen / notification remote shows skip-track or skip-interval. */
+export type RemoteControlMode = 'skip-track' | 'skip-interval';
+
 export interface PlaybackSettingsState {
   /** Maximum bitrate for streaming. null = no limit (server default). */
   maxBitRate: MaxBitRate;
@@ -30,6 +37,15 @@ export interface PlaybackSettingsState {
   /** Format for offline downloads. */
   downloadFormat: StreamFormat;
 
+  /** Whether skip-interval buttons appear on the player view. */
+  showSkipIntervalButtons: boolean;
+  /** Backward skip interval in seconds. */
+  skipBackwardInterval: SkipInterval;
+  /** Forward skip interval in seconds. */
+  skipForwardInterval: SkipInterval;
+  /** What the lock screen / Control Center remote shows. */
+  remoteControlMode: RemoteControlMode;
+
   setMaxBitRate: (bitRate: MaxBitRate) => void;
   setStreamFormat: (format: StreamFormat) => void;
   setEstimateContentLength: (enabled: boolean) => void;
@@ -37,6 +53,10 @@ export interface PlaybackSettingsState {
   setPlaybackRate: (rate: PlaybackRate) => void;
   setDownloadMaxBitRate: (bitRate: MaxBitRate) => void;
   setDownloadFormat: (format: StreamFormat) => void;
+  setShowSkipIntervalButtons: (show: boolean) => void;
+  setSkipBackwardInterval: (interval: SkipInterval) => void;
+  setSkipForwardInterval: (interval: SkipInterval) => void;
+  setRemoteControlMode: (mode: RemoteControlMode) => void;
 }
 
 const PERSIST_KEY = 'substreamer-playback-settings';
@@ -51,6 +71,10 @@ export const playbackSettingsStore = create<PlaybackSettingsState>()(
       playbackRate: 1,
       downloadMaxBitRate: 320,
       downloadFormat: 'mp3',
+      showSkipIntervalButtons: false,
+      skipBackwardInterval: 15,
+      skipForwardInterval: 30,
+      remoteControlMode: 'skip-track',
 
       setMaxBitRate: (maxBitRate) => set({ maxBitRate }),
       setStreamFormat: (streamFormat) => set({ streamFormat }),
@@ -59,6 +83,10 @@ export const playbackSettingsStore = create<PlaybackSettingsState>()(
       setPlaybackRate: (playbackRate) => set({ playbackRate }),
       setDownloadMaxBitRate: (downloadMaxBitRate) => set({ downloadMaxBitRate }),
       setDownloadFormat: (downloadFormat) => set({ downloadFormat }),
+      setShowSkipIntervalButtons: (showSkipIntervalButtons) => set({ showSkipIntervalButtons }),
+      setSkipBackwardInterval: (skipBackwardInterval) => set({ skipBackwardInterval }),
+      setSkipForwardInterval: (skipForwardInterval) => set({ skipForwardInterval }),
+      setRemoteControlMode: (remoteControlMode) => set({ remoteControlMode }),
     }),
     {
       name: PERSIST_KEY,
@@ -71,6 +99,10 @@ export const playbackSettingsStore = create<PlaybackSettingsState>()(
         playbackRate: state.playbackRate,
         downloadMaxBitRate: state.downloadMaxBitRate,
         downloadFormat: state.downloadFormat,
+        showSkipIntervalButtons: state.showSkipIntervalButtons,
+        skipBackwardInterval: state.skipBackwardInterval,
+        skipForwardInterval: state.skipForwardInterval,
+        remoteControlMode: state.remoteControlMode,
       }),
     }
   )

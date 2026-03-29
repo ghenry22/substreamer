@@ -24,7 +24,7 @@ export type MoreOptionsEntity =
 /*  Store                                                              */
 /* ------------------------------------------------------------------ */
 
-export type MoreOptionsSource = 'default' | 'player';
+export type MoreOptionsSource = 'default' | 'player' | 'playerpanel' | 'playerexpanded';
 
 export interface MoreOptionsState {
   visible: boolean;

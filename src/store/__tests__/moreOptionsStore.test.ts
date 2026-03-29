@@ -20,9 +20,17 @@ describe('moreOptionsStore', () => {
 
   it('show with explicit source sets source', () => {
     moreOptionsStore.getState().show({ type: 'album', item: mockAlbum }, 'player');
-    const state = moreOptionsStore.getState();
-    expect(state.visible).toBe(true);
-    expect(state.source).toBe('player');
+    expect(moreOptionsStore.getState().source).toBe('player');
+  });
+
+  it('show with playerpanel source sets source', () => {
+    moreOptionsStore.getState().show({ type: 'song', item: mockSong }, 'playerpanel');
+    expect(moreOptionsStore.getState().source).toBe('playerpanel');
+  });
+
+  it('show with playerexpanded source sets source', () => {
+    moreOptionsStore.getState().show({ type: 'song', item: mockSong }, 'playerexpanded');
+    expect(moreOptionsStore.getState().source).toBe('playerexpanded');
   });
 
   it('hide resets all fields including source', () => {

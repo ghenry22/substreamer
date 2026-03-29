@@ -23,7 +23,7 @@ jest.mock('react-native-track-player', () => ({
     getActiveTrackIndex: jest.fn().mockResolvedValue(0),
     getProgress: jest.fn().mockResolvedValue({ position: 0, duration: 0, buffered: 0 }),
   },
-  Capability: { Play: 0, Pause: 1, SkipToNext: 2, SkipToPrevious: 3, Stop: 4, SeekTo: 5 },
+  Capability: { Play: 0, Pause: 1, SkipToNext: 2, SkipToPrevious: 3, Stop: 4, SeekTo: 5, JumpForward: 6, JumpBackward: 7 },
   Event: {
     PlaybackState: 'playback-state',
     PlaybackError: 'playback-error',
@@ -134,6 +134,8 @@ import {
   cycleRepeatMode,
   cyclePlaybackRate,
   shuffleQueue,
+  skipByInterval,
+  updateRemoteCapabilities,
 } from '../playerService';
 import { getCoverArtUrl, getStreamUrl, type Child } from '../subsonicService';
 
@@ -160,6 +162,7 @@ const defaultPlayerState = () => ({
   currentTrack: null,
   currentTrackIndex: null,
   queue: [],
+  position: 0,
   duration: 100,
   error: null,
   retrying: false,
@@ -1622,5 +1625,130 @@ describe('removeNonDownloadedTracks', () => {
 
     expect(mockTP.reset).not.toHaveBeenCalled();
     expect(mockTP.remove).toHaveBeenCalled();
+  });
+});
+
+describe('skipByInterval', () => {
+  it('seeks forward by the given interval', async () => {
+    const { playerStore } = require('../../store/playerStore');
+    (playerStore.getState as jest.Mock).mockReturnValue({
+      ...defaultPlayerState(),
+      position: 30,
+      duration: 200,
+    });
+    mockTP.getProgress.mockResolvedValue({ position: 30, duration: 200, buffered: 200 });
+
+    await skipByInterval(15);
+    expect(mockTP.seekTo).toHaveBeenCalledWith(45);
+  });
+
+  it('seeks backward by the given interval', async () => {
+    const { playerStore } = require('../../store/playerStore');
+    (playerStore.getState as jest.Mock).mockReturnValue({
+      ...defaultPlayerState(),
+      position: 30,
+      duration: 200,
+    });
+    mockTP.getProgress.mockResolvedValue({ position: 30, duration: 200, buffered: 200 });
+
+    await skipByInterval(-15);
+    expect(mockTP.seekTo).toHaveBeenCalledWith(15);
+  });
+
+  it('clamps to 0 when skipping backward past start', async () => {
+    const { playerStore } = require('../../store/playerStore');
+    (playerStore.getState as jest.Mock).mockReturnValue({
+      ...defaultPlayerState(),
+      position: 5,
+      duration: 200,
+    });
+    mockTP.getProgress.mockResolvedValue({ position: 5, duration: 200, buffered: 200 });
+
+    await skipByInterval(-30);
+    expect(mockTP.seekTo).toHaveBeenCalledWith(0);
+  });
+
+  it('clamps to duration when skipping forward past end', async () => {
+    const { playerStore } = require('../../store/playerStore');
+    (playerStore.getState as jest.Mock).mockReturnValue({
+      ...defaultPlayerState(),
+      position: 190,
+      duration: 200,
+    });
+    mockTP.getProgress.mockResolvedValue({ position: 190, duration: 200, buffered: 200 });
+
+    await skipByInterval(30);
+    expect(mockTP.seekTo).toHaveBeenCalledWith(200);
+  });
+});
+
+describe('updateRemoteCapabilities', () => {
+  it('sets skip-track capabilities by default', async () => {
+    const { Capability } = require('react-native-track-player');
+    playbackSettingsStore.setState({
+      remoteControlMode: 'skip-track',
+      skipForwardInterval: 30,
+      skipBackwardInterval: 15,
+    } as any);
+
+    await updateRemoteCapabilities();
+
+    expect(mockTP.updateOptions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        capabilities: expect.arrayContaining([
+          Capability.Play,
+          Capability.Pause,
+          Capability.SkipToNext,
+          Capability.SkipToPrevious,
+        ]),
+        forwardJumpInterval: 30,
+        backwardJumpInterval: 15,
+      }),
+    );
+
+    const call = mockTP.updateOptions.mock.calls[0][0];
+    expect(call.capabilities).not.toContain(Capability.JumpForward);
+    expect(call.capabilities).not.toContain(Capability.JumpBackward);
+  });
+
+  it('sets jump capabilities in skip-interval mode', async () => {
+    const { Capability } = require('react-native-track-player');
+    playbackSettingsStore.setState({
+      remoteControlMode: 'skip-interval',
+      skipForwardInterval: 60,
+      skipBackwardInterval: 10,
+    } as any);
+
+    await updateRemoteCapabilities();
+
+    expect(mockTP.updateOptions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        capabilities: expect.arrayContaining([
+          Capability.Play,
+          Capability.Pause,
+          Capability.JumpForward,
+          Capability.JumpBackward,
+        ]),
+        forwardJumpInterval: 60,
+        backwardJumpInterval: 10,
+      }),
+    );
+
+    const call = mockTP.updateOptions.mock.calls[0][0];
+    expect(call.capabilities).not.toContain(Capability.SkipToNext);
+    expect(call.capabilities).not.toContain(Capability.SkipToPrevious);
+  });
+
+  it('sets notificationCapabilities to match capabilities', async () => {
+    playbackSettingsStore.setState({
+      remoteControlMode: 'skip-track',
+      skipForwardInterval: 30,
+      skipBackwardInterval: 15,
+    } as any);
+
+    await updateRemoteCapabilities();
+
+    const call = mockTP.updateOptions.mock.calls[0][0];
+    expect(call.notificationCapabilities).toEqual(call.capabilities);
   });
 });

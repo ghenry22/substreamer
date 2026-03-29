@@ -24,9 +24,17 @@ import { MoreOptionsButton } from '../components/MoreOptionsButton';
 import { SectionTitle } from '../components/SectionTitle';
 import { SongCard } from '../components/SongCard';
 import { closeOpenRow } from '../components/SwipeableRow';
-import { useColorExtraction } from '../hooks/useColorExtraction';
+import {
+  DARK_MIX,
+  GRADIENT_LOCATIONS,
+  GRADIENT_MIX_CURVE,
+  LIGHT_MIX,
+} from '../components/GradientBackground';
+import { SKIP_COLOR_EXTRACTION, useColorExtraction } from '../hooks/useColorExtraction';
 import { useIsStarred } from '../hooks/useIsStarred';
+import { usePlayerPanelVisible } from '../hooks/usePlayerPanelVisible';
 import { useTheme } from '../hooks/useTheme';
+import { mixHexColors } from '../utils/colors';
 import { useTransitionComplete } from '../hooks/useTransitionComplete';
 import { refreshCachedImage } from '../services/imageCacheService';
 import { toggleStar } from '../services/moreOptionsService';
@@ -56,7 +64,7 @@ const HORIZONTAL_GAP = 10;
 /* ------------------------------------------------------------------ */
 
 export function ArtistDetailScreen() {
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
   const offlineMode = offlineModeStore((s) => s.offlineMode);
   const { width: screenWidth } = useWindowDimensions();
   const heroImageSize = Math.min(Math.max(HERO_IMAGE_SIZE, screenWidth * 0.35), 280);
@@ -86,11 +94,20 @@ export function ArtistDetailScreen() {
   // navigation animation completes so the transition isn't blocked by
   // mounting dozens of CachedImage components synchronously.
   const ready = useTransitionComplete(!cachedEntry);
+  const panelVisible = usePlayerPanelVisible();
 
   const { coverBackgroundColor, gradientOpacity } = useColorExtraction(
-    artist?.coverArt,
+    panelVisible ? SKIP_COLOR_EXTRACTION : artist?.coverArt,
     colors.background,
   );
+
+  const themeGradientColors = useMemo(() => {
+    if (!panelVisible) return null;
+    const peak = theme === 'dark' ? DARK_MIX : LIGHT_MIX;
+    return GRADIENT_MIX_CURVE.map((m) =>
+      mixHexColors(colors.background, colors.primary, peak * m),
+    ) as [string, string, ...string[]];
+  }, [panelVisible, theme, colors.primary, colors.background]);
 
   // Sync local state when the store entry is updated externally (e.g. after
   // an MBID override triggers a background refetch).
@@ -423,6 +440,14 @@ export function ArtistDetailScreen() {
             style={StyleSheet.absoluteFillObject}
           />
         </Animated.View>
+        {themeGradientColors && (
+          <LinearGradient
+            colors={themeGradientColors}
+            locations={[...GRADIENT_LOCATIONS]}
+            style={gradientFillStyle}
+            pointerEvents="none"
+          />
+        )}
 
         <FlashList
           data={sortedAlbums}

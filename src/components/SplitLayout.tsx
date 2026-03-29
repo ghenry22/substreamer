@@ -98,6 +98,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   main: {
-    flex: 2,
+    flex: 3,
   },
 });

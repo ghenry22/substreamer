@@ -31,6 +31,7 @@ import { useDownloadStatus, type DownloadStatus } from '../hooks/useDownloadStat
 import { useIsStarred } from '../hooks/useIsStarred';
 import { useRating } from '../hooks/useRating';
 import { useTheme } from '../hooks/useTheme';
+import { tabletLayoutStore } from '../store/tabletLayoutStore';
 import {
   addAlbumToQueue,
   addPlaylistToQueue,
@@ -187,6 +188,7 @@ export function MoreOptionsSheet() {
   const entity = moreOptionsStore((s) => s.entity);
   const source = moreOptionsStore((s) => s.source);
   const hide = moreOptionsStore((s) => s.hide);
+  const isPlayerSource = source === 'player' || source === 'playerpanel' || source === 'playerexpanded';
 
   const starType: 'song' | 'album' | 'artist' =
     entity?.type === 'album' || entity?.type === 'artist' ? entity.type : 'song';
@@ -322,6 +324,9 @@ export function MoreOptionsSheet() {
   const handleGoToArtist = useCallback(() => {
     if (!entity) return;
     handleClose();
+    if (source === 'playerexpanded') {
+      tabletLayoutStore.getState().setPlayerExpanded(false);
+    }
     const artistId =
       entity.type === 'song'
         ? (entity.item as Child).artistId
@@ -331,16 +336,19 @@ export function MoreOptionsSheet() {
     if (artistId) {
       router.push(`/artist/${artistId}`);
     }
-  }, [entity, handleClose, router]);
+  }, [entity, handleClose, source, router]);
 
   const handleGoToAlbum = useCallback(() => {
     if (!entity || entity.type !== 'song') return;
     handleClose();
+    if (source === 'playerexpanded') {
+      tabletLayoutStore.getState().setPlayerExpanded(false);
+    }
     const albumId = (entity.item as Child).albumId;
     if (albumId) {
       router.push(`/album/${albumId}`);
     }
-  }, [entity, handleClose, router]);
+  }, [entity, handleClose, source, router]);
 
   const handleShowDetails = useCallback(() => {
     if (entity?.type === 'album') {
@@ -482,8 +490,8 @@ export function MoreOptionsSheet() {
     (!offline || (entity.type === 'song' && entity.item.albumId != null &&
       entity.item.albumId in musicCacheStore.getState().cachedItems));
   const showAddToPlaylist = !offline && canAddToPlaylist(entity);
-  const showAddQueueToPlaylist = !offline && source === 'player';
-  const showAddToQueue = source !== 'player' && canAddToQueue(entity);
+  const showAddQueueToPlaylist = !offline && isPlayerSource;
+  const showAddToQueue = !isPlayerSource && canAddToQueue(entity);
   const showPlayMoreLikeThis = !offline && canPlayMoreLikeThis(entity);
   const showDetails = hasAlbumDetails(entity);
   const showShare = !offline && canShare(entity) && supports('shares');
@@ -506,7 +514,7 @@ export function MoreOptionsSheet() {
   return (
     <>
       <BottomSheet visible={visible} onClose={handleClose}>
-          {source === 'player' && showAddQueueToPlaylist ? (
+          {isPlayerSource && showAddQueueToPlaylist ? (
             <>
               {/* Section 1: Player Queue */}
               <Text

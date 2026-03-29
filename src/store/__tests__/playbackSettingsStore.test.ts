@@ -11,6 +11,10 @@ beforeEach(() => {
     playbackRate: 1,
     downloadMaxBitRate: 320,
     downloadFormat: 'mp3',
+    showSkipIntervalButtons: false,
+    skipBackwardInterval: 15,
+    skipForwardInterval: 30,
+    remoteControlMode: 'skip-track',
   });
 });
 
@@ -54,5 +58,33 @@ describe('playbackSettingsStore', () => {
   it('setDownloadFormat updates download format', () => {
     playbackSettingsStore.getState().setDownloadFormat('raw');
     expect(playbackSettingsStore.getState().downloadFormat).toBe('raw');
+  });
+
+  it('setShowSkipIntervalButtons updates flag', () => {
+    playbackSettingsStore.getState().setShowSkipIntervalButtons(true);
+    expect(playbackSettingsStore.getState().showSkipIntervalButtons).toBe(true);
+  });
+
+  it('setSkipBackwardInterval updates backward interval', () => {
+    playbackSettingsStore.getState().setSkipBackwardInterval(30);
+    expect(playbackSettingsStore.getState().skipBackwardInterval).toBe(30);
+  });
+
+  it('setSkipForwardInterval updates forward interval', () => {
+    playbackSettingsStore.getState().setSkipForwardInterval(60);
+    expect(playbackSettingsStore.getState().skipForwardInterval).toBe(60);
+  });
+
+  it('setRemoteControlMode updates remote control mode', () => {
+    playbackSettingsStore.getState().setRemoteControlMode('skip-interval');
+    expect(playbackSettingsStore.getState().remoteControlMode).toBe('skip-interval');
+  });
+
+  it('defaults for skip interval fields', () => {
+    const state = playbackSettingsStore.getState();
+    expect(state.showSkipIntervalButtons).toBe(false);
+    expect(state.skipBackwardInterval).toBe(15);
+    expect(state.skipForwardInterval).toBe(30);
+    expect(state.remoteControlMode).toBe('skip-track');
   });
 });

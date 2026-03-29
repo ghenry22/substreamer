@@ -7,6 +7,8 @@ const mockSeekTo = jest.fn();
 
 const eventHandlers: Record<string, Function> = {};
 
+const mockGetProgress = jest.fn();
+
 jest.mock('react-native-track-player', () => ({
   __esModule: true,
   default: {
@@ -19,6 +21,7 @@ jest.mock('react-native-track-player', () => ({
     skipToNext: mockSkipToNext,
     skipToPrevious: mockSkipToPrevious,
     seekTo: mockSeekTo,
+    getProgress: mockGetProgress,
   },
   Event: {
     RemotePlay: 'remote-play',
@@ -27,6 +30,8 @@ jest.mock('react-native-track-player', () => ({
     RemoteNext: 'remote-next',
     RemotePrevious: 'remote-previous',
     RemoteSeek: 'remote-seek',
+    RemoteJumpForward: 'remote-jump-forward',
+    RemoteJumpBackward: 'remote-jump-backward',
   },
 }));
 
@@ -45,6 +50,8 @@ describe('playbackService', () => {
     expect(eventHandlers['remote-next']).toBeDefined();
     expect(eventHandlers['remote-previous']).toBeDefined();
     expect(eventHandlers['remote-seek']).toBeDefined();
+    expect(eventHandlers['remote-jump-forward']).toBeDefined();
+    expect(eventHandlers['remote-jump-backward']).toBeDefined();
   });
 
   it('RemotePlay calls TrackPlayer.play', () => {
@@ -75,5 +82,23 @@ describe('playbackService', () => {
   it('RemoteSeek calls TrackPlayer.seekTo with position', () => {
     eventHandlers['remote-seek']({ position: 42 });
     expect(mockSeekTo).toHaveBeenCalledWith(42);
+  });
+
+  it('RemoteJumpForward seeks forward by interval', async () => {
+    mockGetProgress.mockResolvedValue({ position: 30, duration: 200, buffered: 200 });
+    await eventHandlers['remote-jump-forward']({ interval: 15 });
+    expect(mockSeekTo).toHaveBeenCalledWith(45);
+  });
+
+  it('RemoteJumpBackward seeks backward by interval', async () => {
+    mockGetProgress.mockResolvedValue({ position: 30, duration: 200, buffered: 200 });
+    await eventHandlers['remote-jump-backward']({ interval: 15 });
+    expect(mockSeekTo).toHaveBeenCalledWith(15);
+  });
+
+  it('RemoteJumpBackward clamps to 0', async () => {
+    mockGetProgress.mockResolvedValue({ position: 5, duration: 200, buffered: 200 });
+    await eventHandlers['remote-jump-backward']({ interval: 30 });
+    expect(mockSeekTo).toHaveBeenCalledWith(0);
   });
 });

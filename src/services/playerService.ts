@@ -238,18 +238,8 @@ export async function initPlayer(): Promise<void> {
     // Swallow and continue — the player is usable.
   }
 
-  await TrackPlayer.updateOptions({
-    capabilities: [
-      Capability.Play,
-      Capability.Pause,
-      Capability.SkipToNext,
-      Capability.SkipToPrevious,
-      Capability.Stop,
-      Capability.SeekTo,
-    ],
-    // Native progress events at 250ms interval, replacing JS-side polling.
-    progressUpdateEventInterval: 0.25,
-  });
+  // Apply remote capabilities based on user preference (skip-track vs skip-interval).
+  await updateRemoteCapabilities();
 
   // Apply persisted playback settings to the native player.
   const settings = playbackSettingsStore.getState();
@@ -662,6 +652,50 @@ export async function seekTo(position: number): Promise<void> {
 export async function skipToTrack(index: number): Promise<void> {
   await TrackPlayer.skip(index);
   await TrackPlayer.play();
+}
+
+/**
+ * Skip forward or backward by a relative number of seconds.
+ *
+ * Positive values skip forward, negative values skip backward.
+ * Delegates to `seekTo()` so transcoded stream clamping is applied.
+ */
+export async function skipByInterval(seconds: number): Promise<void> {
+  const { position, duration } = playerStore.getState();
+  const target = Math.max(0, Math.min(position + seconds, duration || Infinity));
+  await seekTo(target);
+}
+
+/**
+ * Update RNTP remote capabilities based on the user's preference.
+ *
+ * In 'skip-track' mode the lock screen / notification shows next/previous
+ * track buttons. In 'skip-interval' mode it shows jump forward/backward
+ * buttons with the configured intervals.
+ */
+export async function updateRemoteCapabilities(): Promise<void> {
+  const { remoteControlMode, skipForwardInterval, skipBackwardInterval } =
+    playbackSettingsStore.getState();
+
+  const baseCapabilities = [
+    Capability.Play,
+    Capability.Pause,
+    Capability.Stop,
+    Capability.SeekTo,
+  ];
+
+  const capabilities =
+    remoteControlMode === 'skip-interval'
+      ? [...baseCapabilities, Capability.JumpForward, Capability.JumpBackward]
+      : [...baseCapabilities, Capability.SkipToNext, Capability.SkipToPrevious];
+
+  await TrackPlayer.updateOptions({
+    capabilities,
+    notificationCapabilities: capabilities,
+    forwardJumpInterval: skipForwardInterval,
+    backwardJumpInterval: skipBackwardInterval,
+    progressUpdateEventInterval: 0.25,
+  });
 }
 
 /** Clear the current error and attempt to resume playback. */

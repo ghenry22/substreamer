@@ -42,6 +42,7 @@ import { PlayerProgressBar } from './PlayerProgressBar';
 import { QueueItemRow } from './QueueItemRow';
 import { RepeatButton } from './RepeatButton';
 import { ShuffleButton } from './ShuffleButton';
+import { SkipIntervalButton } from './SkipIntervalButton';
 import { ThemedAlert } from './ThemedAlert';
 import { closeOpenRow } from './SwipeableRow';
 import { useColorExtraction } from '../hooks/useColorExtraction';
@@ -61,6 +62,7 @@ import {
   togglePlayPause,
 } from '../services/playerService';
 import { type Child } from '../services/subsonicService';
+import { playbackSettingsStore } from '../store/playbackSettingsStore';
 import { createShareStore } from '../store/createShareStore';
 import { moreOptionsStore } from '../store/moreOptionsStore';
 import { offlineModeStore } from '../store/offlineModeStore';
@@ -90,6 +92,8 @@ export function ExpandedPlayerView({
   const bufferedPosition = playerStore((s) => s.bufferedPosition);
   const error = playerStore((s) => s.error);
   const retrying = playerStore((s) => s.retrying);
+
+  const showSkipInterval = playbackSettingsStore((s) => s.showSkipIntervalButtons);
 
   const isPlaying =
     playbackState === 'playing' || playbackState === 'buffering';
@@ -171,7 +175,7 @@ export function ExpandedPlayerView({
   }, []);
 
   const handleQueueItemLongPress = useCallback((track: Child) => {
-    moreOptionsStore.getState().show({ type: 'song', item: track }, 'player');
+    moreOptionsStore.getState().show({ type: 'song', item: track }, 'playerexpanded');
   }, []);
 
   const handleClearQueue = useCallback(() => {
@@ -343,7 +347,7 @@ export function ExpandedPlayerView({
                   </View>
                   <MoreOptionsButton
                     onPress={() =>
-                      moreOptionsStore.getState().show({ type: 'song', item: currentTrack }, 'player')
+                      moreOptionsStore.getState().show({ type: 'song', item: currentTrack }, 'playerexpanded')
                     }
                     color={colors.textPrimary}
                   />
@@ -386,7 +390,7 @@ export function ExpandedPlayerView({
                   <PlaybackRateButton />
                 </View>
 
-                <View style={styles.transportControls}>
+                <View style={[styles.transportControls, showSkipInterval && styles.transportControlsWide]}>
                   <Pressable
                     onPress={skipToPrevious}
                     hitSlop={12}
@@ -394,6 +398,10 @@ export function ExpandedPlayerView({
                   >
                     <Ionicons name="play-back" size={32} color={colors.textPrimary} />
                   </Pressable>
+
+                  {showSkipInterval && (
+                    <SkipIntervalButton direction="backward" size={32} />
+                  )}
 
                   <Pressable
                     onPress={togglePlayPause}
@@ -414,6 +422,10 @@ export function ExpandedPlayerView({
                       />
                     )}
                   </Pressable>
+
+                  {showSkipInterval && (
+                    <SkipIntervalButton direction="forward" size={32} />
+                  )}
 
                   <Pressable
                     onPress={skipToNext}
@@ -716,6 +728,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 32,
+  },
+  transportControlsWide: {
+    gap: 20,
   },
   playPauseButton: {
     width: 64,

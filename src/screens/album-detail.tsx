@@ -22,10 +22,18 @@ import { MarqueeText } from '../components/MarqueeText';
 import { MoreOptionsButton } from '../components/MoreOptionsButton';
 import { closeOpenRow } from '../components/SwipeableRow';
 import { TrackRow } from '../components/TrackRow';
-import { useColorExtraction } from '../hooks/useColorExtraction';
+import {
+  DARK_MIX,
+  GRADIENT_LOCATIONS,
+  GRADIENT_MIX_CURVE,
+  LIGHT_MIX,
+} from '../components/GradientBackground';
+import { SKIP_COLOR_EXTRACTION, useColorExtraction } from '../hooks/useColorExtraction';
 import { useDownloadStatus } from '../hooks/useDownloadStatus';
 import { useIsStarred } from '../hooks/useIsStarred';
+import { usePlayerPanelVisible } from '../hooks/usePlayerPanelVisible';
 import { useTheme } from '../hooks/useTheme';
+import { mixHexColors } from '../utils/colors';
 import { useTransitionComplete } from '../hooks/useTransitionComplete';
 import { refreshCachedImage } from '../services/imageCacheService';
 import { toggleStar } from '../services/moreOptionsService';
@@ -63,7 +71,7 @@ function groupTracksByDisc(songs: Child[]): Map<number, Child[]> {
 }
 
 export function AlbumDetailScreen() {
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
   const offlineMode = offlineModeStore((s) => s.offlineMode);
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -76,15 +84,24 @@ export function AlbumDetailScreen() {
   const starred = useIsStarred('album', id ?? '');
   const transitionComplete = useTransitionComplete();
   const downloadStatus = useDownloadStatus('album', Platform.OS === 'ios' ? (id ?? '') : '');
+  const panelVisible = usePlayerPanelVisible();
 
   const handleToggleStar = useCallback(() => {
     if (id) toggleStar('album', id);
   }, [id]);
 
   const { coverBackgroundColor, gradientOpacity } = useColorExtraction(
-    album?.coverArt,
+    panelVisible ? SKIP_COLOR_EXTRACTION : album?.coverArt,
     colors.background,
   );
+
+  const themeGradientColors = useMemo(() => {
+    if (!panelVisible) return null;
+    const peak = theme === 'dark' ? DARK_MIX : LIGHT_MIX;
+    return GRADIENT_MIX_CURVE.map((m) =>
+      mixHexColors(colors.background, colors.primary, peak * m),
+    ) as [string, string, ...string[]];
+  }, [panelVisible, theme, colors.primary, colors.background]);
 
   /* ---- Header right: download button + more options ---- */
   useEffect(() => {
@@ -335,6 +352,14 @@ export function AlbumDetailScreen() {
             style={StyleSheet.absoluteFillObject}
           />
         </Animated.View>
+        {themeGradientColors && (
+          <LinearGradient
+            colors={themeGradientColors}
+            locations={[...GRADIENT_LOCATIONS]}
+            style={gradientFillStyle}
+            pointerEvents="none"
+          />
+        )}
         <FlashList
           data={listData}
           renderItem={renderItem}

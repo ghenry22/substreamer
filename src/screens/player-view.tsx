@@ -40,6 +40,7 @@ import { PlaybackRateButton } from '../components/PlaybackRateButton';
 import { PlayerProgressBar } from '../components/PlayerProgressBar';
 import { RepeatButton } from '../components/RepeatButton';
 import { ShuffleButton } from '../components/ShuffleButton';
+import { SkipIntervalButton } from '../components/SkipIntervalButton';
 import { QueueItemRow } from '../components/QueueItemRow';
 import { closeOpenRow } from '../components/SwipeableRow';
 import { type ThemeColors } from '../constants/theme';
@@ -61,6 +62,7 @@ import {
   togglePlayPause,
 } from '../services/playerService';
 import { type Child } from '../services/subsonicService';
+import { playbackSettingsStore } from '../store/playbackSettingsStore';
 import { createShareStore } from '../store/createShareStore';
 import { moreOptionsStore } from '../store/moreOptionsStore';
 import { playerStore } from '../store/playerStore';
@@ -413,6 +415,8 @@ const PlayerListHeader = memo(function PlayerListHeader({
   const error = playerStore((s) => s.error);
   const retrying = playerStore((s) => s.retrying);
 
+  const showSkipInterval = playbackSettingsStore((s) => s.showSkipIntervalButtons);
+
   const isPlaying =
     playbackState === 'playing' || playbackState === 'buffering';
   const isBuffering =
@@ -489,7 +493,7 @@ const PlayerListHeader = memo(function PlayerListHeader({
             </View>
 
             {/* Transport controls */}
-            <View style={styles.transportControls}>
+            <View style={[styles.transportControls, showSkipInterval && styles.transportControlsWide]}>
               <Pressable
                 onPress={skipToPrevious}
                 hitSlop={12}
@@ -501,6 +505,10 @@ const PlayerListHeader = memo(function PlayerListHeader({
                   color={colors.textPrimary}
                 />
               </Pressable>
+
+              {showSkipInterval && (
+                <SkipIntervalButton direction="backward" size={32} />
+              )}
 
               <Pressable
                 onPress={togglePlayPause}
@@ -521,6 +529,10 @@ const PlayerListHeader = memo(function PlayerListHeader({
                   />
                 )}
               </Pressable>
+
+              {showSkipInterval && (
+                <SkipIntervalButton direction="forward" size={32} />
+              )}
 
               <Pressable
                 onPress={skipToNext}
@@ -699,6 +711,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 28,
+  },
+  transportControlsWide: {
+    gap: 20,
   },
   playPauseButton: {
     width: 64,

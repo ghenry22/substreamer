@@ -36,6 +36,7 @@ import { PlayerProgressBar } from './PlayerProgressBar';
 import { QueueItemRow } from './QueueItemRow';
 import { RepeatButton } from './RepeatButton';
 import { ShuffleButton } from './ShuffleButton';
+import { SkipIntervalButton } from './SkipIntervalButton';
 import { ThemedAlert } from './ThemedAlert';
 import { closeOpenRow } from './SwipeableRow';
 import { type ThemeColors } from '../constants/theme';
@@ -55,6 +56,7 @@ import {
   togglePlayPause,
 } from '../services/playerService';
 import { type Child } from '../services/subsonicService';
+import { playbackSettingsStore } from '../store/playbackSettingsStore';
 import { createShareStore } from '../store/createShareStore';
 import { moreOptionsStore } from '../store/moreOptionsStore';
 import { offlineModeStore } from '../store/offlineModeStore';
@@ -82,7 +84,7 @@ export function PlayerPanel() {
   }, []);
 
   const handleQueueItemLongPress = useCallback((track: Child) => {
-    moreOptionsStore.getState().show({ type: 'song', item: track }, 'player');
+    moreOptionsStore.getState().show({ type: 'song', item: track }, 'playerpanel');
   }, []);
 
   const handleClearQueue = useCallback(() => {
@@ -338,6 +340,8 @@ const PanelHeader = memo(function PanelHeader({
   const error = playerStore((s) => s.error);
   const retrying = playerStore((s) => s.retrying);
 
+  const showSkipInterval = playbackSettingsStore((s) => s.showSkipIntervalButtons);
+
   const isPlaying =
     playbackState === 'playing' || playbackState === 'buffering';
   const isBuffering =
@@ -365,7 +369,7 @@ const PanelHeader = memo(function PanelHeader({
             </Pressable>
             <MoreOptionsButton
               onPress={() =>
-                moreOptionsStore.getState().show({ type: 'song', item: currentTrack }, 'player')
+                moreOptionsStore.getState().show({ type: 'song', item: currentTrack }, 'playerpanel')
               }
               color={colors.textPrimary}
             />
@@ -422,7 +426,7 @@ const PanelHeader = memo(function PanelHeader({
               <PlaybackRateButton />
             </View>
 
-            <View style={styles.transportControls}>
+            <View style={[styles.transportControls, showSkipInterval && styles.transportControlsWide]}>
               <Pressable
                 onPress={skipToPrevious}
                 hitSlop={12}
@@ -430,6 +434,10 @@ const PanelHeader = memo(function PanelHeader({
               >
                 <Ionicons name="play-back" size={24} color={colors.textPrimary} />
               </Pressable>
+
+              {showSkipInterval && (
+                <SkipIntervalButton direction="backward" size={22} />
+              )}
 
               <Pressable
                 onPress={togglePlayPause}
@@ -450,6 +458,10 @@ const PanelHeader = memo(function PanelHeader({
                   />
                 )}
               </Pressable>
+
+              {showSkipInterval && (
+                <SkipIntervalButton direction="forward" size={22} />
+              )}
 
               <Pressable
                 onPress={skipToNext}
@@ -503,8 +515,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   coverWrap: {
-    width: 200,
-    height: 200,
+    width: 240,
+    height: 240,
     borderRadius: 10,
     overflow: 'hidden',
     backgroundColor: 'rgba(0,0,0,0.06)',
@@ -568,6 +580,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 20,
+  },
+  transportControlsWide: {
+    gap: 14,
   },
   playPauseButton: {
     width: 48,
