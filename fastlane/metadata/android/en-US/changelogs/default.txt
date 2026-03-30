@@ -1,0 +1,9 @@
+Fix some stale coverart in My Listening, improve artist name icon, add pull to refresh
+Unlock UI orientation for tablets
+Review and clean up iconography with clearer and more specific icons
+Tablet layout improvements for #18
+Show coverart in bottom sheets and context menus
+WIP tablet layout for landscape mode and some clean up for tablet layout in portrait mode
+Add more breakpoints for gridview on tablets. WIP for #18
+Fix a small additional issue with startup
+Persist migration status so they don't run unnecessarily (speed up start up)

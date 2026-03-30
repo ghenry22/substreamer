@@ -1,5 +1,24 @@
 # Changelog
 
+## [8.0.42] - 2026-03-30
+
+- My Listening: Fix some stale coverart in My Listening, improve artist name icon, add pull to refresh
+- tablet: unlock UI orientation for tablets
+- UI: Review and clean up iconography with clearer and more specific icons
+- Tablet layout improvements for #18
+- ci: update coverage badge [skip ci]
+- Show coverart in bottom sheets and context menus
+- ci: update coverage badge [skip ci]
+- WIP tablet layout for landscape mode and some clean up for tablet layout in portrait mode
+- tablet: Add more breakpoints for gridview on tablets. Closes #42 WIP for #18
+- ci: update coverage badge [skip ci]
+- ci: fix badge push during rapid commits
+- ci: update coverage badge [skip ci]
+- migrations: fix a small additional issue with startup
+- migrations: persist migration status so they don't run unnecessarily (speed up start up)
+- publishing: only push images to playstore on change
+- ci: update coverage badge [skip ci]
+- ci: reset changelogs
 ## [8.0.41] - 2026-03-27
 
 - ci: update coverage badge [skip ci]
