@@ -1,5 +1,11 @@
 # Changelog
 
+## [8.0.43] - 2026-03-30
+
+- ci: update coverage badge [skip ci]
+- CI: update release script to check metadata char limits
+- ci: update coverage badge [skip ci]
+- CI: updated change log for character limits
 ## [8.0.42] - 2026-03-30
 
 - My Listening: Fix some stale coverart in My Listening, improve artist name icon, add pull to refresh
