@@ -33,12 +33,123 @@ npx expo start
 
 Use the Expo Go app on your device or an emulator/simulator to connect to the dev server.
 
-## Prerequisites
+## Local Development Environment Setup
 
-- **Node.js 22** (LTS)
+Follow these steps in order on a fresh macOS machine. If you already have some of these installed, skip to what you need.
+
+### 1. Homebrew
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+Follow the post-install instructions printed in your terminal to add Homebrew to your PATH in `~/.zprofile`.
+
+### 2. nvm + Node.js 22
+
+Install [nvm](https://github.com/nvm-sh/nvm) (do not install Node via Homebrew):
+
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
+```
+
+Restart your terminal, then install Node 22:
+
+```bash
+nvm install 22
+nvm alias default 22
+```
+
+Verify: `node -v` should show v22.x and `npm -v` should be present.
+
+### 3. Ruby 3.2
+
+Ruby is required for fastlane (store metadata automation). macOS may ship with an outdated version, so install via Homebrew:
+
+```bash
+brew install ruby@3.2
+```
+
+Add to your `~/.zshrc`:
+
+```bash
+export PATH="/opt/homebrew/opt/ruby@3.2/bin:$PATH"
+```
+
+Restart your terminal. Verify: `ruby -v` should show 3.2.x.
+
+### 4. Bundler + Fastlane
+
+```bash
+gem install bundler
+```
+
+Then from the project root:
+
+```bash
+bundle install
+```
+
+This installs fastlane and its dependencies locally to `vendor/bundle`.
+
+### 5. Xcode (iOS builds)
+
+Install **Xcode** from the Mac App Store, then configure it:
+
+```bash
+sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+sudo xcodebuild -license accept
+```
+
+### 6. Android Studio (Android builds)
+
+Download from https://developer.android.com/studio and install to the default location (`/Applications/Android Studio.app/`). The build scripts expect this exact path.
+
+On first launch, complete the setup wizard — this installs:
+
+- **Android SDK** (to `~/Library/Android/sdk`)
+- **JBR 17** (bundled JDK)
+- **Platform tools and emulator**
+
+Then create at least one AVD (emulator) via **Tools > Device Manager**. The `scripts/env-android.sh` helper auto-launches the first available AVD when you run `npm run android`.
+
+No manual `JAVA_HOME` or `ANDROID_HOME` exports are needed — the build scripts auto-detect from the default paths.
+
+### 7. GitHub CLI
+
+Required for creating releases (`npm run release`):
+
+```bash
+brew install gh
+gh auth login
+```
+
+Select GitHub.com, HTTPS, and authenticate via browser.
+
+### 8. Project Dependencies
+
+```bash
+cd substreamer
+npm install
+```
+
+### 9. Verify Your Setup
+
+```bash
+npx tsc --noEmit          # TypeScript — should be clean
+npx jest --no-coverage     # Tests — should all pass
+npm run ios                # iOS build (requires Xcode)
+npm run android            # Android build (requires Android Studio + emulator)
+```
+
+### Prerequisites Summary
+
+- **Node.js 22** (LTS) via nvm
 - **npm** (bundled with Node)
+- **Ruby 3.2** + Bundler (for fastlane)
 - **Xcode** (iOS builds, macOS only)
-- **Android Studio** (Android builds — provides JBR and Android SDK)
+- **Android Studio** (Android builds — provides JBR 17 and Android SDK)
+- **GitHub CLI** (for releases)
 - A **Subsonic-compatible server** for testing (Navidrome recommended)
 
 ## Native Builds
