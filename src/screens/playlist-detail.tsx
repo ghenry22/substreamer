@@ -37,7 +37,7 @@ import {
 } from '../components/GradientBackground';
 import { SKIP_COLOR_EXTRACTION, useColorExtraction } from '../hooks/useColorExtraction';
 import { useDownloadStatus } from '../hooks/useDownloadStatus';
-import { usePlayerPanelVisible } from '../hooks/usePlayerPanelVisible';
+import { useLayoutMode } from '../hooks/useLayoutMode';
 import { useTheme } from '../hooks/useTheme';
 import { mixHexColors } from '../utils/colors';
 import { useTransitionComplete } from '../hooks/useTransitionComplete';
@@ -73,7 +73,7 @@ export function PlaylistDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const transitionComplete = useTransitionComplete();
   const downloadStatus = useDownloadStatus('playlist', Platform.OS === 'ios' ? (id ?? '') : '');
-  const panelVisible = usePlayerPanelVisible();
+  const isWide = useLayoutMode() === 'wide';
 
   const offlineMode = offlineModeStore((s) => s.offlineMode);
   const [editing, setEditing] = useState(false);
@@ -81,17 +81,17 @@ export function PlaylistDetailScreen() {
   const [saving, setSaving] = useState(false);
 
   const { coverBackgroundColor, gradientOpacity } = useColorExtraction(
-    panelVisible ? SKIP_COLOR_EXTRACTION : playlist?.coverArt,
+    isWide ? SKIP_COLOR_EXTRACTION : playlist?.coverArt,
     colors.background,
   );
 
   const themeGradientColors = useMemo(() => {
-    if (!panelVisible) return null;
+    if (!isWide) return null;
     const peak = theme === 'dark' ? DARK_MIX : LIGHT_MIX;
     return GRADIENT_MIX_CURVE.map((m) =>
       mixHexColors(colors.background, colors.primary, peak * m),
     ) as [string, string, ...string[]];
-  }, [panelVisible, theme, colors.primary, colors.background]);
+  }, [isWide, theme, colors.primary, colors.background]);
 
   /* ---- Data fetching ---- */
   const { fetchPlaylist } = playlistDetailStore.getState();

@@ -32,7 +32,7 @@ import {
 } from '../components/GradientBackground';
 import { SKIP_COLOR_EXTRACTION, useColorExtraction } from '../hooks/useColorExtraction';
 import { useIsStarred } from '../hooks/useIsStarred';
-import { usePlayerPanelVisible } from '../hooks/usePlayerPanelVisible';
+import { useLayoutMode } from '../hooks/useLayoutMode';
 import { useTheme } from '../hooks/useTheme';
 import { mixHexColors } from '../utils/colors';
 import { useTransitionComplete } from '../hooks/useTransitionComplete';
@@ -94,20 +94,20 @@ export function ArtistDetailScreen() {
   // navigation animation completes so the transition isn't blocked by
   // mounting dozens of CachedImage components synchronously.
   const ready = useTransitionComplete(!cachedEntry);
-  const panelVisible = usePlayerPanelVisible();
+  const isWide = useLayoutMode() === 'wide';
 
   const { coverBackgroundColor, gradientOpacity } = useColorExtraction(
-    panelVisible ? SKIP_COLOR_EXTRACTION : artist?.coverArt,
+    isWide ? SKIP_COLOR_EXTRACTION : artist?.coverArt,
     colors.background,
   );
 
   const themeGradientColors = useMemo(() => {
-    if (!panelVisible) return null;
+    if (!isWide) return null;
     const peak = theme === 'dark' ? DARK_MIX : LIGHT_MIX;
     return GRADIENT_MIX_CURVE.map((m) =>
       mixHexColors(colors.background, colors.primary, peak * m),
     ) as [string, string, ...string[]];
-  }, [panelVisible, theme, colors.primary, colors.background]);
+  }, [isWide, theme, colors.primary, colors.background]);
 
   // Sync local state when the store entry is updated externally (e.g. after
   // an MBID override triggers a background refetch).

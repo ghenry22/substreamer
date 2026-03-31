@@ -29,7 +29,7 @@ LogBox.ignoreLogs([
 ]);
 
 import { AddToPlaylistSheet } from '../components/AddToPlaylistSheet';
-import { DARK_MIX, GRADIENT_LOCATIONS, GRADIENT_MIX_CURVE, LIGHT_MIX } from '../components/GradientBackground';
+import { DARK_MIX, GRADIENT_LOCATIONS, GRADIENT_MIX_CURVE, GradientBackground, LIGHT_MIX } from '../components/GradientBackground';
 import { mixHexColors } from '../utils/colors';
 import AnimatedSplashScreen from '../components/AnimatedSplashScreen';
 import { CertificatePromptModal } from '../components/CertificatePromptModal';
@@ -564,6 +564,7 @@ export default function RootLayout() {
           </View>
         }
         panel={showPanel ? <PlayerPanel /> : null}
+        panelPlaceholder={<GradientBackground style={{ flex: 1 }}>{null}</GradientBackground>}
       />
 
       {/* Full-screen expanded player — covers everything including SplitLayout */}

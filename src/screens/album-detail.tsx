@@ -31,7 +31,7 @@ import {
 import { SKIP_COLOR_EXTRACTION, useColorExtraction } from '../hooks/useColorExtraction';
 import { useDownloadStatus } from '../hooks/useDownloadStatus';
 import { useIsStarred } from '../hooks/useIsStarred';
-import { usePlayerPanelVisible } from '../hooks/usePlayerPanelVisible';
+import { useLayoutMode } from '../hooks/useLayoutMode';
 import { useTheme } from '../hooks/useTheme';
 import { mixHexColors } from '../utils/colors';
 import { useTransitionComplete } from '../hooks/useTransitionComplete';
@@ -84,24 +84,24 @@ export function AlbumDetailScreen() {
   const starred = useIsStarred('album', id ?? '');
   const transitionComplete = useTransitionComplete();
   const downloadStatus = useDownloadStatus('album', Platform.OS === 'ios' ? (id ?? '') : '');
-  const panelVisible = usePlayerPanelVisible();
+  const isWide = useLayoutMode() === 'wide';
 
   const handleToggleStar = useCallback(() => {
     if (id) toggleStar('album', id);
   }, [id]);
 
   const { coverBackgroundColor, gradientOpacity } = useColorExtraction(
-    panelVisible ? SKIP_COLOR_EXTRACTION : album?.coverArt,
+    isWide ? SKIP_COLOR_EXTRACTION : album?.coverArt,
     colors.background,
   );
 
   const themeGradientColors = useMemo(() => {
-    if (!panelVisible) return null;
+    if (!isWide) return null;
     const peak = theme === 'dark' ? DARK_MIX : LIGHT_MIX;
     return GRADIENT_MIX_CURVE.map((m) =>
       mixHexColors(colors.background, colors.primary, peak * m),
     ) as [string, string, ...string[]];
-  }, [panelVisible, theme, colors.primary, colors.background]);
+  }, [isWide, theme, colors.primary, colors.background]);
 
   /* ---- Header right: download button + more options ---- */
   useEffect(() => {
