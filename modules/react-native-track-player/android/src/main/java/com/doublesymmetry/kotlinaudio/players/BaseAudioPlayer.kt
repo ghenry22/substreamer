@@ -27,6 +27,7 @@ import com.doublesymmetry.kotlinaudio.models.AudioItemTransitionReason
 import com.doublesymmetry.kotlinaudio.models.AudioPlayerState
 import com.doublesymmetry.kotlinaudio.models.MediaSessionCallback
 import com.doublesymmetry.kotlinaudio.models.PlayWhenReadyChangeData
+import com.doublesymmetry.kotlinaudio.models.PlaybackEndEvent
 import com.doublesymmetry.kotlinaudio.models.PlaybackEndedReason
 import com.doublesymmetry.kotlinaudio.models.PlaybackError
 import com.doublesymmetry.kotlinaudio.models.PlayerOptions
@@ -35,7 +36,6 @@ import com.doublesymmetry.kotlinaudio.models.setWakeMode
 import com.doublesymmetry.kotlinaudio.players.components.Cache
 import com.doublesymmetry.kotlinaudio.players.components.MediaFactory
 import com.doublesymmetry.kotlinaudio.players.components.setupBuffer
-import kotlinx.coroutines.MainScope
 import timber.log.Timber
 import java.util.Locale
 import java.util.concurrent.TimeUnit
@@ -55,7 +55,6 @@ abstract class BaseAudioPlayer internal constructor(
                 ?: exoPlayer
         }
     private var playerListener = InnerPlayerListener()
-    private val scope = MainScope()
     private var cache: SimpleCache? = null
     val playerEventHolder = PlayerEventHolder()
 
@@ -248,20 +247,28 @@ abstract class BaseAudioPlayer internal constructor(
     @CallSuper
     open fun stop() {
         val wasActive = playerState.isActive
+        val trackIndex = exoPlayer.currentMediaItemIndex
+        val positionMs = exoPlayer.currentPosition
         playerState = AudioPlayerState.STOPPED
         exoPlayer.playWhenReady = false
         exoPlayer.stop()
         if (wasActive) {
-            playerEventHolder.updatePlaybackEndedReason(PlaybackEndedReason.PLAYER_STOPPED)
+            playerEventHolder.updatePlaybackEnd(PlaybackEndEvent(
+                PlaybackEndedReason.PLAYER_STOPPED, trackIndex, positionMs
+            ))
         }
     }
 
     @CallSuper
     open fun clear() {
         val wasActive = playerState.isActive
+        val trackIndex = exoPlayer.currentMediaItemIndex
+        val positionMs = exoPlayer.currentPosition
         exoPlayer.clearMediaItems()
         if (wasActive) {
-            playerEventHolder.updatePlaybackEndedReason(PlaybackEndedReason.CLEARED)
+            playerEventHolder.updatePlaybackEnd(PlaybackEndEvent(
+                PlaybackEndedReason.CLEARED, trackIndex, positionMs
+            ))
         }
     }
 
@@ -364,22 +371,35 @@ abstract class BaseAudioPlayer internal constructor(
          * playlist becomes non-empty or empty as a consequence of a playlist change.
          */
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            // Capture indices synchronously — ExoPlayer guarantees state is
+            // already updated when this callback fires. Reading these after an
+            // async hop (e.g. in a SharedFlow collector) would risk stale data.
+            val prevIdx = if (exoPlayer.previousMediaItemIndex == C.INDEX_UNSET) null
+                          else exoPlayer.previousMediaItemIndex
+            val curIdx = exoPlayer.currentMediaItemIndex
             when (reason) {
                 Player.MEDIA_ITEM_TRANSITION_REASON_AUTO -> {
-                    playerEventHolder.updatePlaybackEndedReason(PlaybackEndedReason.PLAYED_UNTIL_END)
+                    playerEventHolder.updatePlaybackEnd(PlaybackEndEvent(
+                        PlaybackEndedReason.PLAYED_UNTIL_END,
+                        prevIdx ?: curIdx,
+                        oldPosition
+                    ))
                     playerEventHolder.updateAudioItemTransition(
-                        AudioItemTransitionReason.AUTO(oldPosition)
+                        AudioItemTransitionReason.AUTO(oldPosition, prevIdx, curIdx)
                     )
                 }
-                Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED -> playerEventHolder.updateAudioItemTransition(
-                    AudioItemTransitionReason.QUEUE_CHANGED(oldPosition)
-                )
-                Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT -> playerEventHolder.updateAudioItemTransition(
-                    AudioItemTransitionReason.REPEAT(oldPosition)
-                )
-                Player.MEDIA_ITEM_TRANSITION_REASON_SEEK -> playerEventHolder.updateAudioItemTransition(
-                    AudioItemTransitionReason.SEEK_TO_ANOTHER_AUDIO_ITEM(oldPosition)
-                )
+                Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED ->
+                    playerEventHolder.updateAudioItemTransition(
+                        AudioItemTransitionReason.QUEUE_CHANGED(oldPosition, prevIdx, curIdx)
+                    )
+                Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT ->
+                    playerEventHolder.updateAudioItemTransition(
+                        AudioItemTransitionReason.REPEAT(oldPosition, prevIdx, curIdx)
+                    )
+                Player.MEDIA_ITEM_TRANSITION_REASON_SEEK ->
+                    playerEventHolder.updateAudioItemTransition(
+                        AudioItemTransitionReason.SEEK_TO_ANOTHER_AUDIO_ITEM(oldPosition, prevIdx, curIdx)
+                    )
             }
         }
 
@@ -416,7 +436,11 @@ abstract class BaseAudioPlayer internal constructor(
                                     AudioPlayerState.IDLE
                             Player.STATE_ENDED ->
                                 if (player.mediaItemCount > 0) {
-                                    playerEventHolder.updatePlaybackEndedReason(PlaybackEndedReason.PLAYED_UNTIL_END)
+                                    playerEventHolder.updatePlaybackEnd(PlaybackEndEvent(
+                                        PlaybackEndedReason.PLAYED_UNTIL_END,
+                                        player.currentMediaItemIndex,
+                                        player.currentPosition
+                                    ))
                                     AudioPlayerState.ENDED
                                 }
                                 else AudioPlayerState.IDLE
@@ -456,6 +480,8 @@ abstract class BaseAudioPlayer internal constructor(
         }
 
         override fun onPlayerError(error: PlaybackException) {
+            val trackIndex = exoPlayer.currentMediaItemIndex
+            val positionMs = exoPlayer.currentPosition
             val _playbackError = PlaybackError(
                 error.errorCodeName
                     .replace("ERROR_CODE_", "")
@@ -464,7 +490,9 @@ abstract class BaseAudioPlayer internal constructor(
                 error.message
             )
             playerEventHolder.updatePlaybackError(_playbackError)
-            playerEventHolder.updatePlaybackEndedReason(PlaybackEndedReason.FAILED)
+            playerEventHolder.updatePlaybackEnd(PlaybackEndEvent(
+                PlaybackEndedReason.FAILED, trackIndex, positionMs
+            ))
             playbackError = _playbackError
             playerState = AudioPlayerState.ERROR
         }

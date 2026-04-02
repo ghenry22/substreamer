@@ -17,7 +17,6 @@ import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.CacheBitmapLoader
-import androidx.media3.session.LibraryResult
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Rating
 import androidx.media3.common.util.BitmapLoader
@@ -45,8 +44,6 @@ import com.doublesymmetry.trackplayer.utils.BundleUtils.setRating
 import com.doublesymmetry.trackplayer.utils.CoilBitmapLoader
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.jstasks.HeadlessJsTaskConfig
-import com.google.common.collect.ImmutableList
-import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.flow
@@ -90,7 +87,6 @@ class MusicService : HeadlessJsMediaService() {
         }
     }
 
-    @ExperimentalCoroutinesApi
     override fun onCreate() {
         Timber.plant(object : Timber.DebugTree() {
             override fun createStackElementTag(element: StackTraceElement): String? {
@@ -127,7 +123,6 @@ class MusicService : HeadlessJsMediaService() {
 
     private var appKilledPlaybackBehavior =
         AppKilledPlaybackBehavior.STOP_PLAYBACK_AND_REMOVE_NOTIFICATION
-    private var stopForegroundGracePeriod: Int = DEFAULT_STOP_FOREGROUND_GRACE_PERIOD
 
     val tracks: List<Track>
         get() = player.items.map { (it as TrackAudioItem).track }
@@ -187,12 +182,11 @@ class MusicService : HeadlessJsMediaService() {
     @MainThread
     fun setupPlayer(playerOptions: Bundle?) {
         if (this::player.isInitialized) {
-            print("Player was initialized previously. Preventing reinitialization.")
+            Timber.d("Player was initialized previously. Preventing reinitialization.")
             return
         }
         Timber.d("Setting up player")
         val options = PlayerOptions(
-            alwaysShowNext = playerOptions?.getBoolean(ALWAYS_SHOW_NEXT, true) ?: true,
             audioContentType = when (playerOptions?.getString(ANDROID_AUDIO_CONTENT_TYPE)) {
                 "music" -> C.AUDIO_CONTENT_TYPE_MUSIC
                 "speech" -> C.AUDIO_CONTENT_TYPE_SPEECH
@@ -238,9 +232,6 @@ class MusicService : HeadlessJsMediaService() {
                     APP_KILLED_PLAYBACK_BEHAVIOR_KEY
                 )
             ) ?: AppKilledPlaybackBehavior.CONTINUE_PLAYBACK
-
-        BundleUtils.getIntOrNull(androidOptions, STOP_FOREGROUND_GRACE_PERIOD_KEY)
-            ?.let { stopForegroundGracePeriod = it }
 
         player.alwaysPauseOnInterruption =
             androidOptions?.getBoolean(PAUSE_ON_INTERRUPTION_KEY) ?: false
@@ -339,14 +330,12 @@ class MusicService : HeadlessJsMediaService() {
     }
 
     @MainThread
-    private suspend fun progressUpdateEvent(): Bundle {
-        return withContext(Dispatchers.Main) {
-            Bundle().apply {
-                putDouble(POSITION_KEY, player.position.toSeconds())
-                putDouble(DURATION_KEY, player.duration.toSeconds())
-                putDouble(BUFFERED_POSITION_KEY, player.bufferedPosition.toSeconds())
-                putInt(TRACK_KEY, player.currentIndex)
-            }
+    private fun progressUpdateEvent(): Bundle {
+        return Bundle().apply {
+            putDouble(POSITION_KEY, player.position.toSeconds())
+            putDouble(DURATION_KEY, player.duration.toSeconds())
+            putDouble(BUFFERED_POSITION_KEY, player.bufferedPosition.toSeconds())
+            putInt(TRACK_KEY, player.currentIndex)
         }
     }
 
@@ -509,14 +498,15 @@ class MusicService : HeadlessJsMediaService() {
 
     private fun emitPlaybackTrackChangedEvents(
         previousIndex: Int?,
+        currentIndex: Int,
         oldPosition: Double
     ) {
         val bundle = Bundle()
         bundle.putDouble("lastPosition", oldPosition)
-        if (tracks.isNotEmpty()) {
-            bundle.putInt("index", player.currentIndex)
-            bundle.putBundle("track", tracks[player.currentIndex].originalItem)
-            if (previousIndex != null) {
+        if (tracks.isNotEmpty() && currentIndex in tracks.indices) {
+            bundle.putInt("index", currentIndex)
+            bundle.putBundle("track", tracks[currentIndex].originalItem)
+            if (previousIndex != null && previousIndex in tracks.indices) {
                 bundle.putInt("lastIndex", previousIndex)
                 bundle.putBundle("lastTrack", tracks[previousIndex].originalItem)
             }
@@ -533,19 +523,46 @@ class MusicService : HeadlessJsMediaService() {
 
     @MainThread
     private fun observeEvents() {
+        // Dedup flag: prevents PlaybackEndedWithReason from being emitted
+        // twice for the same track (once from the playbackEnd flow and once
+        // from the stateChange safety net).  Reset on every track transition.
+        var hasEmittedPlaybackEnd = false
+
         scope.launch {
             var previousState: AudioPlayerState? = null
             event.stateChange.collect {
                 emit(MusicEvents.PLAYBACK_STATE, getPlayerStateBundle(it))
 
+                // Reset the dedup flag when a track begins playing.
+                // For mid-queue transitions, audioItemTransition resets this.
+                // For the last track (no audioItemTransition fires), this
+                // PLAYING state is the only opportunity to clear the flag
+                // so the ENDED safety net below can fire.
+                if (it == AudioPlayerState.PLAYING) {
+                    hasEmittedPlaybackEnd = false
+                }
+
                 if (it == AudioPlayerState.ENDED && player.nextItem == null) {
+                    // Safety net: ExoPlayer does not fire onMediaItemTransition
+                    // for the last track (androidx/media #1231), so no
+                    // audioItemTransition event arrives. Emit PLAYBACK_ENDED_REASON
+                    // here from the reliable stateChange path if the playbackEnd
+                    // flow hasn't already delivered it.
+                    if (!hasEmittedPlaybackEnd) {
+                        hasEmittedPlaybackEnd = true
+                        Bundle().apply {
+                            putString("reason", PlaybackEndedReason.PLAYED_UNTIL_END.name)
+                            putInt(TRACK_KEY, player.currentIndex)
+                            putDouble(POSITION_KEY, player.position.toSeconds())
+                            emit(MusicEvents.PLAYBACK_ENDED_REASON, this)
+                        }
+                    }
                     emitQueueEndedEvent()
                 }
 
                 // Detect stall: transition from PLAYING to BUFFERING means the buffer ran dry.
                 // Suppress shortly after a seek — ExoPlayer transitions through BUFFERING on seek
                 // and may briefly re-stall while filling the buffer at the new position.
-                val SEEK_STALL_SUPPRESSION_MS = 100L
                 if (previousState == AudioPlayerState.PLAYING && it == AudioPlayerState.BUFFERING) {
                     val msSinceSeek = System.currentTimeMillis() - player.lastSeekTimeMs
                     if (player.lastSeekTimeMs == 0L || msSinceSeek > SEEK_STALL_SUPPRESSION_MS) {
@@ -581,11 +598,30 @@ class MusicService : HeadlessJsMediaService() {
 
         scope.launch {
             event.audioItemTransition.collect {
+                hasEmittedPlaybackEnd = false
                 hasEmittedBufferFull = false
+
+                // For auto-transitions (track naturally finished), emit
+                // PLAYBACK_ENDED_REASON BEFORE PLAYBACK_ACTIVE_TRACK_CHANGED
+                // using indices captured synchronously at the ExoPlayer callback.
+                // Emitting both from this single collector guarantees ordering
+                // (matches iOS: ended fires before track-changed).
+                if (it is AudioItemTransitionReason.AUTO) {
+                    hasEmittedPlaybackEnd = true
+                    val endedIndex = it.previousIndex ?: player.previousIndex ?: player.currentIndex
+                    Bundle().apply {
+                        putString("reason", PlaybackEndedReason.PLAYED_UNTIL_END.name)
+                        putInt(TRACK_KEY, endedIndex)
+                        putDouble(POSITION_KEY, it.oldPosition.toSeconds())
+                        emit(MusicEvents.PLAYBACK_ENDED_REASON, this)
+                    }
+                }
+
                 if (it !is AudioItemTransitionReason.REPEAT) {
                     emitPlaybackTrackChangedEvents(
-                        player.previousIndex,
-                        (it?.oldPosition ?: 0).toSeconds()
+                        it.previousIndex ?: player.previousIndex,
+                        it.currentIndex,
+                        it.oldPosition.toSeconds()
                     )
                 }
             }
@@ -719,39 +755,37 @@ class MusicService : HeadlessJsMediaService() {
 
         scope.launch {
             event.positionChanged.collect {
-                if (it != null) {
-                    when (it) {
-                        is PositionChangedReason.SEEK,
-                        is PositionChangedReason.SEEK_FAILED -> {
-                            // Only emit seek completed for user-initiated seeks.
-                            // Skip/jump/load operations call exoPlayer.seekTo() internally,
-                            // which fires DISCONTINUITY_REASON_SEEK, but those are not real seeks.
-                            // lastSeekTimeMs is only set in BaseAudioPlayer.seek()/seekBy().
-                            val SEEK_EVENT_WINDOW_MS = 100L
-                            val msSinceSeek = System.currentTimeMillis() - player.lastSeekTimeMs
-                            if (player.lastSeekTimeMs > 0 && msSinceSeek <= SEEK_EVENT_WINDOW_MS) {
-                                Bundle().apply {
-                                    putDouble("position", it.newPosition.toSeconds())
-                                    putBoolean("didFinish", it is PositionChangedReason.SEEK)
-                                    emit(MusicEvents.PLAYBACK_SEEK_COMPLETED, this)
-                                }
+                when (it) {
+                    is PositionChangedReason.SEEK,
+                    is PositionChangedReason.SEEK_FAILED -> {
+                        // Only emit seek completed for user-initiated seeks.
+                        // Skip/jump/load operations call exoPlayer.seekTo() internally,
+                        // which fires DISCONTINUITY_REASON_SEEK, but those are not real seeks.
+                        // lastSeekTimeMs is only set in BaseAudioPlayer.seek()/seekBy().
+                        val msSinceSeek = System.currentTimeMillis() - player.lastSeekTimeMs
+                        if (player.lastSeekTimeMs > 0 && msSinceSeek <= SEEK_EVENT_WINDOW_MS) {
+                            Bundle().apply {
+                                putDouble("position", it.newPosition.toSeconds())
+                                putBoolean("didFinish", it is PositionChangedReason.SEEK)
+                                emit(MusicEvents.PLAYBACK_SEEK_COMPLETED, this)
                             }
                         }
-                        else -> {
-                            Timber.d("Position changed: ${it::class.simpleName} from ${it.oldPosition} to ${it.newPosition}")
-                        }
+                    }
+                    else -> {
+                        Timber.d("Position changed: ${it::class.simpleName} from ${it.oldPosition} to ${it.newPosition}")
                     }
                 }
             }
         }
 
         scope.launch {
-            event.playbackEnd.collect {
-                if (it != null) {
+            event.playbackEnd.collect { ev ->
+                if (ev != null && !hasEmittedPlaybackEnd && ev.reason != PlaybackEndedReason.PLAYED_UNTIL_END) {
+                    hasEmittedPlaybackEnd = true
                     Bundle().apply {
-                        putString("reason", it.name)
-                        putInt(TRACK_KEY, player.currentIndex)
-                        putDouble(POSITION_KEY, player.position.toSeconds())
+                        putString("reason", ev.reason.name)
+                        putInt(TRACK_KEY, ev.trackIndex)
+                        putDouble(POSITION_KEY, ev.positionMs.toSeconds())
                         emit(MusicEvents.PLAYBACK_ENDED_REASON, this)
                     }
                 }
@@ -775,15 +809,6 @@ class MusicService : HeadlessJsMediaService() {
     @MainThread
     fun emit(event: String, data: Bundle? = null) {
         reactContext?.emitDeviceEvent(event, data?.let { Arguments.fromBundle(it) })
-    }
-
-    @SuppressLint("VisibleForTests")
-    @MainThread
-    private fun emitList(event: String, data: List<Bundle> = emptyList()) {
-        val payload = Arguments.createArray()
-        data.forEach { payload.pushMap(Arguments.fromBundle(it)) }
-
-        reactContext?.emitDeviceEvent(event, payload)
     }
 
     override fun getTaskConfig(intent: Intent?): HeadlessJsTaskConfig {
@@ -1099,13 +1124,9 @@ class MusicService : HeadlessJsMediaService() {
     }
 
     companion object {
-        const val EMPTY_NOTIFICATION_ID = 1
         const val STATE_KEY = "state"
         const val ERROR_KEY = "error"
-        const val EVENT_KEY = "event"
-        const val DATA_KEY = "data"
         const val TRACK_KEY = "track"
-        const val NEXT_TRACK_KEY = "nextTrack"
         const val POSITION_KEY = "position"
         const val DURATION_KEY = "duration"
         const val BUFFERED_POSITION_KEY = "buffered"
@@ -1125,25 +1146,25 @@ class MusicService : HeadlessJsMediaService() {
 
         const val ANDROID_OPTIONS_KEY = "android"
 
-        const val CUSTOM_ACTIONS_KEY = "customActions"
-
         const val APP_KILLED_PLAYBACK_BEHAVIOR_KEY = "appKilledPlaybackBehavior"
         const val AUDIO_OFFLOAD_KEY = "audioOffload"
         const val SHUFFLE_KEY = "shuffle"
-        const val STOP_FOREGROUND_GRACE_PERIOD_KEY = "stopForegroundGracePeriod"
         const val PAUSE_ON_INTERRUPTION_KEY = "alwaysPauseOnInterruption"
-        const val AUTO_UPDATE_METADATA = "autoUpdateMetadata"
         const val AUTO_HANDLE_INTERRUPTIONS = "autoHandleInterruptions"
         const val ANDROID_AUDIO_CONTENT_TYPE = "androidAudioContentType"
         const val IS_FOCUS_LOSS_PERMANENT_KEY = "permanent"
         const val IS_PAUSED_KEY = "paused"
 
         const val HANDLE_NOISY = "androidHandleAudioBecomingNoisy"
-        const val ALWAYS_SHOW_NEXT = "androidAlwaysShowNext"
         const val SKIP_SILENCE = "androidSkipSilence"
         const val WAKE_MODE = "androidWakeMode"
 
         const val DEFAULT_JUMP_INTERVAL = 15.0
-        const val DEFAULT_STOP_FOREGROUND_GRACE_PERIOD = 5
+
+        /** Window (ms) after a seek within which stall detection is suppressed. */
+        const val SEEK_STALL_SUPPRESSION_MS = 100L
+        /** Window (ms) after BaseAudioPlayer.seek()/seekBy() within which position
+         *  discontinuity events are treated as user-initiated seeks. */
+        const val SEEK_EVENT_WINDOW_MS = 100L
     }
 }

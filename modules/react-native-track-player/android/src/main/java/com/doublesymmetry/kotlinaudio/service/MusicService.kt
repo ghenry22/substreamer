@@ -26,7 +26,7 @@ class MusicService : MediaLibraryService() {
     // Create your player and media session in the onCreate lifecycle event
     override fun onCreate() {
         super.onCreate()
-        player = QueuedAudioPlayer(this, PlayerOptions(nativeExample = true))
+        player = QueuedAudioPlayer(this, PlayerOptions())
         val customCommandButtons =
             CustomCommandButton.entries.map { command -> command.commandButton }
         val callback = object : MediaLibrarySession.Callback {

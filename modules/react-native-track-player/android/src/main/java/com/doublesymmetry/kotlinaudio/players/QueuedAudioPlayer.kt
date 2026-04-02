@@ -181,11 +181,14 @@ class QueuedAudioPlayer(
      */
     fun next() {
         val lastIdx = currentIndex
+        val lastPosition = exoPlayer.currentPosition
         val wasActive = playerState.isActive
         exoPlayer.seekToNextMediaItem()
         exoPlayer.prepare()
-        if (wasActive && lastIdx != currentIndex || repeatMode == RepeatMode.ALL) {
-            playerEventHolder.updatePlaybackEndedReason(PlaybackEndedReason.SKIPPED_TO_NEXT)
+        if (wasActive && (lastIdx != currentIndex || repeatMode == RepeatMode.ALL)) {
+            playerEventHolder.updatePlaybackEnd(PlaybackEndEvent(
+                PlaybackEndedReason.SKIPPED_TO_NEXT, lastIdx, lastPosition
+            ))
         }
     }
 
@@ -195,11 +198,14 @@ class QueuedAudioPlayer(
      */
     fun previous() {
         val lastIdx = currentIndex
+        val lastPosition = exoPlayer.currentPosition
         val wasActive = playerState.isActive
         exoPlayer.seekToPreviousMediaItem()
         exoPlayer.prepare()
-        if (wasActive && lastIdx != currentIndex || repeatMode == RepeatMode.ALL) {
-            playerEventHolder.updatePlaybackEndedReason(PlaybackEndedReason.SKIPPED_TO_PREVIOUS)
+        if (wasActive && (lastIdx != currentIndex || repeatMode == RepeatMode.ALL)) {
+            playerEventHolder.updatePlaybackEnd(PlaybackEndEvent(
+                PlaybackEndedReason.SKIPPED_TO_PREVIOUS, lastIdx, lastPosition
+            ))
         }
     }
 
@@ -236,10 +242,14 @@ class QueuedAudioPlayer(
             val wasPlaying = playerState == AudioPlayerState.PLAYING
                     || playerState == AudioPlayerState.PAUSED
                     || playerState == AudioPlayerState.READY
+            val lastIdx = currentIndex
+            val lastPosition = exoPlayer.currentPosition
             exoPlayer.seekTo(index, C.TIME_UNSET)
             exoPlayer.prepare()
             if (wasPlaying) {
-                playerEventHolder.updatePlaybackEndedReason(PlaybackEndedReason.JUMPED_TO_INDEX)
+                playerEventHolder.updatePlaybackEnd(PlaybackEndEvent(
+                    PlaybackEndedReason.JUMPED_TO_INDEX, lastIdx, lastPosition
+                ))
             }
         } catch (e: IllegalSeekPositionException) {
             throw Error("This item index $index does not exist. The size of the queue is ${queue.size} items.")
