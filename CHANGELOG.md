@@ -1,5 +1,34 @@
 # Changelog
 
+## [8.0.44] - 2026-04-03
+
+- ci: update coverage badge [skip ci]
+- accessibility: When iOS reduce motion setting is enabled the static splashscreen is displayed for ~15s. This is because the animated splashscreen is used to trigger the transition and the animation never runs in reduce motion mode. The delay is a safety net that always dismissed the splash screen at 15 if nothing else does.
+- ci: update coverage badge [skip ci]
+- publishing: update readme and website
+- backups: user and server scoped with allowance for same server accessed on a different URL.
+- ci: update coverage badge [skip ci]
+- player: skip previous behaviour aligned to industry standards.  If less than ~3s into track skip to previous otherwise seek to start of current track.  Rapid double click seeks to start and then skips back. Closes #55
+- ci: update coverage badge [skip ci]
+- RNTP: refactor events handling for android.  Make consistent with iOS behaviour. Resolve a bunch of issues with end of track events, stale data and no completion events for last tracks in queues. Closes #61
+- player: fix seek on android, requires estimated content length when transcoding or all seeks fail. Audio Quality: add 192kbps
+- ci: update coverage badge [skip ci]
+- track options: Add track detail to more options sheet to provide much more detailed information on the file.
+- ci: update coverage badge [skip ci]
+- player: next and previous track buttons now properly disable when there is no valid action for them (ie first track or last track and no repeat).
+- search: when tapping a song in results, only add that one song to the queue, not all the results
+- ui: playback status toast on tuned in screen
+- UI: Fix arrow placement on skip interval buttons UI: Fix spacing when skip interval buttons are shown
+- docs: update local setup for cocoapods
+- ci: update version in package-lock
+- docs: update local setup guide
+- CI: eas running metadata push when it shouldn't
+- docs: update local environment setup guide
+- chore: update gitignore
+- ci: update coverage badge [skip ci]
+- Tuned In: Add Mix It Up (totally random) chip to the homescreen and tuned in page
+- wide view: smooth out animated entry and exit of the panel player
+- Implement albumInfo on expanded player view.  Closes #49 Implement Album level MBID override when server picks the wrong ID. Update MBID override browser and backups to handle artist & album overrides Implement fallback artist name / album title fuzzy text search when no MBID or no result returned for the MBID
 ## [8.0.43] - 2026-03-30
 
 - ci: update coverage badge [skip ci]

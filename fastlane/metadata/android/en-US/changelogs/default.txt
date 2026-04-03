@@ -1,3 +1,17 @@
+When iOS reduce motion setting is enabled the static splashscreen is displayed for ~15s. This is because the animated splashscreen is used to trigger the transition and the animation never runs in reduce motion mode. The delay is a safety net that always dismissed the splash screen at 15 if nothing else does.
+User and server scoped with allowance for same server accessed on a different URL.
+Skip previous behaviour aligned to industry standards.  If less than ~3s into track skip to previous otherwise seek to start of current track.  Rapid double click seeks to start and then skips back.
+Refactor events handling for android.  Make consistent with iOS behaviour. Resolve a bunch of issues with end of track events, stale data and no completion events for last tracks in queues.
+Fix seek on android, requires estimated content length when transcoding or all seeks fail. Audio Quality: add 192kbps
+Add track detail to more options sheet to provide much more detailed information on the file.
+Next and previous track buttons now properly disable when there is no valid action for them (ie first track or last track and no repeat).
+When tapping a song in results, only add that one song to the queue, not all the results
+Playback status toast on tuned in screen
+Fix arrow placement on skip interval buttons UI: Fix spacing when skip interval buttons are shown
+Add Mix It Up (totally random) chip to the homescreen and tuned in page
+Smooth out animated entry and exit of the panel player
+Implement albumInfo on expanded player view. Implement Album level MBID override when server picks the wrong ID. Update MBID override browser and backups to handle artist & album overrides Implement fallback artist name / album title fuzzy text search when no MBID or no result returned for the MBID
+
 Fix stale cover art in My Listening, improve artist icon, add pull to refresh
 Unlock UI orientation for tablets
 Clean up iconography with clearer and more specific icons
