@@ -48,13 +48,27 @@
 
 **Sharing** - full support for sharing albums or playlists (server support dependant), allows you to set a server address override in case you have a different public address for people to access what you share with them, quick copy to clipboard so you can share it anywhere.  Full share management functionality in settings.
 
-**Metadata** - Allow MusicbrainzID (MBID) overrides to be set in app, users can search on the artist detail screen to easily correct an incorrect match or choose the right MBID if the server does not provide one.
+**Metadata** - Allow MusicBrainz ID (MBID) overrides to be set in app for both artists and albums, users can search on the detail screen to easily correct an incorrect match or choose the right MBID if the server does not provide one.
 
 **Metadata Management** - The storage and data section in settings gives you access to a wealth of information, you can browse, refresh or remove any offline metadata, cached images or downloaded music, pending and completed scrobbles and more.  Great for the curious or for when something funky happens and you just want to know what or quickly fix it!
+
+**Tablet Interface** — A beautiful landscape-optimized UI designed to make the most of larger screens. Multi-pane layouts, expanded album art, and spacious controls give you a rich, immersive experience on tablets.
 
 **Appearance** — Light, dark, and system theme modes, custom accent colors, list and grid layout toggles and default settings, alphabetical quick-scroll for large libraries.
 
 **Backup** - Substreamer does a few things that are outside what the subsonic API accomodates (MBID Overrides, Listening history and analytics) to deal with this we need to keep some detail locally with your app and we don't want it to be lost if you have to re-install the app or get a new device (No one wants to break their listening streak!).  This data is automatically set to be included in your devices native cloud backups.
+
+## Integrations
+
+<div align="center">
+  <a href="https://github.com/NeptuneHub/AudioMuse-AI">
+    <img src="docs/assets/images/audiomuse-ai.png" alt="AudioMuse-AI logo" width="120">
+  </a>
+</div>
+
+### AudioMuse-AI
+
+Substreamer supports [AudioMuse-AI](https://github.com/NeptuneHub/AudioMuse-AI) for AI-powered playlist generation. When AudioMuse-AI is enabled on your server, the **"Play more like this"** option on any song and the **"Play similar artists"** option on any artist will leverage AudioMuse-AI's sonic analysis to deliver smarter, more relevant recommendations — all generated locally from your own library with no external APIs.
 
 ## Compatible Servers
 

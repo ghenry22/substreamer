@@ -289,6 +289,50 @@ section:nth-child(even) {
   line-height: 1.5;
 }
 
+/* Integrations */
+.integration-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 40px;
+  max-width: 640px;
+  margin: 0 auto;
+  text-align: center;
+  transition: border-color 0.2s;
+}
+
+.integration-card:hover {
+  border-color: var(--accent);
+}
+
+.integration-logo-link {
+  display: inline-block;
+  margin-bottom: 16px;
+}
+
+.integration-logo {
+  width: 100px;
+  height: auto;
+  border-radius: 16px;
+}
+
+.integration-card h3 {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.integration-card p {
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.6;
+  margin-bottom: 20px;
+}
+
+.integration-card .btn {
+  margin-top: 4px;
+}
+
 /* Screenshots */
 .screenshots-carousel {
   position: relative;
