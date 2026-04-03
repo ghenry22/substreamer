@@ -160,6 +160,24 @@ export async function deferredMusicCacheInit(): Promise<void> {
 }
 
 /**
+ * Delete incomplete .tmp files from an item's cache directory while
+ * preserving fully-downloaded tracks. Used by both stalled-download
+ * recovery and manual retry to clean up partial transfers.
+ */
+async function cleanupTmpFiles(itemId: string): Promise<void> {
+  const itemDir = new Directory(ensureCacheDir(), itemId);
+  if (!itemDir.exists) return;
+  try {
+    const entries = await listDirectoryAsync(itemDir.uri);
+    for (const name of entries) {
+      if (name.endsWith('.tmp')) {
+        try { new File(itemDir, name).delete(); } catch { /* best-effort */ }
+      }
+    }
+  } catch { /* best-effort */ }
+}
+
+/**
  * On startup, any items stuck in 'downloading' status are from a
  * previous session that was interrupted.
  *
@@ -176,33 +194,32 @@ export async function deferredMusicCacheInit(): Promise<void> {
  *
  * Directory listing runs on a native background thread via
  * expo-async-fs, keeping the JS thread free for UI rendering.
+ *
+ * When `includeErrors` is true, items in 'error' status are also
+ * cleaned up and requeued. This is used by the manual recover button
+ * so a single tap retries everything that isn't done.
  */
-export async function recoverStalledDownloadsAsync(): Promise<void> {
+export async function recoverStalledDownloadsAsync(
+  includeErrors = false,
+): Promise<void> {
   if (isProcessing) return;
 
   const { downloadQueue } = musicCacheStore.getState();
+  let hasRecoverableItems = false;
+
   for (const item of downloadQueue) {
-    if (item.status !== 'downloading') continue;
+    if (item.status === 'downloading' || (includeErrors && item.status === 'error')) {
+      await cleanupTmpFiles(item.itemId);
 
-    const itemDir = new Directory(ensureCacheDir(), item.itemId);
-    if (itemDir.exists) {
-      try {
-        const entries = await listDirectoryAsync(itemDir.uri);
-        for (const name of entries) {
-          if (name.endsWith('.tmp')) {
-            try { new File(itemDir, name).delete(); } catch { /* best-effort */ }
-          }
-        }
-      } catch { /* best-effort */ }
+      musicCacheStore.getState().updateQueueItem(item.queueId, {
+        status: 'queued',
+        error: undefined,
+      });
+      hasRecoverableItems = true;
     }
-
-    musicCacheStore.getState().updateQueueItem(item.queueId, {
-      status: 'queued',
-      error: undefined,
-    });
   }
 
-  if (downloadQueue.some((q) => q.status === 'downloading' || q.status === 'queued')) {
+  if (hasRecoverableItems) {
     processQueue();
   }
 }
@@ -210,14 +227,14 @@ export async function recoverStalledDownloadsAsync(): Promise<void> {
 /**
  * Force-recover the download queue regardless of current processing
  * state. Bumps the generation counter so active workers exit at their
- * next check, then runs normal stalled-download recovery.
+ * next check, then recovers stalled and failed items.
  *
  * Used by the manual "Recover" button on the download queue screen.
  */
 export async function forceRecoverDownloadsAsync(): Promise<void> {
   processingId++;
   isProcessing = false;
-  await recoverStalledDownloadsAsync();
+  await recoverStalledDownloadsAsync(true);
 }
 
 function ensureCacheDir(): Directory {
@@ -426,8 +443,46 @@ async function downloadItem(queueItem: DownloadQueueItemSnapshot, myId: number):
 
   const completedTracks: CachedTrack[] = [];
   const downloadedIds = new Set<string>();
+  const preScannedIds = new Set<string>();
   let totalBytes = 0;
   let trackIndex = 0;
+
+  // Pre-count tracks that already exist on disk so the progress counter
+  // never drops below the real completed count (avoids UI flicker on resume).
+  for (const track of queueItem.tracks) {
+    if (downloadedIds.has(track.id)) {
+      const existing = completedTracks.find((t) => t.id === track.id);
+      if (existing) completedTracks.push(existing);
+      continue;
+    }
+    const existingUri = trackUriMap.get(track.id);
+    if (existingUri) {
+      const existingFileName = existingUri.split('/').pop() ?? track.id;
+      const existingFile = new File(itemDir, existingFileName);
+      if (existingFile.exists) {
+        const bytes = existingFile.size ?? 0;
+        completedTracks.push({
+          id: track.id,
+          title: track.title ?? 'Unknown',
+          artist: track.artist ?? 'Unknown Artist',
+          fileName: existingFileName,
+          bytes,
+          duration: track.duration ?? 0,
+        });
+        totalBytes += bytes;
+        downloadedIds.add(track.id);
+        preScannedIds.add(track.id);
+        if (!trackToItems.has(track.id)) trackToItems.set(track.id, new Set());
+        trackToItems.get(track.id)!.add(queueItem.itemId);
+      }
+    }
+  }
+
+  if (completedTracks.length > 0) {
+    musicCacheStore.getState().updateQueueItem(queueItem.queueId, {
+      completedTracks: completedTracks.length,
+    });
+  }
 
   const downloadNext = async (): Promise<void> => {
     while (trackIndex < queueItem.tracks.length) {
@@ -446,6 +501,10 @@ async function downloadItem(queueItem: DownloadQueueItemSnapshot, myId: number):
       const idx = trackIndex++;
       const track = queueItem.tracks[idx];
 
+      // Pre-scanned tracks (and their playlist duplicates) are already
+      // counted — skip without updating the store.
+      if (preScannedIds.has(track.id)) continue;
+
       // Playlists can contain the same track more than once.
       // Only download it once; reuse the result for duplicates.
       if (downloadedIds.has(track.id)) {
@@ -457,31 +516,6 @@ async function downloadItem(queueItem: DownloadQueueItemSnapshot, myId: number):
         continue;
       }
       downloadedIds.add(track.id);
-
-      // Skip tracks that already exist on disk (e.g. resumed after app kill).
-      const existingUri = trackUriMap.get(track.id);
-      if (existingUri) {
-        const existingFileName = existingUri.split('/').pop() ?? track.id;
-        const existingFile = new File(itemDir, existingFileName);
-        if (existingFile.exists) {
-          const bytes = existingFile.size ?? 0;
-          completedTracks.push({
-            id: track.id,
-            title: track.title ?? 'Unknown',
-            artist: track.artist ?? 'Unknown Artist',
-            fileName: existingFileName,
-            bytes,
-            duration: track.duration ?? 0,
-          });
-          totalBytes += bytes;
-          if (!trackToItems.has(track.id)) trackToItems.set(track.id, new Set());
-          trackToItems.get(track.id)!.add(queueItem.itemId);
-          musicCacheStore.getState().updateQueueItem(queueItem.queueId, {
-            completedTracks: completedTracks.length,
-          });
-          continue;
-        }
-      }
 
       try {
         let result = await downloadTrack(track, itemDir);
@@ -602,27 +636,21 @@ async function downloadTrack(
 }
 
 /**
- * Retry a failed download queue item. Resets its status to 'queued'
- * and re-triggers queue processing.
+ * Retry a failed download queue item. Cleans up incomplete .tmp files
+ * while preserving already-downloaded tracks, then resets the item to
+ * 'queued' so processQueue() picks it up. downloadItem() will skip
+ * tracks that already exist in trackUriMap.
  */
-export function retryDownload(queueId: string): void {
+export async function retryDownload(queueId: string): Promise<void> {
   const item = musicCacheStore.getState().downloadQueue.find(
     (q) => q.queueId === queueId,
   );
   if (!item || item.status !== 'error') return;
 
-  const itemDir = new Directory(ensureCacheDir(), item.itemId);
-  if (itemDir.exists) {
-    try { itemDir.delete(); } catch { /* best-effort */ }
-  }
-  for (const track of item.tracks) {
-    trackUriMap.delete(track.id);
-    trackToItems.get(track.id)?.delete(item.itemId);
-  }
+  await cleanupTmpFiles(item.itemId);
 
   musicCacheStore.getState().updateQueueItem(queueId, {
     status: 'queued',
-    completedTracks: 0,
     error: undefined,
   });
 

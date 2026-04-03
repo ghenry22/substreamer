@@ -504,6 +504,54 @@ describe('recoverStalledDownloadsAsync', () => {
     expect(queue[0].status).toBe('queued');
   });
 
+  it('skips error items by default', async () => {
+    musicCacheStore.setState({
+      downloadQueue: [
+        {
+          queueId: 'q1',
+          itemId: 'album-1',
+          status: 'error',
+          error: 'Download failed',
+          tracks: [makeChild('t1')],
+          totalTracks: 1,
+          completedTracks: 0,
+          addedAt: Date.now(),
+        },
+      ],
+    } as any);
+
+    await recoverStalledDownloadsAsync();
+
+    const queue = musicCacheStore.getState().downloadQueue;
+    expect(queue[0].status).toBe('error');
+  });
+
+  it('includes error items when includeErrors is true', async () => {
+    musicCacheStore.setState({
+      downloadQueue: [
+        {
+          queueId: 'q1',
+          itemId: 'album-1',
+          status: 'error',
+          error: 'Download failed',
+          tracks: [makeChild('t1')],
+          totalTracks: 1,
+          completedTracks: 3,
+          addedAt: Date.now(),
+        },
+      ],
+    } as any);
+
+    mockListDirectoryAsync.mockResolvedValue([]);
+
+    await recoverStalledDownloadsAsync(true);
+
+    const queue = musicCacheStore.getState().downloadQueue;
+    expect(queue[0].status).toBe('queued');
+    expect(queue[0].error).toBeUndefined();
+    expect(queue[0].completedTracks).toBe(3);
+  });
+
   it('handles listing errors gracefully', async () => {
     musicCacheStore.setState({
       downloadQueue: [
@@ -540,10 +588,11 @@ describe('recoverStalledDownloadsAsync', () => {
 /* ------------------------------------------------------------------ */
 
 describe('forceRecoverDownloadsAsync', () => {
-  it('resets processing state and runs recovery', async () => {
-    // Block processQueue from picking up recovered items
+  beforeEach(() => {
     mockCheckStorageLimit.mockReturnValue(true);
+  });
 
+  it('resets processing state and runs recovery', async () => {
     musicCacheStore.setState({
       downloadQueue: [
         {
@@ -564,6 +613,42 @@ describe('forceRecoverDownloadsAsync', () => {
 
     const queue = musicCacheStore.getState().downloadQueue;
     expect(queue[0].status).toBe('queued');
+  });
+
+  it('also retries failed error items', async () => {
+    musicCacheStore.setState({
+      downloadQueue: [
+        {
+          queueId: 'q1',
+          itemId: 'album-1',
+          status: 'downloading',
+          tracks: [makeChild('t1')],
+          totalTracks: 1,
+          completedTracks: 0,
+          addedAt: Date.now(),
+        },
+        {
+          queueId: 'q2',
+          itemId: 'album-2',
+          status: 'error',
+          error: 'Network error',
+          tracks: [makeChild('t2'), makeChild('t3')],
+          totalTracks: 2,
+          completedTracks: 1,
+          addedAt: Date.now(),
+        },
+      ],
+    } as any);
+
+    mockListDirectoryAsync.mockResolvedValue([]);
+
+    await forceRecoverDownloadsAsync();
+
+    const queue = musicCacheStore.getState().downloadQueue;
+    expect(queue[0].status).toBe('queued');
+    expect(queue[1].status).toBe('queued');
+    expect(queue[1].error).toBeUndefined();
+    expect(queue[1].completedTracks).toBe(1);
   });
 });
 
@@ -792,26 +877,80 @@ describe('retryDownload', () => {
   // Block processQueue so we can inspect intermediate state.
   beforeEach(() => {
     mockCheckStorageLimit.mockReturnValue(true);
+    mockListDirectoryAsync.mockResolvedValue([]);
   });
 
-  it('does nothing when queueId is not found', () => {
-    retryDownload('nonexistent');
+  it('does nothing when queueId is not found', async () => {
+    await retryDownload('nonexistent');
     // No crash
   });
 
-  it('does nothing when item status is not error', () => {
+  it('does nothing when item status is not error', async () => {
     musicCacheStore.setState({
       downloadQueue: [
         { queueId: 'q1', itemId: 'album-1', status: 'queued', tracks: [makeChild('t1')], totalTracks: 1, completedTracks: 0, addedAt: Date.now() },
       ],
     } as any);
 
-    retryDownload('q1');
+    await retryDownload('q1');
 
     expect(musicCacheStore.getState().downloadQueue[0].status).toBe('queued');
   });
 
-  it('resets error item to queued and clears completedTracks', () => {
+  it('resets error item to queued and preserves completedTracks', async () => {
+    musicCacheStore.setState({
+      downloadQueue: [
+        {
+          queueId: 'q1',
+          itemId: 'album-1',
+          status: 'error',
+          error: 'Download failed',
+          tracks: [makeChild('t1'), makeChild('t2'), makeChild('t3')],
+          totalTracks: 3,
+          completedTracks: 2,
+          addedAt: Date.now(),
+        },
+      ],
+    } as any);
+
+    await retryDownload('q1');
+
+    const item = musicCacheStore.getState().downloadQueue[0];
+    expect(item.status).toBe('queued');
+    expect(item.completedTracks).toBe(2);
+    expect(item.error).toBeUndefined();
+  });
+
+  it('cleans up .tmp files but preserves completed files', async () => {
+    musicCacheStore.setState({
+      downloadQueue: [
+        {
+          queueId: 'q1',
+          itemId: 'album-1',
+          status: 'error',
+          error: 'Download failed',
+          tracks: [makeChild('t1'), makeChild('t2')],
+          totalTracks: 2,
+          completedTracks: 1,
+          addedAt: Date.now(),
+        },
+      ],
+    } as any);
+
+    mockListDirectoryAsync.mockResolvedValue(['t1.mp3', 't2.mp3.tmp']);
+    mockFileExists = true;
+
+    await retryDownload('q1');
+
+    // Should have listed directory contents
+    expect(mockListDirectoryAsync).toHaveBeenCalled();
+    // Item should be requeued
+    const item = musicCacheStore.getState().downloadQueue[0];
+    expect(item.status).toBe('queued');
+    expect(item.completedTracks).toBe(1);
+  });
+
+  it('handles retry when directory does not exist', async () => {
     musicCacheStore.setState({
       downloadQueue: [
         {
@@ -827,15 +966,19 @@ describe('retryDownload', () => {
       ],
     } as any);
 
-    retryDownload('q1');
+    mockDirExists = false;
 
+    await retryDownload('q1');
+
+    // Should not attempt to list directory
+    expect(mockListDirectoryAsync).not.toHaveBeenCalled();
+    // Item should still be requeued
     const item = musicCacheStore.getState().downloadQueue[0];
     expect(item.status).toBe('queued');
-    expect(item.completedTracks).toBe(0);
     expect(item.error).toBeUndefined();
   });
 
-  it('repositions retried item after active/queued items', () => {
+  it('repositions retried item after active/queued items', async () => {
     musicCacheStore.setState({
       downloadQueue: [
         { queueId: 'q1', itemId: 'a1', status: 'error', error: 'fail', tracks: [makeChild('t1')], totalTracks: 1, completedTracks: 0, addedAt: 1 },
@@ -844,7 +987,7 @@ describe('retryDownload', () => {
       ],
     } as any);
 
-    retryDownload('q1');
+    await retryDownload('q1');
 
     const queue = musicCacheStore.getState().downloadQueue;
     // q1 was at index 0 (error), q2 is at index 1 (queued, last non-error).
