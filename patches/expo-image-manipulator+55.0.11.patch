@@ -1,0 +1,22 @@
+diff --git a/node_modules/expo-image-manipulator/android/src/main/java/expo/modules/imagemanipulator/ImageManipulatorModule.kt b/node_modules/expo-image-manipulator/android/src/main/java/expo/modules/imagemanipulator/ImageManipulatorModule.kt
+index 20cd595..e891c88 100644
+--- a/node_modules/expo-image-manipulator/android/src/main/java/expo/modules/imagemanipulator/ImageManipulatorModule.kt
++++ b/node_modules/expo-image-manipulator/android/src/main/java/expo/modules/imagemanipulator/ImageManipulatorModule.kt
+@@ -42,11 +42,15 @@ class ImageManipulatorModule : Module() {
+           url.toString(),
+           object : ResultListener {
+             override fun onSuccess(bitmap: Bitmap) {
+-              continuation.resume(bitmap)
++              if (continuation.isActive) {
++                continuation.resume(bitmap)
++              }
+             }
+ 
+             override fun onFailure(cause: Throwable?) {
+-              continuation.resumeWithException(ImageLoadingFailedException(url.toString(), cause.toCodedException()))
++              if (continuation.isActive) {
++                continuation.resumeWithException(ImageLoadingFailedException(url.toString(), cause.toCodedException()))
++              }
+             }
+           }
+         )

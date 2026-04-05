@@ -96,6 +96,10 @@ class MusicService : HeadlessJsMediaService() {
         fakePlayer = ExoPlayer.Builder(this).build()
         val openAppIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        } ?: Intent(Intent.ACTION_MAIN).apply {
+            setPackage(packageName)
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
         mediaSession = MediaLibrarySession.Builder(this, fakePlayer,
             InnerMediaSessionCallback()

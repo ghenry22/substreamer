@@ -335,9 +335,18 @@ export default function RootLayout() {
     if (Platform.OS !== 'android') return;
 
     const handler = () => {
-      // Only intercept on the home tab — other tabs navigate back to home first
-      if (segments[0] === '(tabs)' && (segments as string[])[1] === 'index') {
-        moveToBack();
+      // Intercept back on all root tab screens to prevent react-native-screens
+      // from calling canNavigateBack() on a tab fragment (not a ScreenStack),
+      // which throws IllegalStateException.
+      if (segments[0] === '(tabs)') {
+        const tab = (segments as string[])[1];
+        if (!tab || tab === 'index') {
+          // Already on the home tab — background the app
+          moveToBack();
+        } else {
+          // On another tab — navigate to the home tab first
+          router.navigate('/(tabs)');
+        }
         return true;
       }
       return false;
@@ -345,7 +354,7 @@ export default function RootLayout() {
 
     const subscription = BackHandler.addEventListener('hardwareBackPress', handler);
     return () => subscription.remove();
-  }, [segments]);
+  }, [segments, router]);
 
   // --- Auth-based navigation ---
   // Use router.replace inside useEffect instead of <Redirect> so the
