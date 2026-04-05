@@ -1,3 +1,10 @@
+Fix miniplayer song title wrapping
+Stop music playback and clear notification when app killed.
+Implement translation support.  English as base, create some initial translations for other languages where we have user base.  These are AI generated to provide a starting point, mechanisms for community contribution will be put in place for fixes and new translations
+Improve the player layout and enable lyrics and album info display on phone screens.
+Add shuffle play button to album, playlist and favorite songs screens.
+Fix download resume to not redownload items that finished.
+
 • Tablet support: landscape and portrait layouts, UI orientation unlock, additional grid breakpoints
 • Album info and MBID overrides on expanded player view with fuzzy text search fallback
 • Cover art displayed in bottom sheets and context menus

@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.0.45] - 2026-04-05
+
+- publishing: trim changelogs
+- ci: update coverage badge [skip ci]
+- publishing: stash reddit images
+- ci: update coverage badge [skip ci]
+- android: fix miniplayer song title wrapping
+- android: stop music playback and clear notification when app killed.
+- il8n: Implement translation support.  English as base, create some initial translations for other languages where we have user base.  These are AI generated to provide a starting point, mechanisms for community contribution will be put in place for fixes and new translations
+- ci: update coverage badge [skip ci]
+- player: improve the player layout and enable lyrics and album info display on phone screens.
+- ci: update coverage badge [skip ci]
+- shuffle play: Add shuffle play button to album, playlist and favorite songs screens.
+- ci: update coverage badge [skip ci]
+- downloads: fix download resume to not redownload items that finished.
+- ci: update coverage badge [skip ci]
 ## [8.0.44] - 2026-04-03
 
 - ci: update coverage badge [skip ci]
