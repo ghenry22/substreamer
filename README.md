@@ -84,6 +84,7 @@ Tested and actively supported. Features are gated based on each server's capabil
 | [Navidrome](https://www.navidrome.org/) | Recommended. Full API support including OpenSubsonic extensions. |
 | [Subsonic](http://www.subsonic.org/) | The original Subsonic server. Tested against the official demo. |
 | [Gonic](https://github.com/sentriz/gonic) | Lightweight, OpenSubsonic compatible. Some features limited (no shares, no scan). |
+| [MiniMediaSonicServer](https://github.com/MusicMoveArr/MiniMediaSonicServer) | C#/PostgreSQL server with OpenSubsonic support. No shares, scan, or transcoding. |
 | [Nextcloud Music](https://github.com/owncloud/music) | Nextcloud app. Requires legacy authentication (toggle in Advanced options on login). No shares or scan. |
 | [Ampache](https://ampache.org/) | Subsonic API compatibility mode. Requires legacy authentication (toggle in Advanced options on login). No shares or scan. |
 
