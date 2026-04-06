@@ -23,6 +23,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Validate translations
+        run: node scripts/validate-translations.js
+
       - name: TypeScript compilation check
         run: npx tsc --noEmit
 

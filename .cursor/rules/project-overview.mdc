@@ -122,6 +122,26 @@ t('songCount', { count: 5 }) // "5 songs"
 - Technical identifiers, log messages, file paths
 - Numeric format strings from formatters (`1h30m`, `1.2 GB`)
 
+### Crowdin Integration
+
+Community translations are managed via [Crowdin](https://crowdin.com/). The `crowdin.yml` config at the repo root maps `src/i18n/locales/en.json` as the source file.
+
+**Automated sync** (`.github/workflows/crowdin.yml`):
+- **Upload**: source strings push to Crowdin automatically when `en.json` changes on `master`
+- **Download**: translations pull weekly (Monday 6am UTC) into a PR on branch `crowdin-translations`. Can also be triggered manually via `workflow_dispatch`.
+
+**Validation**: `scripts/validate-translations.js` runs in CI and checks all locale files for missing/extra keys and interpolation placeholder mismatches. Run locally with `npm run validate:i18n`.
+
+**Adding a new language** (e.g. `ja`):
+1. The locale JSON file arrives via Crowdin PR (`src/i18n/locales/ja.json`)
+2. Add polyfill import in `src/i18n/i18n.ts`: `import '@formatjs/intl-pluralrules/locale-data/ja.js'`
+3. Add JSON import + entry in `localeResources` in `src/i18n/i18n.ts`
+4. Add/uncomment entry in `src/i18n/languages.ts`
+5. Update test mocks in `src/i18n/__tests__/i18n-fallbacks.test.ts`
+6. Run `npx tsc --noEmit && npx jest`
+
+Translation files can exist in the repo before the language is enabled — a language only becomes user-visible when added to `languages.ts`.
+
 ## Naming Conventions
 
 | Type | Convention | Example |

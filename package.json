@@ -12,6 +12,7 @@
     "prebuild": "expo prebuild --clean",
     "web": "expo start --web",
     "test": "jest",
+    "validate:i18n": "node scripts/validate-translations.js",
     "test:watch": "jest --watchAll",
     "test:modules": "scripts/test-modules.sh",
     "build:modules": "scripts/build-modules.sh",

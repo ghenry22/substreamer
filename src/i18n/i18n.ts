@@ -11,13 +11,25 @@ import i18next from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import { getLocales } from 'expo-localization';
 
+// Locale JSON imports — add new imports here when enabling a language
 import en from './locales/en.json';
 import fr from './locales/fr.json';
 import de from './locales/de.json';
 import es from './locales/es.json';
 import it from './locales/it.json';
+
 import { SUPPORTED_LOCALE_CODES } from './languages';
 import { localeStore } from '../store/localeStore';
+
+/** Registry mapping locale code to its translation bundle. */
+const localeResources: Record<string, { translation: Record<string, string> }> = {
+  en: { translation: en },
+  fr: { translation: fr },
+  de: { translation: de },
+  es: { translation: es },
+  it: { translation: it },
+  // Add new entries here when enabling a language
+};
 
 function getDeviceLocale(): string {
   try {
@@ -43,13 +55,7 @@ i18next
     fallbackLng: 'en',
     ns: ['translation'],
     defaultNS: 'translation',
-    resources: {
-      en: { translation: en },
-      fr: { translation: fr },
-      de: { translation: de },
-      es: { translation: es },
-      it: { translation: it },
-    },
+    resources: localeResources,
     interpolation: {
       escapeValue: false,
     },
