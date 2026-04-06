@@ -11,6 +11,7 @@
 ![Coverage](./badges/coverage.svg)
 ![Platform](https://img.shields.io/badge/platform-iOS%20%7C%20Android-lightgrey)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Crowdin](https://badges.crowdin.net/substreamer/localized.svg)](https://crowdin.com/project/substreamer)
 [![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-db61a2?style=social)](https://github.com/sponsors/ghenry22)
 ![GitHub Stars](https://img.shields.io/github/stars/ghenry22/substreamer?style=social)
 
@@ -110,6 +111,14 @@ These servers implement the Subsonic API but have not been tested with Substream
 2. **Download Substreamer** — Get the app for free on the [App Store](https://apps.apple.com/us/app/substreamer/id1012991665) or [Google Play](https://play.google.com/store/apps/details?id=com.ghenry22.substream2).
 
 3. **Connect** — Open the app, enter your server URL and credentials, and start streaming.
+
+## Translations
+
+Substreamer is available in multiple languages thanks to community translators. Help translate the app into your language or improve existing translations on [Crowdin](https://crowdin.com/project/substreamer).
+
+[![Crowdin](https://badges.crowdin.net/substreamer/localized.svg)](https://crowdin.com/project/substreamer)
+
+Currently supported languages: English, French, German, Spanish, Italian. More languages are welcome — just start translating on Crowdin and we'll add it to the app.
 
 ## Community
 

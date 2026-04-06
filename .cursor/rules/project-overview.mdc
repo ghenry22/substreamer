@@ -260,6 +260,10 @@ Searching `node_modules/` README files and documentation is fine when researchin
 
 When creating or presenting a plan, **always** end with a **bulleted list of todos** — each a single actionable step using clear, imperative phrasing. Keep the list proportional to the work.
 
+## Code Search
+
+When a **Symdex MCP server** is available, prefer it over built-in file search tools (Glob, Grep, file-tree exploration agents) for codebase queries. Symdex provides indexed symbol lookup, full-text search, file outlines, call graphs, and semantic search — all faster and more accurate than raw filesystem scanning. Fall back to Glob/Grep when Symdex is unavailable, returns empty/unexpected results, or when searching for content outside the indexed repository (e.g. `node_modules/`, temporary files).
+
 ---
 
 # UX & UI Quality
