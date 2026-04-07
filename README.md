@@ -105,6 +105,17 @@ These servers implement the Subsonic API but have not been tested with Substream
 | [Funkwhale](https://funkwhale.audio/) | Subsonic API compatibility mode. |
 | [Supysonic](https://github.com/spl0k/supysonic) | Python-based, lightweight. |
 
+## Server Configuration
+
+[**SERVERS.md**](SERVERS.md) is a living reference for server-specific configuration that the Subsonic API spec doesn't cover:
+
+- **Authentication** — exact step-by-step setup for the two servers that need a generated API key plus Legacy authentication: **Nextcloud Music** (where to find the APIKEY generator inside the Music app) and **Ampache** (how to enable the Subsonic backend, where the admin UI hides API key generation, and which `ampache.cfg.php` settings actually matter).
+- **Custom transcoding profiles** — the exact ffmpeg commands behind each audio quality preset (MP3, AAC, Opus, Opus ReplayGain, Opus Car mode, Ogg Vorbis, FLAC, plus the proposed cross-platform `mp3_rg` and `mp3_car`), with copy-paste-ready setup steps for Navidrome, Gonic, Ampache, and Airsonic-Advanced.
+- **Client codec support** — which formats actually play on iOS vs Android, and the gotchas (e.g. Opus on iOS only works inside MP4 containers, not the Ogg containers every server outputs by default).
+- **Advanced ffmpeg recipes** — drop-in static binaries, custom Docker images, and from-source builds for the rare cases where the bundled ffmpeg isn't enough (e.g. Ampache + `libfdk_aac`).
+
+If you're setting up Nextcloud Music or Ampache, or you want to use the ReplayGain / Car-mode audio presets, this is where to look.
+
 ## Getting Started
 
 1. **Set up a server** — Install a Subsonic-compatible server to host your music. [Navidrome](https://www.navidrome.org/docs/installation/) is a great place to start.

@@ -18,7 +18,7 @@ import i18n from 'i18next';
 
 import { authStore } from '../store/authStore';
 import { offlineModeStore } from '../store/offlineModeStore';
-import { playbackSettingsStore } from '../store/playbackSettingsStore';
+import { FORMAT_PRESETS, playbackSettingsStore, type StreamFormat, type MaxBitRate } from '../store/playbackSettingsStore';
 import type { ServerInfo } from '../store/serverInfoStore';
 
 const reactNativeCrypto: Crypto = {
@@ -224,6 +224,33 @@ export function getCoverArtUrl(coverArtId: string, size?: number): string | null
 }
 
 /**
+ * Apply the `format=` and `maxBitRate=` query params for a stream/download
+ * URL based on the user's chosen format and bitrate. Skips both params
+ * for the `'raw'` sentinel and any `lossless` preset (e.g. flac). For
+ * lossy formats, substitutes a per-codec HIGH default bitrate when the
+ * user has the bitrate picker set to "no limit".
+ */
+function applyFormatAndBitrate(
+  params: URLSearchParams,
+  format: StreamFormat,
+  maxBitRate: MaxBitRate,
+): void {
+  if (format !== 'raw') {
+    params.set('format', format);
+  }
+  const preset = FORMAT_PRESETS.find((p) => p.value === format);
+  // raw or any lossless preset → never send maxBitRate
+  if (format === 'raw' || preset?.lossless) return;
+  // For lossy formats, fall back to the preset HIGH default when the
+  // user has bitrate at "no limit"; for custom (unrecognized) values,
+  // fall back to 320.
+  const effective = maxBitRate ?? preset?.highBitrate ?? 320;
+  if (effective != null) {
+    params.set('maxBitRate', String(effective));
+  }
+}
+
+/**
  * Build an authenticated stream URL for a given track ID.
  * Mirrors getCoverArtUrl but targets the /rest/stream.view endpoint.
  * Must call ensureCoverArtAuth() before using this.
@@ -246,12 +273,7 @@ export function getStreamUrl(
   // Apply playback settings
   const { maxBitRate, streamFormat, estimateContentLength } =
     playbackSettingsStore.getState();
-  if (maxBitRate != null) {
-    params.set('maxBitRate', String(maxBitRate));
-  }
-  if (streamFormat === 'mp3') {
-    params.set('format', 'mp3');
-  }
+  applyFormatAndBitrate(params, streamFormat, maxBitRate);
   if (estimateContentLength) {
     params.set('estimateContentLength', 'true');
   }
@@ -285,12 +307,7 @@ export function getDownloadStreamUrl(trackId: string): string | null {
 
   const { downloadMaxBitRate, downloadFormat } =
     playbackSettingsStore.getState();
-  if (downloadMaxBitRate != null) {
-    params.set('maxBitRate', String(downloadMaxBitRate));
-  }
-  if (downloadFormat === 'mp3') {
-    params.set('format', 'mp3');
-  }
+  applyFormatAndBitrate(params, downloadFormat, downloadMaxBitRate);
 
   return `${base}?${params.toString()}`;
 }

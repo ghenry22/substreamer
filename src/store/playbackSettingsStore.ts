@@ -4,8 +4,52 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 import { sqliteStorage } from './sqliteStorage';
 
-export type StreamFormat = 'raw' | 'mp3';
+/**
+ * Stream format identifier sent as the Subsonic `format=` query parameter.
+ * `'raw'` is the canonical "no transcoding" sentinel — for any other value
+ * the URL builder sends `format=<value>` verbatim. Server semantics vary:
+ * Navidrome treats it as a codec name, gonic as a profile name (e.g.
+ * `opus_128_car`), so we accept arbitrary strings.
+ */
+export type StreamFormat = string;
 export type MaxBitRate = 64 | 128 | 192 | 256 | 320 | null;
+
+/** A built-in format preset shown in the picker. */
+export interface FormatPreset {
+  /** Value sent to the server as `format=`. */
+  value: StreamFormat;
+  /** i18n key for the display label. */
+  labelKey: string;
+  /**
+   * HIGH default max bitrate substituted when the user has the bitrate
+   * picker set to "no limit" (null). `null` = lossless / pass-through,
+   * never send `maxBitRate` for this format.
+   */
+  highBitrate: MaxBitRate;
+  /** Lossless / pass-through format — never send `maxBitRate`. */
+  lossless: boolean;
+}
+
+/**
+ * Built-in stream format presets, with HIGH default bitrates applied when
+ * the user has the bitrate picker set to "no limit". Custom-entered values
+ * (anything not in this list) are treated as lossy and fall back to 320.
+ */
+export const FORMAT_PRESETS: FormatPreset[] = [
+  { value: 'raw',      labelKey: 'formatOriginal',  highBitrate: null, lossless: true  },
+  { value: 'mp3',      labelKey: 'formatMp3',       highBitrate: 320,  lossless: false },
+  { value: 'aac',      labelKey: 'formatAac',       highBitrate: 320,  lossless: false },
+  { value: 'opus',     labelKey: 'formatOpus',      highBitrate: 320,  lossless: false },
+  { value: 'opus_rg',  labelKey: 'formatOpusRg',    highBitrate: 320,  lossless: false },
+  { value: 'opus_car', labelKey: 'formatOpusCar',   highBitrate: 192,  lossless: false },
+  { value: 'ogg',      labelKey: 'formatOggVorbis', highBitrate: 320,  lossless: false },
+  { value: 'flac',     labelKey: 'formatFlac',      highBitrate: null, lossless: true  },
+];
+
+/** Normalize a user-entered or selected format value. */
+function normalizeFormat(value: StreamFormat): StreamFormat {
+  return value === 'raw' ? 'raw' : value.trim().toLowerCase();
+}
 
 /** Repeat mode: off → repeat queue → repeat single track. */
 export type RepeatModeSetting = 'off' | 'all' | 'one';
@@ -82,12 +126,12 @@ export const playbackSettingsStore = create<PlaybackSettingsState>()(
       remoteControlMode: 'skip-track',
 
       setMaxBitRate: (maxBitRate) => set({ maxBitRate }),
-      setStreamFormat: (streamFormat) => set({ streamFormat }),
+      setStreamFormat: (streamFormat) => set({ streamFormat: normalizeFormat(streamFormat) }),
       setEstimateContentLength: (estimateContentLength) => set({ estimateContentLength }),
       setRepeatMode: (repeatMode) => set({ repeatMode }),
       setPlaybackRate: (playbackRate) => set({ playbackRate }),
       setDownloadMaxBitRate: (downloadMaxBitRate) => set({ downloadMaxBitRate }),
-      setDownloadFormat: (downloadFormat) => set({ downloadFormat }),
+      setDownloadFormat: (downloadFormat) => set({ downloadFormat: normalizeFormat(downloadFormat) }),
       setShowSkipIntervalButtons: (showSkipIntervalButtons) => set({ showSkipIntervalButtons }),
       setShowSleepTimerButton: (showSleepTimerButton) => set({ showSleepTimerButton }),
       setSkipBackwardInterval: (skipBackwardInterval) => set({ skipBackwardInterval }),

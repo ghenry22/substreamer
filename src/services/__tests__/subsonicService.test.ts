@@ -17,6 +17,16 @@ jest.mock('../../store/offlineModeStore', () => ({
 }));
 jest.mock('../../store/playbackSettingsStore', () => ({
   playbackSettingsStore: { getState: jest.fn() },
+  FORMAT_PRESETS: [
+    { value: 'raw',      labelKey: 'formatOriginal',  highBitrate: null, lossless: true  },
+    { value: 'mp3',      labelKey: 'formatMp3',       highBitrate: 320,  lossless: false },
+    { value: 'aac',      labelKey: 'formatAac',       highBitrate: 320,  lossless: false },
+    { value: 'opus',     labelKey: 'formatOpus',      highBitrate: 320,  lossless: false },
+    { value: 'opus_rg',  labelKey: 'formatOpusRg',    highBitrate: 320,  lossless: false },
+    { value: 'opus_car', labelKey: 'formatOpusCar',   highBitrate: 192,  lossless: false },
+    { value: 'ogg',      labelKey: 'formatOggVorbis', highBitrate: 320,  lossless: false },
+    { value: 'flac',     labelKey: 'formatFlac',      highBitrate: null, lossless: true  },
+  ],
 }));
 
 import { authStore } from '../../store/authStore';
@@ -207,6 +217,113 @@ describe('getDownloadStreamUrl', () => {
     const url = getDownloadStreamUrl('track-1');
     expect(url).not.toContain('format=');
     expect(url).not.toContain('maxBitRate=');
+  });
+});
+
+describe('format/bitrate URL building (FORMAT_PRESETS)', () => {
+  it('mp3 with no explicit bitrate sends the HIGH default (320)', async () => {
+    await ensureCoverArtAuth();
+    mockPlaybackSettingsStore.getState.mockReturnValue({
+      maxBitRate: null,
+      streamFormat: 'mp3' as const,
+      estimateContentLength: false,
+    } as any);
+    const url = getStreamUrl('track-1');
+    expect(url).toContain('format=mp3');
+    expect(url).toContain('maxBitRate=320');
+  });
+
+  it('mp3 with explicit bitrate honors the user choice', async () => {
+    await ensureCoverArtAuth();
+    mockPlaybackSettingsStore.getState.mockReturnValue({
+      maxBitRate: 128,
+      streamFormat: 'mp3' as const,
+      estimateContentLength: false,
+    } as any);
+    const url = getStreamUrl('track-1');
+    expect(url).toContain('format=mp3');
+    expect(url).toContain('maxBitRate=128');
+  });
+
+  it('opus_car with no explicit bitrate sends 192 (lower HIGH default)', async () => {
+    await ensureCoverArtAuth();
+    mockPlaybackSettingsStore.getState.mockReturnValue({
+      maxBitRate: null,
+      streamFormat: 'opus_car' as const,
+      estimateContentLength: false,
+    } as any);
+    const url = getStreamUrl('track-1');
+    expect(url).toContain('format=opus_car');
+    expect(url).toContain('maxBitRate=192');
+  });
+
+  it('flac never sends maxBitRate even when picker is set to a value', async () => {
+    await ensureCoverArtAuth();
+    mockPlaybackSettingsStore.getState.mockReturnValue({
+      maxBitRate: 320,
+      streamFormat: 'flac' as const,
+      estimateContentLength: false,
+    } as any);
+    const url = getStreamUrl('track-1');
+    expect(url).toContain('format=flac');
+    expect(url).not.toContain('maxBitRate=');
+  });
+
+  it('raw never sends format= or maxBitRate= even when picker has a value', async () => {
+    await ensureCoverArtAuth();
+    mockPlaybackSettingsStore.getState.mockReturnValue({
+      maxBitRate: 256,
+      streamFormat: 'raw' as const,
+      estimateContentLength: false,
+    } as any);
+    const url = getStreamUrl('track-1');
+    expect(url).not.toContain('format=');
+    expect(url).not.toContain('maxBitRate=');
+  });
+
+  it('arbitrary custom format passes through verbatim and uses 320 fallback', async () => {
+    await ensureCoverArtAuth();
+    mockPlaybackSettingsStore.getState.mockReturnValue({
+      maxBitRate: null,
+      streamFormat: 'opus_128_car' as const,
+      estimateContentLength: false,
+    } as any);
+    const url = getStreamUrl('track-1');
+    expect(url).toContain('format=opus_128_car');
+    expect(url).toContain('maxBitRate=320');
+  });
+
+  it('download path: opus_car + null bitrate sends 192', async () => {
+    await ensureCoverArtAuth();
+    mockPlaybackSettingsStore.getState.mockReturnValue({
+      downloadMaxBitRate: null,
+      downloadFormat: 'opus_car' as const,
+    } as any);
+    const url = getDownloadStreamUrl('track-1');
+    expect(url).toContain('format=opus_car');
+    expect(url).toContain('maxBitRate=192');
+  });
+
+  it('download path: flac + 256 picker omits maxBitRate', async () => {
+    await ensureCoverArtAuth();
+    mockPlaybackSettingsStore.getState.mockReturnValue({
+      downloadMaxBitRate: 256,
+      downloadFormat: 'flac' as const,
+    } as any);
+    const url = getDownloadStreamUrl('track-1');
+    expect(url).toContain('format=flac');
+    expect(url).not.toContain('maxBitRate=');
+  });
+
+  it('download path: custom format + null bitrate uses 320 fallback', async () => {
+    await ensureCoverArtAuth();
+    mockPlaybackSettingsStore.getState.mockReturnValue({
+      downloadMaxBitRate: null,
+      downloadFormat: 'mp3_320_v0' as const,
+    } as any);
+    const url = getDownloadStreamUrl('track-1');
+    expect(url).toContain('format=mp3_320_v0');
+    expect(url).toContain('maxBitRate=320');
   });
 });
 

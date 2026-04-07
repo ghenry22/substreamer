@@ -1,6 +1,6 @@
 jest.mock('../sqliteStorage', () => require('../__mocks__/sqliteStorage'));
 
-import { playbackSettingsStore } from '../playbackSettingsStore';
+import { FORMAT_PRESETS, playbackSettingsStore } from '../playbackSettingsStore';
 
 beforeEach(() => {
   playbackSettingsStore.setState({
@@ -93,5 +93,64 @@ describe('playbackSettingsStore', () => {
     expect(state.skipBackwardInterval).toBe(15);
     expect(state.skipForwardInterval).toBe(30);
     expect(state.remoteControlMode).toBe('skip-track');
+  });
+
+  describe('format normalization', () => {
+    it('lowercases and trims streamFormat input', () => {
+      playbackSettingsStore.getState().setStreamFormat('  OPUS_128_CAR  ');
+      expect(playbackSettingsStore.getState().streamFormat).toBe('opus_128_car');
+    });
+
+    it('lowercases and trims downloadFormat input', () => {
+      playbackSettingsStore.getState().setDownloadFormat('  FLAC ');
+      expect(playbackSettingsStore.getState().downloadFormat).toBe('flac');
+    });
+
+    it("preserves 'raw' as the canonical sentinel", () => {
+      playbackSettingsStore.getState().setStreamFormat('raw');
+      expect(playbackSettingsStore.getState().streamFormat).toBe('raw');
+    });
+
+    it('accepts arbitrary custom format strings', () => {
+      playbackSettingsStore.getState().setStreamFormat('opus_192_rg');
+      expect(playbackSettingsStore.getState().streamFormat).toBe('opus_192_rg');
+    });
+  });
+
+  describe('FORMAT_PRESETS', () => {
+    it('includes raw and flac as lossless with no high bitrate', () => {
+      const raw = FORMAT_PRESETS.find((p) => p.value === 'raw');
+      const flac = FORMAT_PRESETS.find((p) => p.value === 'flac');
+      expect(raw?.lossless).toBe(true);
+      expect(raw?.highBitrate).toBeNull();
+      expect(flac?.lossless).toBe(true);
+      expect(flac?.highBitrate).toBeNull();
+    });
+
+    it('marks all non-lossless presets with a numeric high bitrate', () => {
+      const lossy = FORMAT_PRESETS.filter((p) => !p.lossless);
+      expect(lossy.length).toBeGreaterThan(0);
+      for (const preset of lossy) {
+        expect(typeof preset.highBitrate).toBe('number');
+      }
+    });
+
+    it('uses 192 high bitrate for opus_car (loudness-compressed profile)', () => {
+      const opusCar = FORMAT_PRESETS.find((p) => p.value === 'opus_car');
+      expect(opusCar?.highBitrate).toBe(192);
+    });
+
+    it('uses 320 high bitrate for the standard lossy presets', () => {
+      const standardLossy = ['mp3', 'aac', 'opus', 'opus_rg', 'ogg'];
+      for (const value of standardLossy) {
+        const preset = FORMAT_PRESETS.find((p) => p.value === value);
+        expect(preset?.highBitrate).toBe(320);
+      }
+    });
+
+    it('uses unique values across all presets', () => {
+      const values = FORMAT_PRESETS.map((p) => p.value);
+      expect(new Set(values).size).toBe(values.length);
+    });
   });
 });

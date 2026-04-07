@@ -755,7 +755,12 @@ export default class SubsonicAPI {
 	async stream(args: {
 		id: string;
 		maxBitRate?: number;
-		format?: "raw" | "mp3" | "ogg" | "aac";
+		/**
+		 * `'raw'` is the canonical "no transcoding" sentinel; any other
+		 * string is sent verbatim. Server semantics vary — Navidrome treats
+		 * it as a codec name, gonic as a profile name (e.g. `opus_128_car`).
+		 */
+		format?: string;
 		timeOffset?: number;
 		size?: number;
 		estimateContentLength?: boolean;
@@ -771,9 +776,10 @@ export default class SubsonicAPI {
 		 */
 		maxBitRate?: number;
 		/**
-		 * Only supported by Navidrome
+		 * Only supported by Navidrome. `'raw'` is the canonical
+		 * "no transcoding" sentinel; any other string is sent verbatim.
 		 */
-		format?: "raw" | "mp3" | "ogg" | "aac";
+		format?: string;
 		/**
 		 * Only supported by Navidrome
 		 */
