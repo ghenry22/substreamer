@@ -67,8 +67,20 @@ export function startAutoOffline(): void {
   if (!autoOfflineStore.getState().enabled) return;
   subscribe();
 
-  // Fresh evaluation on cold start — bypass cached NetInfo state
-  NetInfo.refresh().then(handleNetworkChange);
+  // Fresh evaluation on cold start. The first NetInfo result on Android
+  // immediately after launch can be a false negative (type === 'unknown'
+  // or 'none' even when the device is on wifi) — react-native-netinfo#781.
+  // If the first result looks stale, retry once after 500ms; the underlying
+  // ConnectivityManager has had time to populate the real state by then.
+  NetInfo.refresh().then((state) => {
+    if (state.type === 'unknown' || state.type === 'none') {
+      setTimeout(() => {
+        NetInfo.refresh().then(handleNetworkChange);
+      }, 500);
+    } else {
+      handleNetworkChange(state);
+    }
+  });
 
   // Re-subscribe when store settings change
   unsubscribeStore = autoOfflineStore.subscribe((state, prev) => {

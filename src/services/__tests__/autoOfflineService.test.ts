@@ -132,6 +132,55 @@ describe('startAutoOffline', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(mockSetOffline).toHaveBeenCalledWith(false);
   });
+
+  it('retries the cold-start refresh once after 500ms when the first result is "unknown" (U19)', async () => {
+    jest.useFakeTimers();
+    try {
+      mockRefresh
+        .mockResolvedValueOnce({ type: 'unknown', details: null })
+        .mockResolvedValueOnce({ type: 'wifi', details: {} });
+      autoOfflineStore.setState({ enabled: true, mode: 'wifi-only' });
+      startAutoOffline();
+
+      // First refresh fires immediately and resolves with the stale 'unknown' state.
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(mockRefresh).toHaveBeenCalledTimes(1);
+      expect(mockSetOffline).not.toHaveBeenCalled();
+
+      // After 500ms the retry fires; second refresh resolves with the real wifi state.
+      jest.advanceTimersByTime(500);
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(mockRefresh).toHaveBeenCalledTimes(2);
+      expect(mockSetOffline).toHaveBeenCalledWith(false);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('retries the cold-start refresh once after 500ms when the first result is "none" (U19)', async () => {
+    jest.useFakeTimers();
+    try {
+      mockRefresh
+        .mockResolvedValueOnce({ type: 'none', details: null })
+        .mockResolvedValueOnce({ type: 'wifi', details: {} });
+      autoOfflineStore.setState({ enabled: true, mode: 'wifi-only' });
+      startAutoOffline();
+
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(mockRefresh).toHaveBeenCalledTimes(1);
+
+      jest.advanceTimersByTime(500);
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(mockRefresh).toHaveBeenCalledTimes(2);
+      expect(mockSetOffline).toHaveBeenCalledWith(false);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });
 
 describe('stopAutoOffline', () => {
