@@ -14,18 +14,23 @@ object Cache {
     private var instance: SimpleCache? = null
 
     fun initCache(context: Context, sizeKb: Long): SimpleCache {
-        val db: DatabaseProvider = StandaloneDatabaseProvider(context)
-
-        instance ?: synchronized(this) {
-            instance ?: SimpleCache(
+        // U6 Android sibling: removes the trailing `instance!!`. Capturing into
+        // a local val makes the double-checked init explicit and gives the
+        // Kotlin smart cast — no force-unwrap, no theoretical NPE if a race
+        // were ever to slip past the @Volatile.
+        instance?.let { return it }
+        return synchronized(this) {
+            instance?.let { return@synchronized it }
+            val db: DatabaseProvider = StandaloneDatabaseProvider(context)
+            val created = SimpleCache(
                 File(context.cacheDir, "RNTP"),
                 LeastRecentlyUsedCacheEvictor(
-                  sizeKb * 1000 // kb to bytes
+                    sizeKb * 1000 // kb to bytes
                 ),
                 db
-            ).also { instance = it }
+            )
+            instance = created
+            created
         }
-
-        return instance!!
     }
 }

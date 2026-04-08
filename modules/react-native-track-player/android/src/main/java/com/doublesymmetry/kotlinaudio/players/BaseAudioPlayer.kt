@@ -598,7 +598,10 @@ abstract class BaseAudioPlayer internal constructor(
                 .setContentType(NativeAudioAttributes.CONTENT_TYPE_MUSIC)
                 .build()
 
-            focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+            // U6 Android sibling: build the request into a local val so the
+            // subsequent requestAudioFocus() call can use it without a `!!`.
+            // Storing on the field afterwards keeps abandonAudioFocusIfHeld() working.
+            val newFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                 .setAudioAttributes(attrs)
                 .setWillPauseWhenDucked(options.alwaysPauseOnInterruption)
                 .setOnAudioFocusChangeListener { focusChange ->
@@ -625,8 +628,9 @@ abstract class BaseAudioPlayer internal constructor(
                     playerEventHolder.updateOnAudioFocusChanged(isPaused, isPermanent)
                 }
                 .build()
+            focusRequest = newFocusRequest
 
-            val result = manager.requestAudioFocus(focusRequest!!)
+            val result = manager.requestAudioFocus(newFocusRequest)
             hasAudioFocus = (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
         }
 

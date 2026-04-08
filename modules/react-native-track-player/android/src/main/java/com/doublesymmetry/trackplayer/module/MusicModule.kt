@@ -17,9 +17,11 @@ import com.facebook.react.bridge.*
 import androidx.media3.common.Player
 import androidx.media3.session.MediaBrowser
 import androidx.media3.session.SessionToken
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.plus
 import timber.log.Timber
 import java.util.*
 import javax.annotation.Nonnull
@@ -37,7 +39,16 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
     private var playerOptions: Bundle? = null
     private var isServiceBound = false
     private var playerSetUpPromise: Promise? = null
-    private val scope = MainScope()
+
+    // U6 Android sibling: every bridge-callable method dispatches via launchInScope.
+    // Without an exception handler on the scope, an uncaught throwable inside any
+    // suspended block escapes to the global handler — process crash. The handler
+    // here is the last line of defence; launchInScope itself also try/catches and
+    // rejects the JS promise so callers see a normal rejection rather than a hang.
+    private val coroutineExceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        Timber.e(throwable, "[MusicModule] Uncaught coroutine exception in module scope")
+    }
+    private val scope = MainScope() + coroutineExceptionHandler
     private lateinit var musicService: MusicService
     private val context = reactContext
 
@@ -218,7 +229,7 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
         }
     }
 
-    override fun updateOptions(data: ReadableMap?, callback: Promise) = launchInScope {
+    override fun updateOptions(data: ReadableMap?, callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         val options = Arguments.toBundle(data)
@@ -230,7 +241,7 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
         callback.resolve(null)
     }
 
-    override fun add(data: ReadableArray, insertBeforeIndex: Double?, callback: Promise) = launchInScope {
+    override fun add(data: ReadableArray, insertBeforeIndex: Double?, callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         val insertBeforeIndexInt = insertBeforeIndex?.toInt() ?: 0;
@@ -251,7 +262,7 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
         }
     }
 
-    override fun load(data: ReadableMap?, callback: Promise) = launchInScope {
+    override fun load(data: ReadableMap?, callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
         if (data == null) {
             callback.resolve(null)
@@ -266,13 +277,13 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
         }
     }
 
-    override fun move(fromIndex: Double, toIndex: Double, callback: Promise) = launchInScope {
+    override fun move(fromIndex: Double, toIndex: Double, callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
         musicService.move(fromIndex.toInt(), toIndex.toInt())
         callback.resolve(null)
     }
 
-    override fun remove(data: ReadableArray?, callback: Promise) = launchInScope {
+    override fun remove(data: ReadableArray?, callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
         val inputIndexes = Arguments.toList(data)
         if (inputIndexes != null) {
@@ -294,7 +305,7 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
         callback.resolve(null)
     }
 
-    override fun updateMetadataForTrack(index: Double, map: ReadableMap?, callback: Promise) = launchInScope {
+    override fun updateMetadataForTrack(index: Double, map: ReadableMap?, callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         if (index < 0 || index >= musicService.tracks.size) {
@@ -309,7 +320,7 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
         callback.resolve(null)
     }
 
-    override fun updateNowPlayingMetadata(map: ReadableMap?, callback: Promise) = launchInScope {
+    override fun updateNowPlayingMetadata(map: ReadableMap?, callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         if (musicService.tracks.isEmpty()) {
@@ -324,14 +335,14 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
         callback.resolve(null)
     }
 
-    override fun removeUpcomingTracks(callback: Promise) = launchInScope {
+    override fun removeUpcomingTracks(callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         musicService.removeUpcomingTracks()
         callback.resolve(null)
     }
 
-    override fun skip(index: Double, initialTime: Double?, callback: Promise) = launchInScope {
+    override fun skip(index: Double, initialTime: Double?, callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         musicService.skip(index.toInt())
@@ -343,7 +354,7 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
         callback.resolve(null)
     }
 
-    override fun skipToNext(initialTime: Double?, callback: Promise) = launchInScope {
+    override fun skipToNext(initialTime: Double?, callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         musicService.skipToNext()
@@ -355,7 +366,7 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
         callback.resolve(null)
     }
 
-    override fun skipToPrevious(initialTime: Double?, callback: Promise) = launchInScope {
+    override fun skipToPrevious(initialTime: Double?, callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         musicService.skipToPrevious()
@@ -367,7 +378,7 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
         callback.resolve(null)
     }
 
-    override fun reset(callback: Promise) = launchInScope {
+    override fun reset(callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         musicService.stop()
@@ -380,101 +391,101 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
         callback.resolve(null)
     }
 
-    override fun play(callback: Promise) = launchInScope {
+    override fun play(callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         musicService.play()
         callback.resolve(null)
     }
 
-    override fun pause(callback: Promise) = launchInScope {
+    override fun pause(callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         musicService.pause()
         callback.resolve(null)
     }
 
-    override fun stop(callback: Promise) = launchInScope {
+    override fun stop(callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         musicService.stop()
         callback.resolve(null)
     }
 
-    override fun seekTo(seconds: Double, callback: Promise) = launchInScope {
+    override fun seekTo(seconds: Double, callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         musicService.seekTo(seconds.toFloat())
         callback.resolve(null)
     }
 
-    override fun seekBy(offset: Double, callback: Promise) = launchInScope {
+    override fun seekBy(offset: Double, callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         musicService.seekBy(offset.toFloat())
         callback.resolve(null)
     }
 
-    override fun retry(callback: Promise) = launchInScope {
+    override fun retry(callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         musicService.retry()
         callback.resolve(null)
     }
 
-    override fun setVolume(volume: Double, callback: Promise) = launchInScope {
+    override fun setVolume(volume: Double, callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         musicService.setVolume(volume.toFloat())
         callback.resolve(null)
     }
 
-    override fun getVolume(callback: Promise) = launchInScope {
+    override fun getVolume(callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         callback.resolve(musicService.getVolume())
     }
 
-    override fun setRate(rate: Double, callback: Promise) = launchInScope {
+    override fun setRate(rate: Double, callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         musicService.setRate(rate.toFloat())
         callback.resolve(null)
     }
 
-    override fun getRate(callback: Promise) = launchInScope {
+    override fun getRate(callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         callback.resolve(musicService.getRate())
     }
 
-    override fun setRepeatMode(mode: Double, callback: Promise) = launchInScope {
+    override fun setRepeatMode(mode: Double, callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         musicService.setRepeatMode(RepeatMode.fromOrdinal(mode.toInt()))
         callback.resolve(null)
     }
 
-    override fun getRepeatMode(callback: Promise) = launchInScope {
+    override fun getRepeatMode(callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         callback.resolve(musicService.getRepeatMode().ordinal)
     }
 
-    override fun setPlayWhenReady(playWhenReady: Boolean, callback: Promise) = launchInScope {
+    override fun setPlayWhenReady(playWhenReady: Boolean, callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         musicService.playWhenReady = playWhenReady
         callback.resolve(null)
     }
 
-    override fun getPlayWhenReady(callback: Promise) = launchInScope {
+    override fun getPlayWhenReady(callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         callback.resolve(musicService.playWhenReady)
     }
 
-    override fun getTrack(index: Double, callback: Promise) = launchInScope {
+    override fun getTrack(index: Double, callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         val indexInt = index.toInt()
@@ -485,13 +496,13 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
         }
     }
 
-    override fun getQueue(callback: Promise) = launchInScope {
+    override fun getQueue(callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         callback.resolve(Arguments.fromList(musicService.tracks.map { it.originalItem }))
     }
 
-    override fun setQueue(data: ReadableArray?, callback: Promise) = launchInScope {
+    override fun setQueue(data: ReadableArray?, callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
 
         try {
@@ -503,14 +514,14 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
         }
     }
 
-    override fun getActiveTrackIndex(callback: Promise) = launchInScope {
+    override fun getActiveTrackIndex(callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
         callback.resolve(
             if (musicService.tracks.isEmpty()) null else musicService.getCurrentTrackIndex()
         )
     }
 
-    override fun getActiveTrack(callback: Promise) = launchInScope {
+    override fun getActiveTrack(callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
         callback.resolve(
             musicService.currentTrack?.let {
@@ -519,7 +530,7 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
         )
     }
 
-    override fun getProgress(callback: Promise) = launchInScope {
+    override fun getProgress(callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
         val bundle = Bundle()
         bundle.putDouble("duration", musicService.getDurationInSeconds());
@@ -528,40 +539,40 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
         callback.resolve(Arguments.fromBundle(bundle))
     }
 
-    override fun getPlaybackState(callback: Promise) = launchInScope {
+    override fun getPlaybackState(callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
         callback.resolve(Arguments.fromBundle(musicService.getPlayerStateBundle(musicService.state)))
     }
 
-    override fun acquireWakeLock(callback: Promise) = launchInScope {
+    override fun acquireWakeLock(callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
         musicService.acquireWakeLock()
         callback.resolve(null)
     }
 
-    override fun abandonWakeLock(callback: Promise) = launchInScope {
+    override fun abandonWakeLock(callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
         musicService.abandonWakeLock()
         callback.resolve(null)
     }
 
-    override fun validateOnStartCommandIntent(callback: Promise) = launchInScope {
+    override fun validateOnStartCommandIntent(callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
         callback.resolve(musicService.onStartCommandIntentValid)
     }
 
-    override fun setSleepTimer(seconds: Double, callback: Promise) = launchInScope {
+    override fun setSleepTimer(seconds: Double, callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
         musicService.setSleepTimer(seconds)
         callback.resolve(null)
     }
 
-    override fun getSleepTimer(callback: Promise) = launchInScope {
+    override fun getSleepTimer(callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
         callback.resolve(Arguments.fromBundle(musicService.getSleepTimerInfo()))
     }
 
-    override fun clearSleepTimer(callback: Promise) = launchInScope {
+    override fun clearSleepTimer(callback: Promise) = launchInScope(callback) {
         if (verifyServiceBoundOrReject(callback)) return@launchInScope
         musicService.clearSleepTimer()
         callback.resolve(null)
@@ -570,9 +581,30 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
     // React Native's bridgeless TurboModule interop tries to serialize the return value
     // to JS. scope.launch returns a Job, which isn't serializable and throws. This wrapper
     // ensures the return type is Unit.
-    private fun launchInScope(block: suspend () -> Unit) {
+    //
+    // U6 Android sibling: also wraps `block()` in a try/catch. Any uncaught throwable
+    // (NPE, ClassCastException from JS-supplied input, IllegalStateException from a
+    // service teardown race, etc.) is logged and routed to the JS promise as a normal
+    // rejection instead of escaping to the global handler and crashing the process.
+    // Pass `promise` so the caller's bridge promise gets rejected; without it the JS
+    // call would silently hang on a never-settled promise.
+    private fun launchInScope(promise: Promise? = null, block: suspend () -> Unit) {
         scope.launch {
-            block()
+            try {
+                block()
+            } catch (t: Throwable) {
+                Timber.e(t, "[MusicModule] Uncaught throwable in launchInScope block")
+                try {
+                    promise?.reject(
+                        "runtime_exception",
+                        t.message ?: t.javaClass.simpleName,
+                        t
+                    )
+                } catch (_: Throwable) {
+                    // Promise may already be settled (e.g. block rejected then threw).
+                    // Swallow the double-settle so we don't recurse into the global handler.
+                }
+            }
         }
     }
 }

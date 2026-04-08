@@ -44,6 +44,7 @@ class QueuedAudioPlayer(
 
     override val currentItem: AudioItem?
         get() = queue.getOrNull(currentIndex)?.let { AudioItem.fromMediaItem(it) }
+    // Note: fromMediaItem now returns AudioItem? — safe-let already collapses to null.
 
     val nextIndex: Int?
         get() {
@@ -58,14 +59,17 @@ class QueuedAudioPlayer(
         }
 
     val items: List<AudioItem>
-        get() = queue.map { AudioItem.fromMediaItem(it) }
+        // U6: mapNotNull silently drops MediaItems whose tag isn't an AudioItem.
+        // Items we construct via toMediaItem() always have the right tag, so this
+        // only kicks in for externally-injected MediaItems (MediaController, etc.).
+        get() = queue.mapNotNull { AudioItem.fromMediaItem(it) }
 
     val previousItems: List<AudioItem>
         get() {
             return if (queue.isEmpty()) emptyList()
             else queue
                 .subList(0, exoPlayer.currentMediaItemIndex)
-                .map { AudioItem.fromMediaItem(it) }
+                .mapNotNull { AudioItem.fromMediaItem(it) }
         }
 
     val nextItems: List<AudioItem>
@@ -73,7 +77,7 @@ class QueuedAudioPlayer(
             return if (queue.isEmpty()) emptyList()
             else queue
                 .subList(exoPlayer.currentMediaItemIndex, queue.lastIndex)
-                .map { AudioItem.fromMediaItem(it) }
+                .mapNotNull { AudioItem.fromMediaItem(it) }
         }
 
     val nextItem: AudioItem?

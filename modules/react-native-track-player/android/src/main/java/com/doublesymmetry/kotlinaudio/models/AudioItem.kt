@@ -48,8 +48,13 @@ open class AudioItem(
     }
 
     companion object {
-        fun fromMediaItem(item: MediaItem): AudioItem {
-            return item.localConfiguration!!.tag as AudioItem
+        // U6 Android sibling: original was `item.localConfiguration!!.tag as AudioItem`
+        // which crashes the process for any MediaItem we didn't construct ourselves
+        // (external MediaController, system-restored queue, future Media3 internals).
+        // Both the !! and the unchecked cast are crash sites — return null instead and
+        // let callers (which now use mapNotNull / safe-let) skip the rogue item.
+        fun fromMediaItem(item: MediaItem): AudioItem? {
+            return item.localConfiguration?.tag as? AudioItem
         }
     }
 }
