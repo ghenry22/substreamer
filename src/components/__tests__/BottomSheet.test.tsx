@@ -158,7 +158,7 @@ describe('BottomSheet', () => {
     expect(findStyleProp(toJSON(), (s) => s.backgroundColor === '#1c1c1e')).toBe(true);
   });
 
-  it('closes immediately without animation when visible changes to false', () => {
+  it('closes after one frame without animation when visible changes to false', async () => {
     const onClose = jest.fn();
     const { rerender, queryByText } = render(
       <BottomSheet visible={true} onClose={onClose}>
@@ -167,13 +167,22 @@ describe('BottomSheet', () => {
     );
     expect(queryByText('Content')).toBeTruthy();
 
-    // Programmatic close (visible → false) should unmount instantly without
-    // calling onClose — the parent already considers this sheet closed
+    // Programmatic close (visible → false) is deferred by one frame so any
+    // parent state updates queued in the same tick get a chance to commit
+    // before the native Modal unmounts (U8: react-native-screens#3786). The
+    // sheet still closes without calling onClose — the parent already
+    // considers it closed.
     rerender(
       <BottomSheet visible={false} onClose={onClose}>
         <Text>Content</Text>
       </BottomSheet>,
     );
+
+    // Flush the requestAnimationFrame scheduled by the useEffect. RN polyfills
+    // rAF as setTimeout(0) in jest, so a microtask + macrotask flush is enough.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
 
     expect(queryByText('Content')).toBeNull();
     expect(onClose).not.toHaveBeenCalled();

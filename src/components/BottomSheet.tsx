@@ -104,11 +104,22 @@ export function BottomSheet({
   // Exit animations only play for user-initiated dismissals (swipe, backdrop tap,
   // back button) which call playExitAnimation directly. Programmatic closes must
   // be instant so the next sheet can mount without two Modals overlapping.
+  //
+  // U8 (react-native-screens iOS Fabric Yoga SIGABRT, software-mansion/react-native-screens#3786):
+  // defer setInternalVisible(false) by one frame. Action handlers commonly call
+  // both `setSomeParentState(...)` and `hide()` in the same tick. Tearing down
+  // the native Modal in the same frame as the parent re-render races Yoga and
+  // crashes on iOS 26 Fabric. Letting the parent commit + paint first then
+  // unmounting avoids the collision and is invisible to the user.
   useEffect(() => {
     if (!visible && internalVisible && !isClosing.current) {
-      translateY.value = 0;
-      backdropOpacity.value = 0;
-      setInternalVisible(false);
+      const handle = requestAnimationFrame(() => {
+        if (isClosing.current) return;
+        translateY.value = 0;
+        backdropOpacity.value = 0;
+        setInternalVisible(false);
+      });
+      return () => cancelAnimationFrame(handle);
     }
   }, [visible, internalVisible, translateY, backdropOpacity]);
 
