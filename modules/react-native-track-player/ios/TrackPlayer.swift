@@ -658,7 +658,10 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
     public func getQueue(resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
         if (rejectWhenNotInitialized(reject: reject)) { return }
 
-        let serializedQueue = player.items.map { ($0 as! Track).toObject() }
+        // U6 fix: never force-cast queue items. Items that are not Track instances
+        // (e.g. left over from a different audio engine path) are silently dropped
+        // rather than crashing the bridge with an NSException.
+        let serializedQueue = player.items.compactMap { ($0 as? Track)?.toObject() }
         resolve(serializedQueue)
     }
 
@@ -733,7 +736,13 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
         if (rejectWhenNotInitialized(reject: reject)) { return }
         if (rejectWhenTrackIndexOutOfBounds(index: trackIndex, reject: reject)) { return }
 
-        let track : Track = player.items[trackIndex] as! Track;
+        // U6 fix: graceful reject instead of as!-crash if the queue item at this
+        // index isn't a Track for any reason (queue mutation race, future engine
+        // swap, etc.).
+        guard let track = player.items[trackIndex] as? Track else {
+            reject("invalid_track_object", "Queue item at index \(trackIndex) is not a Track", nil)
+            return
+        }
         track.updateMetadata(dictionary: metadata)
 
         if (player.currentIndex == trackIndex) {
