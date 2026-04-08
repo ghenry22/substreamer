@@ -10,11 +10,12 @@
  */
 
 import { memo, useCallback } from 'react';
-import { Pressable, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import Svg, { G, Path, Text as SvgText } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
 
 import { useTheme } from '../hooks/useTheme';
+import { useTransitionComplete } from '../hooks/useTransitionComplete';
 import { skipByInterval } from '../services/playerService';
 import { playbackSettingsStore } from '../store/playbackSettingsStore';
 
@@ -101,6 +102,12 @@ export const SkipIntervalButton = memo(function SkipIntervalButton({
     direction === 'forward' ? s.skipForwardInterval : s.skipBackwardInterval,
   );
 
+  // U21: react-native-svg#2878 — iOS Fabric topSvgLayout race during
+  // navigation transitions. Defer SVG mount until the player transition
+  // animation finishes; the placeholder reserves the same footprint so
+  // the surrounding controls don't shift on mount.
+  const transitionComplete = useTransitionComplete();
+
   const handlePress = useCallback(() => {
     skipByInterval(direction === 'forward' ? interval : -interval);
   }, [direction, interval]);
@@ -115,6 +122,20 @@ export const SkipIntervalButton = memo(function SkipIntervalButton({
 
   // Font size: smaller for 2-digit numbers to fit inside the arc
   const fontSize = interval >= 10 ? 7.5 : 9;
+
+  if (!transitionComplete) {
+    return (
+      <Pressable
+        onPress={handlePress}
+        hitSlop={12}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        style={({ pressed }) => [styles.container, pressed && styles.pressed]}
+      >
+        <View style={{ width: size, height: size }} />
+      </Pressable>
+    );
+  }
 
   return (
     <Pressable
