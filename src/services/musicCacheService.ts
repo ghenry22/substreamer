@@ -22,6 +22,7 @@ import { listDirectoryAsync, getDirectorySizeAsync, downloadFileAsyncWithProgres
 import { checkStorageLimit } from './storageService';
 import { beginDownload, clearDownload } from './downloadSpeedTracker';
 import { albumDetailStore } from '../store/albumDetailStore';
+import { albumLibraryStore } from '../store/albumLibraryStore';
 import { favoritesStore } from '../store/favoritesStore';
 import { storageLimitStore } from '../store/storageLimitStore';
 import {
@@ -360,6 +361,17 @@ export async function enqueueAlbumDownload(albumId: string): Promise<void> {
   const state = musicCacheStore.getState();
   if (albumId in state.cachedItems) return;
   if (state.downloadQueue.some((q) => q.itemId === albumId)) return;
+
+  // If the album isn't in the cached library, refresh it in the background.
+  // Without this, an album downloaded via search/artist detail can be
+  // invisible in offline mode (the album list view filters this store).
+  // The library store has its own loading guard so concurrent triggers
+  // collapse to one fetch. Skipped on a cold library — _layout.tsx
+  // handles the first-fetch path via its `length === 0` guard.
+  const cachedLibrary = albumLibraryStore.getState().albums;
+  if (cachedLibrary.length > 0 && !cachedLibrary.some((a) => a.id === albumId)) {
+    albumLibraryStore.getState().fetchAllAlbums().catch(() => { /* non-critical */ });
+  }
 
   await ensureCoverArtAuth();
   const album = await albumDetailStore.getState().fetchAlbum(albumId);

@@ -87,6 +87,17 @@ jest.mock('../../store/albumDetailStore', () => ({
   },
 }));
 
+const mockFetchAllAlbums = jest.fn().mockResolvedValue(undefined);
+const mockAlbumLibraryAlbums: { value: any[] } = { value: [] };
+jest.mock('../../store/albumLibraryStore', () => ({
+  albumLibraryStore: {
+    getState: jest.fn(() => ({
+      albums: mockAlbumLibraryAlbums.value,
+      fetchAllAlbums: mockFetchAllAlbums,
+    })),
+  },
+}));
+
 const mockFetchPlaylist = jest.fn();
 jest.mock('../../store/playlistDetailStore', () => ({
   playlistDetailStore: {
@@ -193,6 +204,9 @@ beforeEach(() => {
   mockDownloadFileAsyncWithProgress.mockReset();
   mockFetchAlbum.mockReset();
   mockFetchPlaylist.mockReset();
+  mockFetchAllAlbums.mockClear();
+  mockFetchAllAlbums.mockResolvedValue(undefined);
+  mockAlbumLibraryAlbums.value = [];
   mockCheckStorageLimit.mockReturnValue(false);
   mockFileExists = false;
   mockFileSize = 100;
@@ -773,6 +787,60 @@ describe('enqueueAlbumDownload', () => {
 
     const queue = musicCacheStore.getState().downloadQueue;
     expect(queue[0].artist).toBe('Various Artists');
+  });
+
+  it('refreshes the album library when downloading an album not in the cached list', async () => {
+    mockAlbumLibraryAlbums.value = [{ id: 'album-other' }];
+    mockFetchAlbum.mockResolvedValue({
+      id: 'album-1',
+      name: 'Test',
+      song: [makeChild('t1')],
+    });
+
+    await enqueueAlbumDownload('album-1');
+
+    expect(mockFetchAllAlbums).toHaveBeenCalled();
+  });
+
+  it('does not refresh the library when the album is already in the cached list', async () => {
+    mockAlbumLibraryAlbums.value = [{ id: 'album-1' }, { id: 'album-2' }];
+    mockFetchAlbum.mockResolvedValue({
+      id: 'album-1',
+      name: 'Test',
+      song: [makeChild('t1')],
+    });
+
+    await enqueueAlbumDownload('album-1');
+
+    expect(mockFetchAllAlbums).not.toHaveBeenCalled();
+  });
+
+  it('does not refresh the library when the cached library is empty', async () => {
+    mockAlbumLibraryAlbums.value = [];
+    mockFetchAlbum.mockResolvedValue({
+      id: 'album-1',
+      name: 'Test',
+      song: [makeChild('t1')],
+    });
+
+    await enqueueAlbumDownload('album-1');
+
+    expect(mockFetchAllAlbums).not.toHaveBeenCalled();
+  });
+
+  it('still enqueues the download when the background library refresh rejects', async () => {
+    mockAlbumLibraryAlbums.value = [{ id: 'album-other' }];
+    mockFetchAllAlbums.mockRejectedValueOnce(new Error('Network'));
+    mockFetchAlbum.mockResolvedValue({
+      id: 'album-1',
+      name: 'Test',
+      song: [makeChild('t1')],
+    });
+
+    await enqueueAlbumDownload('album-1');
+
+    expect(mockFetchAllAlbums).toHaveBeenCalled();
+    expect(musicCacheStore.getState().downloadQueue).toHaveLength(1);
   });
 });
 

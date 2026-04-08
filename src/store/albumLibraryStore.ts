@@ -11,6 +11,7 @@ import {
   searchAllAlbums,
   type AlbumID3,
 } from '../services/subsonicService';
+import { albumListsStore } from './albumListsStore';
 import { layoutPreferencesStore } from './layoutPreferencesStore';
 import { ratingStore } from './ratingStore';
 
@@ -123,5 +124,26 @@ export const albumLibraryStore = create<AlbumLibraryState>()(
 layoutPreferencesStore.subscribe((state, prevState) => {
   if (state.albumSortOrder !== prevState.albumSortOrder) {
     albumLibraryStore.getState().resortAlbums();
+  }
+});
+
+// Refresh the full album library when the home screen's "Recently Added"
+// list surfaces an album we don't have cached. This keeps the offline album
+// list (which filters this store) in sync with newly added server content,
+// without requiring the user to manually refresh while online.
+//
+// Skipped when the cached library is empty — the launch path in
+// _layout.tsx already handles first-fetch via its `length === 0` guard.
+// fetchAllAlbums has its own loading guard, so concurrent triggers
+// (e.g. from musicCacheService.enqueueAlbumDownload) collapse to one
+// fetch.
+albumListsStore.subscribe((state, prevState) => {
+  if (state.recentlyAdded === prevState.recentlyAdded) return;
+  const cachedAlbums = albumLibraryStore.getState().albums;
+  if (cachedAlbums.length === 0) return;
+  const cachedIds = new Set(cachedAlbums.map((a) => a.id));
+  const hasNewAlbum = state.recentlyAdded.some((a) => !cachedIds.has(a.id));
+  if (hasNewAlbum) {
+    albumLibraryStore.getState().fetchAllAlbums();
   }
 });
