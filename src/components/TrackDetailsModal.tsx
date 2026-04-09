@@ -215,6 +215,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '400',
     textAlign: 'right',
-    flexShrink: 1,
+    flex: 1,
   },
 });

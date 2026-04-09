@@ -40,11 +40,13 @@ const styles = StyleSheet.create({
   },
   infoLabel: {
     fontSize: 15,
-    flex: 1,
+    flexShrink: 0,
   },
   infoValue: {
     fontSize: 15,
     fontWeight: '500',
     marginLeft: 12,
+    flex: 1,
+    textAlign: 'right',
   },
 });

@@ -1,6 +1,17 @@
+jest.mock('../../store/sqliteStorage', () => require('../../store/__mocks__/sqliteStorage'));
+
 jest.mock('../../utils/genreHelpers', () => ({
   getGenreNames: jest.fn(() => []),
 }));
+
+jest.mock('../../utils/effectiveFormat', () => ({
+  getEffectiveFormat: jest.fn(() => null),
+}));
+
+jest.mock('react-native-svg', () => {
+  const { View } = require('react-native');
+  return { __esModule: true, default: View, Path: View };
+});
 
 jest.mock('@expo/vector-icons', () => {
   const { Text } = require('react-native');
@@ -14,6 +25,7 @@ import React from 'react';
 import { render, fireEvent } from '@testing-library/react-native';
 import { Linking } from 'react-native';
 
+import { getEffectiveFormat } from '../../utils/effectiveFormat';
 import { getGenreNames } from '../../utils/genreHelpers';
 import { type Child } from '../../services/subsonicService';
 
@@ -48,6 +60,7 @@ describe('AlbumInfoContent', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (getGenreNames as jest.Mock).mockReturnValue([]);
+    (getEffectiveFormat as jest.Mock).mockReturnValue(null);
   });
 
   it('renders track metadata rows', () => {
@@ -65,14 +78,14 @@ describe('AlbumInfoContent', () => {
       />,
     );
 
+    // Credits section
     expect(getByText('Album')).toBeTruthy();
     expect(getByText('Test Album')).toBeTruthy();
     expect(getByText('Artist')).toBeTruthy();
     expect(getByText('Test Artist')).toBeTruthy();
+    // Quick stats section
     expect(getByText('Year')).toBeTruthy();
     expect(getByText('2024')).toBeTruthy();
-    expect(getByText('Format')).toBeTruthy();
-    expect(getByText('FLAC · 1411 kbps')).toBeTruthy();
     expect(getByText('Play Count')).toBeTruthy();
     expect(getByText('42')).toBeTruthy();
   });
@@ -95,7 +108,9 @@ describe('AlbumInfoContent', () => {
     );
 
     expect(getByText('Genres')).toBeTruthy();
-    expect(getByText('Rock, Alternative')).toBeTruthy();
+    // Genres are rendered as individual pills, not comma-separated
+    expect(getByText('Rock')).toBeTruthy();
+    expect(getByText('Alternative')).toBeTruthy();
   });
 
   it('renders singular Genre label for single genre', () => {
@@ -255,12 +270,16 @@ describe('AlbumInfoContent', () => {
     expect(queryByLabelText('View on Wikipedia')).toBeNull();
   });
 
-  it('renders format with suffix only when bitRate is absent', () => {
-    const trackWithoutBitrate = { ...MOCK_TRACK, bitRate: undefined } as Child;
+  it('renders FormatBadge when effective format is available', () => {
+    (getEffectiveFormat as jest.Mock).mockReturnValue({
+      suffix: 'flac',
+      bitRate: 1411,
+      capturedAt: Date.now(),
+    });
 
     const { getByText } = render(
       <AlbumInfoContent
-        track={trackWithoutBitrate}
+        track={MOCK_TRACK}
         albumInfo={null}
         overrideMbid={null}
         sanitizedNotes={null}
@@ -272,7 +291,27 @@ describe('AlbumInfoContent', () => {
       />,
     );
 
-    expect(getByText('FLAC')).toBeTruthy();
+    expect(getByText('FLAC \u00B7 1411 kbps')).toBeTruthy();
+  });
+
+  it('does not render FormatBadge when no effective format', () => {
+    (getEffectiveFormat as jest.Mock).mockReturnValue(null);
+
+    const { queryByText } = render(
+      <AlbumInfoContent
+        track={{ ...MOCK_TRACK, suffix: undefined, bitRate: undefined } as Child}
+        albumInfo={null}
+        overrideMbid={null}
+        sanitizedNotes={null}
+        notesAttributionUrl={null}
+        albumInfoLoading={false}
+        refreshing={false}
+        onRefresh={jest.fn()}
+        colors={COLORS}
+      />,
+    );
+
+    expect(queryByText('FLAC')).toBeNull();
   });
 
   it('does not render play count when zero', () => {

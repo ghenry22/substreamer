@@ -2,8 +2,9 @@
  * AlbumInfoContent — shared album info panel used by both the phone player
  * and tablet expanded player views.
  *
- * Displays track metadata rows, album description with expand/collapse,
- * skeleton loading state, and external links (Last.fm, MusicBrainz, Wikipedia).
+ * Displays: format badge, quick stats (year, play count, BPM), genre pills,
+ * credits rows, album description with expand/collapse, skeleton loading
+ * state, and external links (Last.fm, MusicBrainz, Wikipedia).
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -19,9 +20,29 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
+import { FormatBadge } from './FormatBadge';
 import { useRefreshControlKey } from '../hooks/useRefreshControlKey';
-import { getGenreNames } from '../utils/genreHelpers';
 import { type Child } from '../services/subsonicService';
+import { hexWithAlpha } from '../utils/colors';
+import { getEffectiveFormat } from '../utils/effectiveFormat';
+import { getGenreNames } from '../utils/genreHelpers';
+
+/* ------------------------------------------------------------------ */
+/*  Genre pill palette (matches GenreChart)                            */
+/* ------------------------------------------------------------------ */
+
+const GENRE_PALETTE = [
+  '#6366F1', // indigo
+  '#F59E0B', // amber
+  '#10B981', // emerald
+  '#EF4444', // red
+  '#8B5CF6', // violet
+  '#64748B', // slate
+];
+
+/* ------------------------------------------------------------------ */
+/*  Types                                                              */
+/* ------------------------------------------------------------------ */
 
 export interface AlbumInfoContentProps {
   track: Child;
@@ -42,6 +63,10 @@ export interface AlbumInfoContentProps {
     border: string;
   };
 }
+
+/* ------------------------------------------------------------------ */
+/*  Component                                                          */
+/* ------------------------------------------------------------------ */
 
 export const AlbumInfoContent = memo(function AlbumInfoContent({
   track,
@@ -67,8 +92,26 @@ export const AlbumInfoContent = memo(function AlbumInfoContent({
     if (needsTruncation) setNeedsTruncation(false);
   }
 
-  // Build detail rows from track metadata
-  const details = useMemo(() => {
+  const effectiveFormat = useMemo(() => getEffectiveFormat(track), [track]);
+  const genreNames = useMemo(() => getGenreNames(track), [track]);
+
+  // Build quick stats
+  const quickStats = useMemo(() => {
+    const stats: { icon: string; value: string; label: string }[] = [];
+    if (track.year) {
+      stats.push({ icon: 'calendar-outline', value: String(track.year), label: t('detailYear') });
+    }
+    if (track.playCount != null && track.playCount > 0) {
+      stats.push({ icon: 'play-outline', value: String(track.playCount), label: t('detailPlayCount') });
+    }
+    if (track.bpm) {
+      stats.push({ icon: 'pulse-outline', value: String(track.bpm), label: t('detailBpm') });
+    }
+    return stats;
+  }, [track, t]);
+
+  // Build credit rows (artist, album artist, composer)
+  const credits = useMemo(() => {
     const rows: { label: string; value: string }[] = [];
     if (track.album) rows.push({ label: t('detailAlbum'), value: track.album });
     if (track.artist) rows.push({ label: t('detailArtist'), value: track.artist });
@@ -76,19 +119,6 @@ export const AlbumInfoContent = memo(function AlbumInfoContent({
       rows.push({ label: t('detailAlbumArtist'), value: track.displayAlbumArtist });
     }
     if (track.displayComposer) rows.push({ label: t('detailComposer'), value: track.displayComposer });
-    if (track.year) rows.push({ label: t('detailYear'), value: String(track.year) });
-    const genreNames = getGenreNames(track);
-    const genreText = genreNames.length > 0 ? genreNames.join(', ') : null;
-    if (genreText) rows.push({ label: genreNames.length > 1 ? t('detailGenres') : t('detailGenre'), value: genreText });
-    if (track.bpm) rows.push({ label: t('detailBpm'), value: String(track.bpm) });
-    if (track.suffix && track.bitRate) {
-      rows.push({ label: t('detailFormat'), value: `${track.suffix.toUpperCase()} · ${track.bitRate} kbps` });
-    } else if (track.suffix) {
-      rows.push({ label: t('detailFormat'), value: track.suffix.toUpperCase() });
-    }
-    if (track.playCount != null && track.playCount > 0) {
-      rows.push({ label: t('detailPlayCount'), value: String(track.playCount) });
-    }
     return rows;
   }, [track, t]);
 
@@ -98,7 +128,6 @@ export const AlbumInfoContent = memo(function AlbumInfoContent({
 
   const handleMusicBrainz = useCallback(() => {
     if (overrideMbid) {
-      // Override MBIDs are release-group IDs
       Linking.openURL(`https://musicbrainz.org/release-group/${overrideMbid}`);
     } else if (albumInfo?.musicBrainzId) {
       Linking.openURL(`https://musicbrainz.org/release/${albumInfo.musicBrainzId}`);
@@ -149,8 +178,50 @@ export const AlbumInfoContent = memo(function AlbumInfoContent({
         </View>
       ) : (
         <>
-          {/* Track & album details */}
-          {details.map((row) => (
+          {/* Format badge */}
+          {effectiveFormat && (
+            <View style={styles.formatSection}>
+              <FormatBadge format={effectiveFormat} />
+            </View>
+          )}
+
+          {/* Quick stats */}
+          {quickStats.length > 0 && (
+            <View style={styles.statsRow}>
+              {quickStats.map((stat) => (
+                <View key={stat.label} style={[styles.statCard, { backgroundColor: colors.card }]}>
+                  <Ionicons name={stat.icon as any} size={16} color={colors.primary} />
+                  <Text style={[styles.statValue, { color: colors.textPrimary }]}>{stat.value}</Text>
+                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{stat.label}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Genre pills */}
+          {genreNames.length > 0 && (
+            <View style={styles.genreSection}>
+              <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+                {genreNames.length > 1 ? t('detailGenres') : t('detailGenre')}
+              </Text>
+              <View style={styles.genrePillCloud}>
+                {genreNames.map((name, i) => {
+                  const pillColor = GENRE_PALETTE[i % GENRE_PALETTE.length];
+                  return (
+                    <View
+                      key={name}
+                      style={[styles.genrePill, { backgroundColor: hexWithAlpha(pillColor, 0.15) }]}
+                    >
+                      <Text style={[styles.genrePillText, { color: pillColor }]}>{name}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
+          {/* Credits & details */}
+          {credits.map((row) => (
             <View key={row.label} style={[styles.infoDetailRow, { borderBottomColor: colors.border }]}>
               <Text style={[styles.infoDetailLabel, { color: colors.textSecondary }]}>{row.label}</Text>
               <Text style={[styles.infoDetailValue, { color: colors.textPrimary }]} numberOfLines={2}>
@@ -246,6 +317,10 @@ export const AlbumInfoContent = memo(function AlbumInfoContent({
   );
 });
 
+/* ------------------------------------------------------------------ */
+/*  Styles                                                            */
+/* ------------------------------------------------------------------ */
+
 const styles = StyleSheet.create({
   infoScrollView: {
     flex: 1,
@@ -257,6 +332,64 @@ const styles = StyleSheet.create({
   infoSection: {
     marginTop: 32,
   },
+
+  /* Format badge */
+  formatSection: {
+    marginBottom: 16,
+  },
+
+  /* Quick stats */
+  statsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  statCard: {
+    flex: 1,
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+    gap: 2,
+  },
+  statValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  statLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+
+  /* Genre pills */
+  genreSection: {
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  genrePillCloud: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  genrePill: {
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  genrePillText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  /* Credits & detail rows */
   infoDetailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -266,15 +399,17 @@ const styles = StyleSheet.create({
   },
   infoDetailLabel: {
     fontSize: 17,
-    flex: 1,
+    flexShrink: 0,
   },
   infoDetailValue: {
     fontSize: 17,
     fontWeight: '500',
     marginLeft: 16,
     textAlign: 'right',
-    flexShrink: 1,
+    flex: 1,
   },
+
+  /* Album notes */
   infoNotesText: {
     fontSize: 17,
     lineHeight: 26,
@@ -294,6 +429,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     opacity: 0.6,
   },
+
+  /* External links */
   infoLinksRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
