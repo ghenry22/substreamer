@@ -353,7 +353,7 @@ describe('PlayerView', () => {
 
     const scrollView = getByTestId('player-scroll-view');
     const contentContainerStyle = StyleSheet.flatten(scrollView.props.contentContainerStyle);
-    const expectedPadding = PLAYER_TAB_BAR_HEIGHT + mockedSafeAreaInsets.bottom;
+    const expectedPadding = PLAYER_TAB_BAR_HEIGHT + Math.max(mockedSafeAreaInsets.bottom, 16);
 
     expect(contentContainerStyle.flexGrow).toBe(1);
     expect(contentContainerStyle.paddingBottom).toBe(expectedPadding);
