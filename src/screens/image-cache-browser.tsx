@@ -72,55 +72,53 @@ const CacheRow = memo(function CacheRow({
   );
 
   return (
-    <View style={styles.rowWrapper}>
-      <SwipeableRow rightActions={rightActions} leftActions={leftActions} enableFullSwipeRight enableFullSwipeLeft={!offlineMode} borderRadius={12}>
-        <View style={styles.row}>
-          <Image
-            source={{ uri: thumbUri }}
-            style={[styles.thumb, { backgroundColor: colors.border }]}
-            resizeMode="cover"
-          />
-          <View style={styles.fileList}>
+    <SwipeableRow rightActions={rightActions} leftActions={leftActions} enableFullSwipeRight enableFullSwipeLeft={!offlineMode} rowGap={10} borderRadius={12}>
+      <View style={styles.row}>
+        <Image
+          source={{ uri: thumbUri }}
+          style={[styles.thumb, { backgroundColor: colors.border }]}
+          resizeMode="cover"
+        />
+        <View style={styles.fileList}>
+          <Text
+            style={[styles.coverArtId, { color: colors.textPrimary }]}
+            numberOfLines={1}
+          >
+            {entry.coverArtId}
+          </Text>
+          {entry.files.map((f) => (
             <Text
-              style={[styles.coverArtId, { color: colors.textPrimary }]}
+              key={f.fileName}
+              style={[styles.fileName, { color: colors.textSecondary }]}
               numberOfLines={1}
             >
-              {entry.coverArtId}
+              <Text style={[styles.sizeLabel, { color: colors.textPrimary }]}>
+                {f.size}px{' '}
+              </Text>
+              {f.fileName}
             </Text>
-            {entry.files.map((f) => (
-              <Text
-                key={f.fileName}
-                style={[styles.fileName, { color: colors.textSecondary }]}
-                numberOfLines={1}
-              >
-                <Text style={[styles.sizeLabel, { color: colors.textPrimary }]}>
-                  {f.size}px{' '}
-                </Text>
-                {f.fileName}
-              </Text>
-            ))}
-            {status === 'refreshing' && (
-              <Text style={[styles.statusText, { color: colors.primary }]}>
-                {t('downloadingEllipsis')}
-              </Text>
-            )}
-            {status === 'success' && (
-              <Text style={[styles.statusText, { color: '#00BA7C' }]}>
-                {t('refreshedSuccessfully')}
-              </Text>
-            )}
-            {status === 'error' && (
-              <Text style={[styles.statusText, { color: colors.red }]}>
-                {t('refreshFailed')}
-              </Text>
-            )}
-          </View>
+          ))}
           {status === 'refreshing' && (
-            <ActivityIndicator size="small" color={colors.primary} style={styles.spinner} />
+            <Text style={[styles.statusText, { color: colors.primary }]}>
+              {t('downloadingEllipsis')}
+            </Text>
+          )}
+          {status === 'success' && (
+            <Text style={[styles.statusText, { color: '#00BA7C' }]}>
+              {t('refreshedSuccessfully')}
+            </Text>
+          )}
+          {status === 'error' && (
+            <Text style={[styles.statusText, { color: colors.red }]}>
+              {t('refreshFailed')}
+            </Text>
           )}
         </View>
-      </SwipeableRow>
-    </View>
+        {status === 'refreshing' && (
+          <ActivityIndicator size="small" color={colors.primary} style={styles.spinner} />
+        )}
+      </View>
+    </SwipeableRow>
   );
 });
 
@@ -225,7 +223,6 @@ export function ImageCacheBrowserScreen() {
         .then((result) => {
           setEntries(result);
           setItemStatus(coverArtId, 'success');
-          // Clear the success badge after 3 seconds.
           setTimeout(() => setItemStatus(coverArtId, 'idle'), 3000);
         })
         .catch(() => {
@@ -340,6 +337,7 @@ export function ImageCacheBrowserScreen() {
         }
         contentContainerStyle={{
           paddingTop: headerHeight,
+          paddingHorizontal: 16,
           paddingBottom: 32,
           ...((loading || filteredEntries.length === 0) ? { flex: 1 } : undefined),
         }}
@@ -357,7 +355,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   filterContainer: {
-    paddingHorizontal: 16,
     paddingVertical: 8,
   },
   filterPill: {
@@ -382,10 +379,6 @@ const styles = StyleSheet.create({
   },
   emptyContainer: {
     flex: 1,
-  },
-  rowWrapper: {
-    marginHorizontal: 16,
-    marginBottom: 10,
   },
   row: {
     flexDirection: 'row',

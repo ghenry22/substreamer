@@ -134,54 +134,52 @@ const MetadataRow = memo(function MetadataRow({
   );
 
   return (
-    <View style={styles.rowWrapper}>
-      <SwipeableRow rightActions={rightActions} leftActions={leftActions} enableFullSwipeRight enableFullSwipeLeft={!offlineMode} borderRadius={12}>
-        <View style={styles.row}>
-          <CachedImage
-            coverArtId={entry.coverArt}
-            size={150}
-            style={[
-              styles.thumb,
-              { backgroundColor: colors.border },
-              entry.type === 'artist' && styles.thumbRound,
-            ]}
-            resizeMode="cover"
-          />
-          <View style={styles.info}>
-            <Text
-              style={[styles.name, { color: colors.textPrimary }]}
-              numberOfLines={1}
-            >
-              {entry.name}
-            </Text>
-            <Text style={[styles.typeLabel, { color: colors.textSecondary }]}>
-              {t(TYPE_LABEL_KEYS[entry.type])}
-            </Text>
-            <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>
-              {formatDate(entry.retrievedAt)}
-            </Text>
-            {status === 'refreshing' && (
-              <Text style={[styles.statusText, { color: colors.primary }]}>
-                {t('refreshingEllipsis')}
-              </Text>
-            )}
-            {status === 'success' && (
-              <Text style={[styles.statusText, { color: '#00BA7C' }]}>
-                {t('refreshedSuccessfully')}
-              </Text>
-            )}
-            {status === 'error' && (
-              <Text style={[styles.statusText, { color: colors.red }]}>
-                {t('refreshFailed')}
-              </Text>
-            )}
-          </View>
+    <SwipeableRow rightActions={rightActions} leftActions={leftActions} enableFullSwipeRight enableFullSwipeLeft={!offlineMode} rowGap={10} borderRadius={12}>
+      <View style={styles.row}>
+        <CachedImage
+          coverArtId={entry.coverArt}
+          size={150}
+          style={[
+            styles.thumb,
+            { backgroundColor: colors.border },
+            entry.type === 'artist' && styles.thumbRound,
+          ]}
+          resizeMode="cover"
+        />
+        <View style={styles.info}>
+          <Text
+            style={[styles.name, { color: colors.textPrimary }]}
+            numberOfLines={1}
+          >
+            {entry.name}
+          </Text>
+          <Text style={[styles.typeLabel, { color: colors.textSecondary }]}>
+            {t(TYPE_LABEL_KEYS[entry.type])}
+          </Text>
+          <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>
+            {formatDate(entry.retrievedAt)}
+          </Text>
           {status === 'refreshing' && (
-            <ActivityIndicator size="small" color={colors.primary} style={styles.spinner} />
+            <Text style={[styles.statusText, { color: colors.primary }]}>
+              {t('refreshingEllipsis')}
+            </Text>
+          )}
+          {status === 'success' && (
+            <Text style={[styles.statusText, { color: '#00BA7C' }]}>
+              {t('refreshedSuccessfully')}
+            </Text>
+          )}
+          {status === 'error' && (
+            <Text style={[styles.statusText, { color: colors.red }]}>
+              {t('refreshFailed')}
+            </Text>
           )}
         </View>
-      </SwipeableRow>
-    </View>
+        {status === 'refreshing' && (
+          <ActivityIndicator size="small" color={colors.primary} style={styles.spinner} />
+        )}
+      </View>
+    </SwipeableRow>
   );
 });
 
@@ -361,6 +359,7 @@ export function MetadataCacheBrowserScreen() {
         }
         contentContainerStyle={{
           paddingTop: headerHeight,
+          paddingHorizontal: 16,
           paddingBottom: 32,
           ...(filteredEntries.length === 0 ? { flex: 1 } : undefined),
         }}
@@ -378,7 +377,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   filterContainer: {
-    paddingHorizontal: 16,
     paddingVertical: 8,
   },
   filterPill: {
@@ -398,10 +396,6 @@ const styles = StyleSheet.create({
   },
   emptyContainer: {
     flex: 1,
-  },
-  rowWrapper: {
-    marginHorizontal: 16,
-    marginBottom: 10,
   },
   row: {
     flexDirection: 'row',

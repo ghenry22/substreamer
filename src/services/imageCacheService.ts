@@ -605,15 +605,31 @@ export async function deleteCachedImage(coverArtId: string): Promise<void> {
 
 /**
  * Re-download all size variants for a single coverArtId.
- * Deletes existing files first, then re-enqueues for a fresh download.
+ * Deletes existing files first, then downloads directly — bypasses the
+ * global queue so the user-initiated refresh isn't blocked by other
+ * in-flight downloads.
  */
 export async function refreshCachedImage(coverArtId: string): Promise<void> {
   coverArtId = stripCoverArtSuffix(coverArtId);
   await deleteCachedImage(coverArtId);
+
+  // Remove from queue/downloading so no worker races with us
   downloading.delete(coverArtId);
   const idx = downloadQueue.indexOf(coverArtId);
   if (idx !== -1) downloadQueue.splice(idx, 1);
-  return cacheAllSizes(coverArtId);
+
+  // Download directly instead of going through the queue
+  downloading.add(coverArtId);
+  try {
+    await downloadAndCacheImage(coverArtId);
+  } finally {
+    downloading.delete(coverArtId);
+    for (const s of IMAGE_SIZES) {
+      uriCache.delete(uriCacheKey(coverArtId, s));
+      getCachedImageUri(coverArtId, s);
+    }
+    resolveWaiters(coverArtId);
+  }
 }
 
 /* ------------------------------------------------------------------ */

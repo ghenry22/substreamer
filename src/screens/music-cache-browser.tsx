@@ -156,60 +156,58 @@ const CacheRow = memo(function CacheRow({
   );
 
   return (
-    <View style={styles.rowWrapper}>
-      <SwipeableRow rightActions={rightActions} leftActions={leftActions} enableFullSwipeRight enableFullSwipeLeft={!offlineMode} onPress={handleToggle} borderRadius={12}>
-        <View style={styles.rowContainer}>
-          <View style={styles.row}>
-            <CachedImage
-              coverArtId={item.coverArtId}
-              size={300}
-              style={[styles.thumb, { backgroundColor: colors.border }]}
-              resizeMode="cover"
-            />
-            <View style={styles.rowContent}>
-              <Text style={[styles.rowTitle, { color: colors.textPrimary }]} numberOfLines={1}>
-                {item.name}
+    <SwipeableRow rightActions={rightActions} leftActions={leftActions} enableFullSwipeRight enableFullSwipeLeft={!offlineMode} onPress={handleToggle} rowGap={10} borderRadius={12}>
+      <View style={styles.rowContainer}>
+        <View style={styles.row}>
+          <CachedImage
+            coverArtId={item.coverArtId}
+            size={300}
+            style={[styles.thumb, { backgroundColor: colors.border }]}
+            resizeMode="cover"
+          />
+          <View style={styles.rowContent}>
+            <Text style={[styles.rowTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+              {item.name}
+            </Text>
+            {item.artist && (
+              <Text style={[styles.rowSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
+                {item.artist}
               </Text>
-              {item.artist && (
-                <Text style={[styles.rowSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
-                  {item.artist}
-                </Text>
-              )}
-              <Text style={[styles.rowMeta, { color: colors.textSecondary }]}>
-                {item.type === 'album' ? t('album') : t('playlist')} · {trackLabel} · {formatBytes(item.totalBytes)}
-              </Text>
-            </View>
-            <Ionicons
-              name={expanded ? 'chevron-up' : 'chevron-down'}
-              size={16}
-              color={colors.textSecondary}
-              style={styles.chevron}
-            />
+            )}
+            <Text style={[styles.rowMeta, { color: colors.textSecondary }]}>
+              {item.type === 'album' ? t('album') : t('playlist')} · {trackLabel} · {formatBytes(item.totalBytes)}
+            </Text>
           </View>
-
-          {expanded && (
-            <View style={[styles.trackList, { borderTopColor: colors.border }]}>
-              {tracksReady ? (
-                item.tracks.map((track) => (
-                  <TrackFileRow
-                    key={track.id}
-                    track={track}
-                    itemId={item.itemId}
-                    colors={colors}
-                  />
-                ))
-              ) : (
-                <ActivityIndicator
-                  size="small"
-                  color={colors.primary}
-                  style={styles.trackLoading}
-                />
-              )}
-            </View>
-          )}
+          <Ionicons
+            name={expanded ? 'chevron-up' : 'chevron-down'}
+            size={16}
+            color={colors.textSecondary}
+            style={styles.chevron}
+          />
         </View>
-      </SwipeableRow>
-    </View>
+
+        {expanded && (
+          <View style={[styles.trackList, { borderTopColor: colors.border }]}>
+            {tracksReady ? (
+              item.tracks.map((track) => (
+                <TrackFileRow
+                  key={track.id}
+                  track={track}
+                  itemId={item.itemId}
+                  colors={colors}
+                />
+              ))
+            ) : (
+              <ActivityIndicator
+                size="small"
+                color={colors.primary}
+                style={styles.trackLoading}
+              />
+            )}
+          </View>
+        )}
+      </View>
+    </SwipeableRow>
   );
 });
 
@@ -389,6 +387,7 @@ export function MusicCacheBrowserScreen() {
         ListEmptyComponent={listEmpty}
         contentContainerStyle={{
           paddingTop: headerHeight,
+          paddingHorizontal: 16,
           paddingBottom: 32,
           ...((!transitionComplete || entries.length === 0) ? { flex: 1 } : undefined),
         }}
@@ -409,7 +408,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   filterContainer: {
-    paddingHorizontal: 16,
     paddingVertical: 8,
   },
   filterPill: {
@@ -434,10 +432,6 @@ const styles = StyleSheet.create({
   },
   emptyListContent: {
     flex: 1,
-  },
-  rowWrapper: {
-    marginHorizontal: 16,
-    marginBottom: 10,
   },
   rowContainer: {
     borderRadius: 12,
