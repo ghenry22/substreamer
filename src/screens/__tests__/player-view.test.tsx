@@ -1,5 +1,7 @@
 jest.mock('../../store/sqliteStorage', () => require('../../store/__mocks__/sqliteStorage'));
 
+const mockedSafeAreaInsets = { top: 44, bottom: 34, left: 0, right: 0 };
+
 jest.mock('../../hooks/useTheme', () => ({
   useTheme: () => ({
     theme: 'dark',
@@ -89,7 +91,7 @@ jest.mock('react-native-gesture-handler', () => {
 });
 
 jest.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: () => ({ top: 44, bottom: 34, left: 0, right: 0 }),
+  useSafeAreaInsets: () => mockedSafeAreaInsets,
 }));
 
 jest.mock('../../components/CachedImage', () => {
@@ -210,6 +212,7 @@ import React from 'react';
 import { render, fireEvent, act } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 
+import { PLAYER_TAB_BAR_HEIGHT } from '../../components/PlayerTabBar';
 import { playerStore } from '../../store/playerStore';
 import { type Child } from '../../services/subsonicService';
 
@@ -350,9 +353,10 @@ describe('PlayerView', () => {
 
     const scrollView = getByTestId('player-scroll-view');
     const contentContainerStyle = StyleSheet.flatten(scrollView.props.contentContainerStyle);
+    const expectedPadding = PLAYER_TAB_BAR_HEIGHT + mockedSafeAreaInsets.bottom;
 
     expect(contentContainerStyle.flexGrow).toBe(1);
-    expect(contentContainerStyle.paddingBottom).toBe(86);
+    expect(contentContainerStyle.paddingBottom).toBe(expectedPadding);
   });
 
   it('renders play icon when paused', () => {
