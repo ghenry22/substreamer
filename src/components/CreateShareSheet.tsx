@@ -3,7 +3,9 @@ import * as Clipboard from 'expo-clipboard';
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -41,6 +43,7 @@ export function CreateShareSheet() {
   const itemId = createShareStore((s) => s.itemId);
   const songIds = createShareStore((s) => s.songIds);
   const itemName = createShareStore((s) => s.itemName);
+  const artistName = createShareStore((s) => s.artistName);
   const coverArtId = createShareStore((s) => s.coverArtId);
   const hide = createShareStore((s) => s.hide);
 
@@ -99,6 +102,25 @@ export function CreateShareSheet() {
     setTimeout(() => setCopied(false), 2000);
   }, [shareUrl]);
 
+  const handleShare = useCallback(async () => {
+    if (!shareUrl) return;
+    let text: string;
+    if (shareType === 'queue') {
+      text = t('shareMessageQueue');
+    } else if (shareType === 'playlist') {
+      text = t('shareMessagePlaylist', { playlist: itemName });
+    } else if (artistName) {
+      text = t('shareMessageAlbumWithArtist', { album: itemName, artist: artistName });
+    } else {
+      text = t('shareMessageAlbum', { album: itemName });
+    }
+    const message = Platform.OS === 'android' ? `${text}\n${shareUrl}` : text;
+    await Share.share(
+      { url: shareUrl, message, title: itemName },
+      { subject: text },
+    ).catch(() => { /* user dismissed */ });
+  }, [shareUrl, shareType, itemName, artistName, t]);
+
   const typeLabel = shareType === 'queue' ? t('queue') : shareType === 'playlist' ? t('playlist') : t('album');
 
   const dynamicStyles = useMemo(
@@ -128,7 +150,7 @@ export function CreateShareSheet() {
           borderColor: colors.border,
         },
         urlText: { color: colors.textPrimary },
-        copyButton: { backgroundColor: colors.primary },
+        shareButton: { backgroundColor: colors.primary },
       }),
     [colors],
   );
@@ -165,22 +187,35 @@ export function CreateShareSheet() {
             </View>
 
             <Pressable
-              onPress={handleCopy}
+              onPress={handleShare}
               style={({ pressed }) => [
-                styles.copyButton,
-                dynamicStyles.copyButton,
+                styles.shareButton,
+                dynamicStyles.shareButton,
                 pressed && styles.buttonPressed,
               ]}
             >
-              <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={18} color="#fff" />
-              <Text style={styles.copyButtonText}>
-                {copied ? t('copied') : t('copyToClipboard')}
-              </Text>
+              <Ionicons name="share-outline" size={18} color="#fff" />
+              <Text style={styles.shareButtonText}>{t('share')}</Text>
             </Pressable>
 
-            <Pressable onPress={handleClose} style={styles.doneButton}>
-              <Text style={[styles.doneButtonText, { color: colors.primary }]}>{t('done')}</Text>
-            </Pressable>
+            <View style={styles.secondaryRow}>
+              <Pressable
+                onPress={handleCopy}
+                style={({ pressed }) => [
+                  styles.secondaryButton,
+                  pressed && styles.buttonPressed,
+                ]}
+              >
+                <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={16} color={colors.primary} />
+                <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>
+                  {copied ? t('copied') : t('copyToClipboard')}
+                </Text>
+              </Pressable>
+
+              <Pressable onPress={handleClose} style={styles.doneButton}>
+                <Text style={[styles.doneButtonText, { color: colors.primary }]}>{t('done')}</Text>
+              </Pressable>
+            </View>
           </View>
         ) : (
           <View style={styles.formSection}>
@@ -365,27 +400,42 @@ const styles = StyleSheet.create({
   urlText: {
     fontSize: 14,
   },
-  copyButton: {
+  shareButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     borderRadius: 12,
     paddingVertical: 14,
-    marginBottom: 8,
+    marginBottom: 12,
   },
-  copyButtonText: {
+  shareButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },
-  doneButton: {
+  secondaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 12,
+    gap: 24,
     marginBottom: 4,
   },
+  secondaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 12,
+  },
+  secondaryButtonText: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  doneButton: {
+    paddingVertical: 12,
+  },
   doneButtonText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '500',
   },
 });

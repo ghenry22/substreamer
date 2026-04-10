@@ -4,9 +4,11 @@ import { HeaderHeightContext } from '@react-navigation/elements';
 import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -31,7 +33,7 @@ import { useTheme } from '../hooks/useTheme';
 import { useThemedAlert } from '../hooks/useThemedAlert';
 import { ThemedAlert } from '../components/ThemedAlert';
 import { offlineModeStore } from '../store/offlineModeStore';
-import { type Share } from '../services/subsonicService';
+import { type Share as SubsonicShare } from '../services/subsonicService';
 import { minDelay } from '../utils/stringHelpers';
 import { authStore } from '../store/authStore';
 import { editShareStore } from '../store/editShareStore';
@@ -65,13 +67,13 @@ function formatDateTime(date: Date | string | undefined | null): string {
   });
 }
 
-function isExpired(share: Share): boolean {
+function isExpired(share: SubsonicShare): boolean {
   if (!share.expires) return false;
   const d = typeof share.expires === 'string' ? new Date(share.expires) : share.expires;
   return d.getTime() < Date.now();
 }
 
-function getShareTitle(share: Share, t: (key: string, options?: Record<string, unknown>) => string): string {
+function getShareTitle(share: SubsonicShare, t: (key: string, options?: Record<string, unknown>) => string): string {
   if (share.description) return share.description;
   const entries = share.entry ?? [];
   if (entries.length === 0) return t('shareId', { id: share.id });
@@ -79,7 +81,7 @@ function getShareTitle(share: Share, t: (key: string, options?: Record<string, u
   return entries.length > 1 ? t('shareEntryPlusMore', { title: first, count: entries.length - 1 }) : first;
 }
 
-function getShareSubtitle(share: Share, t: (key: string, options?: Record<string, unknown>) => string): string {
+function getShareSubtitle(share: SubsonicShare, t: (key: string, options?: Record<string, unknown>) => string): string {
   const entries = share.entry ?? [];
   if (entries.length === 0) return t('noItems');
   if (entries.length === 1) return entries[0].artist ?? '';
@@ -141,19 +143,34 @@ export function SettingsSharesScreen() {
     setTimeout(() => setUrlSaved(false), 2000);
   }, []);
 
-  const handleCopyUrl = useCallback(async (share: Share) => {
+  const handleCopyUrl = useCallback(async (share: SubsonicShare) => {
     const url = rewriteShareUrl(share.url);
     await Clipboard.setStringAsync(url);
     setCopiedId(share.id);
     setTimeout(() => setCopiedId(null), 2000);
   }, []);
 
-  const handleEdit = useCallback((share: Share) => {
+  const handleShareUrl = useCallback(async (share: SubsonicShare) => {
+    const url = rewriteShareUrl(share.url);
+    const title = getShareTitle(share, t);
+    const entries = share.entry ?? [];
+    const artist = entries.length === 1 ? entries[0].artist : undefined;
+    const text = artist
+      ? t('shareMessageAlbumWithArtist', { album: title, artist })
+      : title;
+    const message = Platform.OS === 'android' ? `${text}\n${url}` : text;
+    await Share.share(
+      { url, message, title },
+      { subject: text },
+    ).catch(() => { /* user dismissed */ });
+  }, [t]);
+
+  const handleEdit = useCallback((share: SubsonicShare) => {
     editShareStore.getState().show(share);
   }, []);
 
   const handleDelete = useCallback(
-    (share: Share) => {
+    (share: SubsonicShare) => {
       const title = getShareTitle(share, t);
       alert(t('deleteShare'), t('deleteShareMessage', { title }), [
         { text: t('cancel'), style: 'cancel' },
@@ -313,9 +330,8 @@ export function SettingsSharesScreen() {
                     index < shares.length - 1 && styles.shareRowBorder,
                   ]}
                 >
-                  <View
+                    <View
                     style={[
-                      styles.shareContent,
                       deletingId === share.id && styles.deletingContent,
                     ]}
                   >
@@ -365,16 +381,25 @@ export function SettingsSharesScreen() {
                     )}
                   </View>
                   {deletingId === share.id ? (
-                    <View style={styles.shareActions}>
+                    <View style={styles.deletingIndicator}>
                       <Animated.View style={deleteAnimStyle}>
                         <Ionicons name="trash" size={22} color={colors.red} />
                       </Animated.View>
                     </View>
                   ) : (
-                    <View style={styles.shareActions}>
+                    <View style={styles.actionRow}>
+                      <Pressable
+                        onPress={() => handleShareUrl(share)}
+                        style={({ pressed }) => [
+                          styles.actionButton,
+                          pressed && styles.buttonPressed,
+                        ]}
+                      >
+                        <Ionicons name="share-outline" size={16} color={colors.primary} />
+                        <Text style={[styles.actionLabel, { color: colors.primary }]}>{t('share')}</Text>
+                      </Pressable>
                       <Pressable
                         onPress={() => handleCopyUrl(share)}
-                        hitSlop={6}
                         style={({ pressed }) => [
                           styles.actionButton,
                           pressed && styles.buttonPressed,
@@ -382,29 +407,32 @@ export function SettingsSharesScreen() {
                       >
                         <Ionicons
                           name={copiedId === share.id ? 'checkmark' : 'copy-outline'}
-                          size={18}
-                          color={copiedId === share.id ? colors.primary : colors.textPrimary}
+                          size={16}
+                          color={colors.primary}
                         />
+                        <Text style={[styles.actionLabel, { color: colors.primary }]}>
+                          {copiedId === share.id ? t('copied') : t('copy')}
+                        </Text>
                       </Pressable>
                       <Pressable
                         onPress={() => handleEdit(share)}
-                        hitSlop={6}
                         style={({ pressed }) => [
                           styles.actionButton,
                           pressed && styles.buttonPressed,
                         ]}
                       >
-                        <Ionicons name="pencil-outline" size={18} color={colors.textPrimary} />
+                        <Ionicons name="pencil-outline" size={16} color={colors.primary} />
+                        <Text style={[styles.actionLabel, { color: colors.primary }]}>{t('edit')}</Text>
                       </Pressable>
                       <Pressable
                         onPress={() => handleDelete(share)}
-                        hitSlop={6}
                         style={({ pressed }) => [
                           styles.actionButton,
                           pressed && styles.buttonPressed,
                         ]}
                       >
-                        <Ionicons name="trash-outline" size={18} color={colors.red} />
+                        <Ionicons name="trash-outline" size={16} color={colors.red} />
+                        <Text style={[styles.actionLabel, { color: colors.red }]}>{t('delete')}</Text>
                       </Pressable>
                     </View>
                   )}
@@ -493,16 +521,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   shareRow: {
-    flexDirection: 'row',
     paddingVertical: 14,
     paddingHorizontal: 16,
   },
   shareRowBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  shareContent: {
-    flex: 1,
-    marginRight: 8,
   },
   deletingContent: {
     opacity: 0.35,
@@ -532,14 +555,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 2,
   },
-  shareActions: {
+  actionRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-end',
-    gap: 4,
+    gap: 6,
+    marginTop: 10,
+  },
+  deletingIndicator: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 10,
   },
   actionButton: {
-    padding: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+  },
+  actionLabel: {
+    fontSize: 13,
+    fontWeight: '500',
   },
   metaRow: {
     flexDirection: 'row',

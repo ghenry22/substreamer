@@ -412,7 +412,7 @@ export function MoreOptionsSheet() {
     handleClose();
     setTimeout(() => {
       if (entity.type === 'album') {
-        createShareStore.getState().showAlbum(entity.item.id, entity.item.name, entity.item.coverArt);
+        createShareStore.getState().showAlbum(entity.item.id, entity.item.name, entity.item.artist, entity.item.coverArt);
       } else if (entity.type === 'playlist') {
         createShareStore.getState().showPlaylist(entity.item.id, entity.item.name, entity.item.coverArt);
       }
