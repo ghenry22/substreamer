@@ -320,7 +320,7 @@ export function PlayerView() {
   const headerTopPadding = Platform.OS === 'ios'
     ? insets.top + HEADER_BAR_HEIGHT
     : insets.top + HEADER_BAR_HEIGHT;
-  const playerTabContentBottomPadding = Math.max(insets.bottom, 16);
+  const playerTabContentBottomPadding = PLAYER_TAB_BAR_HEIGHT + Math.max(insets.bottom, 16);
 
   if (!currentTrack) {
     return (
