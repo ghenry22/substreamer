@@ -16,6 +16,7 @@ import {
   ActivityIndicator,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -42,7 +43,7 @@ import { MarqueeText } from '../components/MarqueeText';
 import { MoreOptionsButton } from '../components/MoreOptionsButton';
 import { PlaybackRateButton } from '../components/PlaybackRateButton';
 import { PlayerProgressBar } from '../components/PlayerProgressBar';
-import { PlayerTabBar, type PlayerTab } from '../components/PlayerTabBar';
+import { PlayerTabBar, PLAYER_TAB_BAR_HEIGHT, type PlayerTab } from '../components/PlayerTabBar';
 import { RepeatButton } from '../components/RepeatButton';
 import { ShuffleButton } from '../components/ShuffleButton';
 import { SkipIntervalButton } from '../components/SkipIntervalButton';
@@ -319,6 +320,7 @@ export function PlayerView() {
   const headerTopPadding = Platform.OS === 'ios'
     ? insets.top + HEADER_BAR_HEIGHT
     : insets.top + HEADER_BAR_HEIGHT;
+  const playerTabContentBottomPadding = PLAYER_TAB_BAR_HEIGHT + Math.max(insets.bottom, 16);
 
   if (!currentTrack) {
     return (
@@ -369,12 +371,23 @@ export function PlayerView() {
             style={[styles.tabPanel, Platform.OS === 'android' && { top: headerTopPadding }, playerAnimatedStyle]}
             pointerEvents={activeTab === 'player' ? 'auto' : 'none'}
           >
-            <PlayerContent
-              currentTrack={currentTrack}
-              colors={colors}
-              queueLoading={queueLoading}
-              handleSeek={handleSeek}
-            />
+            <ScrollView
+              testID="player-scroll-view"
+              style={styles.playerScrollView}
+              contentContainerStyle={[
+                styles.playerScrollContent,
+                { paddingBottom: playerTabContentBottomPadding },
+              ]}
+              showsVerticalScrollIndicator={false}
+              contentInsetAdjustmentBehavior="never"
+            >
+              <PlayerContent
+                currentTrack={currentTrack}
+                colors={colors}
+                queueLoading={queueLoading}
+                handleSeek={handleSeek}
+              />
+            </ScrollView>
           </Animated.View>
 
           {/* Queue tab — below header */}
@@ -865,7 +878,13 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   playerContentContainer: {
+    flexGrow: 1,
+  },
+  playerScrollView: {
     flex: 1,
+  },
+  playerScrollContent: {
+    flexGrow: 1,
   },
   playerSpacer: {
     flex: 1,

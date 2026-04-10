@@ -208,6 +208,7 @@ jest.mock('@shopify/flash-list', () => {
 
 import React from 'react';
 import { render, fireEvent, act } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 
 import { playerStore } from '../../store/playerStore';
 import { type Child } from '../../services/subsonicService';
@@ -342,6 +343,16 @@ describe('PlayerView', () => {
     expect(getByText('play-back')).toBeTruthy();
     expect(getByText('pause')).toBeTruthy(); // playing state shows pause
     expect(getByText('play-forward')).toBeTruthy();
+  });
+
+  it('wraps the player tab in a scroll view with bottom inset padding', () => {
+    const { getByTestId } = render(<PlayerView />);
+
+    const scrollView = getByTestId('player-scroll-view');
+    const contentContainerStyle = StyleSheet.flatten(scrollView.props.contentContainerStyle);
+
+    expect(contentContainerStyle.flexGrow).toBe(1);
+    expect(contentContainerStyle.paddingBottom).toBe(86);
   });
 
   it('renders play icon when paused', () => {
