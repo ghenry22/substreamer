@@ -9,6 +9,8 @@ export interface ThemeColors {
   border: string;
   primary: string;
   red: string;
+  green: string;
+  orange: string;
   inputBg: string;
 }
 
@@ -21,6 +23,8 @@ export const lightTheme: ThemeColors = {
   border: 'rgba(0,0,0,0.08)',
   primary: '#1D9BF0',
   red: '#e91429',
+  green: '#34C759',
+  orange: '#FF9500',
   inputBg: '#e5e5e5',
 };
 
@@ -33,6 +37,8 @@ export const darkTheme: ThemeColors = {
   border: 'rgba(255,255,255,0.06)',
   primary: '#1D9BF0',
   red: '#e91429',
+  green: '#30D158',
+  orange: '#FF9F0A',
   inputBg: '#282828',
 };
 
