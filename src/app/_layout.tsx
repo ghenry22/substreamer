@@ -126,18 +126,24 @@ try {
   console.warn('[layout] initSslTrustStore failed:', e instanceof Error ? e.message : String(e));
 }
 
-// Sync the persisted theme preference to the native UIKit layer at module
-// scope — before any React component renders. This ensures liquid glass
-// containers on iOS 26 use the correct color scheme from the very first frame.
-// The sqliteStorage read is synchronous, so there is no async gap.
+// Sync the persisted theme preference to the native layer at module scope —
+// before any React component renders. This ensures:
+//   • iOS 26 liquid glass containers use the correct color scheme from frame 1
+//   • Android sets AppCompatDelegate night mode BEFORE the Activity finishes
+//     creating, avoiding an onConfigurationChanged during React's initial
+//     render that crashes on Android 16 (see #85)
+// The 'system' preference MUST also call setColorScheme('unspecified') here;
+// skipping it leaves the mode unset until a useEffect fires post-render,
+// which triggers a configuration change event mid-commit and crashes.
 (() => {
   try {
     const raw = sqliteStorage.getItem('substreamer-theme') as string | null;
     if (raw) {
       const { state } = JSON.parse(raw);
-      if (state?.themePreference && state.themePreference !== 'system') {
-        Appearance.setColorScheme(state.themePreference);
-      }
+      const pref = state?.themePreference;
+      Appearance.setColorScheme(
+        pref === 'light' || pref === 'dark' ? pref : 'unspecified'
+      );
     }
   } catch { /* non-critical: falls back to system default */ }
 })();
@@ -230,11 +236,12 @@ export default function RootLayout() {
     }
   }, [isWide, segments, router]);
 
-  // Sync the app's theme preference to the native UIKit layer so that native
-  // UI elements (e.g. iOS 26 liquid glass containers) render with the correct
-  // color scheme immediately, avoiding a white flash during navigation transitions.
+  // Keep the native layer in sync when the user changes theme at runtime.
+  // The module-scope IIFE above handles cold start; this handles live changes.
   useEffect(() => {
-    Appearance.setColorScheme(preference === 'system' ? 'unspecified' : preference);
+    try {
+      Appearance.setColorScheme(preference === 'system' ? 'unspecified' : preference);
+    } catch { /* non-critical: native scheme sync failed */ }
   }, [preference]);
 
   useDownloadKeepAwake();
