@@ -176,7 +176,7 @@ const CacheRow = memo(function CacheRow({
               </Text>
             )}
             <Text style={[styles.rowMeta, { color: colors.textSecondary }]}>
-              {item.type === 'album' ? t('album') : t('playlist')} · {trackLabel} · {formatBytes(item.totalBytes)}
+              {item.type === 'album' ? t('album') : item.type === 'song' ? t('song') : t('playlist')} · {trackLabel} · {formatBytes(item.totalBytes)}
             </Text>
           </View>
           <Ionicons

@@ -2,7 +2,7 @@
  * MoreOptionsSheet – unified bottom sheet for all entity types.
  *
  * Reads from `moreOptionsStore` and renders entity-specific options:
- *   - Song/Track: Favorite, Add to Playlist, Play More Like This, Add to Queue, Go to Album, Go to Artist, Track Details
+ *   - Song/Track: Favorite, Add to Playlist, Play More Like This, Add to Queue, Go to Album, Go to Artist, Track Details, Download
  *   - Album: Favorite, Add to Queue, Go to Artist, Album Details
  *   - Artist: Favorite, Save Top Songs Playlist, Play Similar Artists
  *   - Playlist: Add to Queue
@@ -41,6 +41,7 @@ import {
   cancelDownload,
   enqueueAlbumDownload,
   enqueuePlaylistDownload,
+  enqueueSongDownload,
   playMoreByArtist,
   playMoreLikeThis,
   playSimilarArtistsMix,
@@ -145,7 +146,7 @@ function canShare(entity: MoreOptionsEntity): boolean {
 }
 
 function canDownload(entity: MoreOptionsEntity): boolean {
-  return entity.type === 'album' || entity.type === 'playlist';
+  return entity.type === 'album' || entity.type === 'playlist' || entity.type === 'song';
 }
 
 function canAddToPlaylist(entity: MoreOptionsEntity): boolean {
@@ -201,8 +202,8 @@ export function MoreOptionsSheet() {
   const starred = useIsStarred(starType, entity?.item.id ?? '');
   const entityRating = useRating(entity?.item.id ?? '', getEntityUserRating(entity));
 
-  const downloadType: 'album' | 'playlist' =
-    entity?.type === 'playlist' ? 'playlist' : 'album';
+  const downloadType: 'song' | 'album' | 'playlist' =
+    entity?.type === 'song' ? 'song' : entity?.type === 'playlist' ? 'playlist' : 'album';
   const downloadStatus: DownloadStatus = useDownloadStatus(
     downloadType,
     entity && canDownload(entity) ? entity.item.id : '',
@@ -396,7 +397,9 @@ export function MoreOptionsSheet() {
         );
         if (queueItem) cancelDownload(queueItem.queueId);
       } else {
-        if (entity.type === 'album') {
+        if (entity.type === 'song') {
+          await enqueueSongDownload(entity.item as Child);
+        } else if (entity.type === 'album') {
           await enqueueAlbumDownload(entity.item.id);
         } else {
           await enqueuePlaylistDownload(entity.item.id);

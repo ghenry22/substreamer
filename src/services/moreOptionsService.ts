@@ -376,6 +376,6 @@ export async function playAllByArtist(
 /*  Download management                                                */
 /* ------------------------------------------------------------------ */
 
-export { enqueueAlbumDownload, enqueuePlaylistDownload } from './musicCacheService';
+export { enqueueAlbumDownload, enqueuePlaylistDownload, enqueueSongDownload } from './musicCacheService';
 
 export { deleteCachedItem as removeDownload, cancelDownload } from './musicCacheService';
