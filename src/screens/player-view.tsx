@@ -37,6 +37,7 @@ import { useTranslation } from 'react-i18next';
 
 import { AlbumInfoContent } from '../components/AlbumInfoContent';
 import { CachedImage } from '../components/CachedImage';
+import { DownloadButton } from '../components/DownloadButton';
 import { EmptyState } from '../components/EmptyState';
 import { MarqueeText } from '../components/MarqueeText';
 import { MoreOptionsButton } from '../components/MoreOptionsButton';
@@ -57,7 +58,7 @@ import { useIsStarred } from '../hooks/useIsStarred';
 import { useTheme } from '../hooks/useTheme';
 import { ThemedAlert } from '../components/ThemedAlert';
 import { useThemedAlert } from '../hooks/useThemedAlert';
-import { toggleStar } from '../services/moreOptionsService';
+import { enqueueSongDownload, toggleStar } from '../services/moreOptionsService';
 import { offlineModeStore } from '../store/offlineModeStore';
 import {
   clearQueue,
@@ -491,6 +492,34 @@ const FavoriteButton = memo(function FavoriteButton({
 });
 
 /* ------------------------------------------------------------------ */
+/*  Download button                                                    */
+/* ------------------------------------------------------------------ */
+
+const PlayerDownloadButton = memo(function PlayerDownloadButton({
+  track,
+}: {
+  track: Child;
+}) {
+  const offlineMode = offlineModeStore((s) => s.offlineMode);
+
+  const handleDownload = useCallback(() => {
+    if (offlineMode) return;
+    enqueueSongDownload(track);
+  }, [track, offlineMode]);
+
+  return (
+    <View style={styles.downloadButton}>
+      <DownloadButton
+        itemId={track.id}
+        type="song"
+        size={24}
+        onDownload={handleDownload}
+      />
+    </View>
+  );
+});
+
+/* ------------------------------------------------------------------ */
 /*  Player content (hero, controls) — "Player" tab                     */
 /* ------------------------------------------------------------------ */
 
@@ -590,6 +619,7 @@ const PlayerContent = memo(function PlayerContent({
             </Text>
           </View>
           <FavoriteButton trackId={currentTrack.id} colors={colors} />
+          <PlayerDownloadButton track={currentTrack} />
         </View>
       </View>
 
@@ -928,6 +958,10 @@ const styles = StyleSheet.create({
   },
   favoriteButton: {
     paddingLeft: 12,
+    paddingVertical: 4,
+  },
+  downloadButton: {
+    paddingLeft: 4,
     paddingVertical: 4,
   },
   progressSection: {

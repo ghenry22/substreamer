@@ -1,11 +1,15 @@
 /**
- * Self-contained download button for album/playlist detail headers.
+ * Self-contained download button for album/playlist/song contexts.
  *
  * Subscribes directly to musicCacheStore and useDownloadStatus so it
  * manages its own re-renders. This avoids the parent screen needing
  * to pass progress via navigation.setOptions — which previously
  * remounted the CircularProgress on every update, losing animation
  * state and causing jumps.
+ *
+ * For `type === 'song'`, the caller must supply an `onDownload` override
+ * because the component only holds the song ID, not the full Child object
+ * required by enqueueSongDownload.
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -26,9 +30,9 @@ import { musicCacheStore } from '../store/musicCacheStore';
 
 interface DownloadButtonProps {
   itemId: string;
-  type: 'album' | 'playlist';
+  type: 'album' | 'playlist' | 'song';
   size?: number;
-  /** Override the default enqueue action (e.g. for starred songs). */
+  /** Override the default enqueue action (required when type is 'song'). */
   onDownload?: () => void;
   /** Override the default delete action (e.g. for starred songs). */
   onDelete?: () => void;
@@ -81,7 +85,8 @@ export const DownloadButton = memo(function DownloadButton({
     } else {
       if (onDownload) onDownload();
       else if (type === 'album') enqueueAlbumDownload(itemId);
-      else enqueuePlaylistDownload(itemId);
+      else if (type === 'playlist') enqueuePlaylistDownload(itemId);
+      // type === 'song' without onDownload: no-op (caller must provide onDownload)
     }
   }, [itemId, type, downloadStatus, onDownload, onDelete]);
 
