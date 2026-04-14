@@ -1142,6 +1142,107 @@ describe('fetchServerInfo', () => {
   });
 });
 
+describe('fetchServerInfo user roles', () => {
+  it('includes adminRole and shareRole from getUser', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.ping = jest.fn().mockResolvedValue({
+      status: 'ok',
+      version: '1.16.1',
+      openSubsonic: true,
+      type: 'navidrome',
+      serverVersion: '0.52.5',
+    });
+    SubsonicAPI.prototype.getOpenSubsonicExtensions = jest.fn().mockResolvedValue({
+      status: 'ok',
+      openSubsonicExtensions: [],
+    });
+    SubsonicAPI.prototype.getUser = jest.fn().mockResolvedValue({
+      status: 'ok',
+      user: { adminRole: true, shareRole: false },
+    });
+    const { fetchServerInfo, getApi } = require('../subsonicService');
+    getApi();
+    const result = await fetchServerInfo();
+    expect(result).not.toBeNull();
+    expect(result.adminRole).toBe(true);
+    expect(result.shareRole).toBe(false);
+    expect(SubsonicAPI.prototype.getUser).toHaveBeenCalledWith({ username: 'user' });
+  });
+
+  it('returns null roles when getUser throws', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.ping = jest.fn().mockResolvedValue({
+      status: 'ok',
+      version: '1.16.1',
+      openSubsonic: true,
+      type: 'navidrome',
+      serverVersion: '0.52.5',
+    });
+    SubsonicAPI.prototype.getOpenSubsonicExtensions = jest.fn().mockResolvedValue({
+      status: 'ok',
+      openSubsonicExtensions: [],
+    });
+    SubsonicAPI.prototype.getUser = jest.fn().mockRejectedValue(new Error('unsupported'));
+    const { fetchServerInfo, getApi } = require('../subsonicService');
+    getApi();
+    const result = await fetchServerInfo();
+    expect(result).not.toBeNull();
+    expect(result.adminRole).toBeNull();
+    expect(result.shareRole).toBeNull();
+    expect(result.serverType).toBe('navidrome');
+  });
+
+  it('returns null roles for non-OpenSubsonic server without getUser', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.ping = jest.fn().mockResolvedValue({
+      status: 'ok',
+      version: '1.16.1',
+    });
+    SubsonicAPI.prototype.getUser = jest.fn().mockRejectedValue(new Error('not supported'));
+    const { fetchServerInfo, getApi } = require('../subsonicService');
+    getApi();
+    const result = await fetchServerInfo();
+    expect(result).not.toBeNull();
+    expect(result.adminRole).toBeNull();
+    expect(result.shareRole).toBeNull();
+    expect(result.openSubsonic).toBe(false);
+  });
+});
+
+describe('changePassword', () => {
+  it('returns true on success', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.changePassword = jest.fn().mockResolvedValue({ status: 'ok' });
+    const { changePassword, getApi } = require('../subsonicService');
+    getApi();
+    const result = await changePassword('user', 'newpass');
+    expect(result).toBe(true);
+    expect(SubsonicAPI.prototype.changePassword).toHaveBeenCalledWith({ username: 'user', password: 'newpass' });
+  });
+
+  it('returns false on API error', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.changePassword = jest.fn().mockResolvedValue({ status: 'failed' });
+    const { changePassword, getApi } = require('../subsonicService');
+    getApi();
+    expect(await changePassword('user', 'newpass')).toBe(false);
+  });
+
+  it('returns false on exception', async () => {
+    const { default: SubsonicAPI } = require('subsonic-api');
+    SubsonicAPI.prototype.changePassword = jest.fn().mockRejectedValue(new Error('not supported'));
+    const { changePassword, getApi } = require('../subsonicService');
+    getApi();
+    expect(await changePassword('user', 'newpass')).toBe(false);
+  });
+
+  it('returns false when no API', async () => {
+    mockAuthStore.getState.mockReturnValue({ isLoggedIn: false } as any);
+    const { changePassword } = require('../subsonicService');
+    expect(await changePassword('user', 'newpass')).toBe(false);
+  });
+});
+
 describe('startScan', () => {
   it('returns scan status on success', async () => {
     const { default: SubsonicAPI } = require('subsonic-api');

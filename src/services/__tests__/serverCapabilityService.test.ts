@@ -1,11 +1,13 @@
 jest.mock('../../store/sqliteStorage', () => require('../../store/__mocks__/sqliteStorage'));
 
 import { serverInfoStore } from '../../store/serverInfoStore';
-import { supports } from '../serverCapabilityService';
+import { canUserScan, canUserShare, isAdminRoleUnknown, supports } from '../serverCapabilityService';
 
 function setServerInfo(overrides: {
 	serverType?: string | null;
 	apiVersion?: string | null;
+	adminRole?: boolean | null;
+	shareRole?: boolean | null;
 }) {
 	serverInfoStore.getState().setServerInfo({
 		serverType: overrides.serverType ?? null,
@@ -14,6 +16,8 @@ function setServerInfo(overrides: {
 		openSubsonic: overrides.serverType != null,
 		extensions: [],
 		lastFetchedAt: null,
+		adminRole: overrides.adminRole ?? null,
+		shareRole: overrides.shareRole ?? null,
 	});
 }
 
@@ -201,5 +205,91 @@ describe('supports', () => {
 			setServerInfo({ serverType: 'funkwhale' });
 			expect(supports('shares')).toBe(false);
 		});
+	});
+});
+
+describe('canUserScan', () => {
+	it('returns true when admin and scan supported', () => {
+		setServerInfo({ serverType: 'navidrome', adminRole: true });
+		expect(canUserScan()).toBe(true);
+	});
+
+	it('returns false when adminRole is false', () => {
+		setServerInfo({ serverType: 'navidrome', adminRole: false });
+		expect(canUserScan()).toBe(false);
+	});
+
+	it('returns true when adminRole is null (unknown)', () => {
+		setServerInfo({ serverType: 'navidrome', adminRole: null });
+		expect(canUserScan()).toBe(true);
+	});
+
+	it('returns false when scan not supported, regardless of role', () => {
+		setServerInfo({ serverType: 'gonic', adminRole: true });
+		expect(canUserScan()).toBe(false);
+	});
+
+	it('returns false when scan not supported and role is null', () => {
+		setServerInfo({ serverType: 'gonic', adminRole: null });
+		expect(canUserScan()).toBe(false);
+	});
+
+	it('returns false when scan not supported and role is false', () => {
+		setServerInfo({ serverType: 'gonic', adminRole: false });
+		expect(canUserScan()).toBe(false);
+	});
+});
+
+describe('canUserShare', () => {
+	it('returns true when shareRole and shares supported', () => {
+		setServerInfo({ serverType: 'navidrome', shareRole: true });
+		expect(canUserShare()).toBe(true);
+	});
+
+	it('returns false when shareRole is false', () => {
+		setServerInfo({ serverType: 'navidrome', shareRole: false });
+		expect(canUserShare()).toBe(false);
+	});
+
+	it('returns true when shareRole is null (unknown)', () => {
+		setServerInfo({ serverType: 'navidrome', shareRole: null });
+		expect(canUserShare()).toBe(true);
+	});
+
+	it('returns false when shares not supported, regardless of role', () => {
+		setServerInfo({ serverType: 'gonic', shareRole: true });
+		expect(canUserShare()).toBe(false);
+	});
+
+	it('returns false when shares not supported and role is null', () => {
+		setServerInfo({ serverType: 'gonic', shareRole: null });
+		expect(canUserShare()).toBe(false);
+	});
+
+	it('returns false when shares not supported and role is false', () => {
+		setServerInfo({ serverType: 'gonic', shareRole: false });
+		expect(canUserShare()).toBe(false);
+	});
+});
+
+describe('isAdminRoleUnknown', () => {
+	it('returns true when scan supported and adminRole is null', () => {
+		setServerInfo({ serverType: 'navidrome', adminRole: null });
+		expect(isAdminRoleUnknown()).toBe(true);
+	});
+
+	it('returns false when adminRole is true', () => {
+		setServerInfo({ serverType: 'navidrome', adminRole: true });
+		expect(isAdminRoleUnknown()).toBe(false);
+	});
+
+	it('returns false when adminRole is false', () => {
+		setServerInfo({ serverType: 'navidrome', adminRole: false });
+		expect(isAdminRoleUnknown()).toBe(false);
+	});
+
+	it('returns false when scan not supported', () => {
+		setServerInfo({ serverType: 'gonic', adminRole: null });
+		expect(isAdminRoleUnknown()).toBe(false);
 	});
 });

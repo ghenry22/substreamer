@@ -15,6 +15,8 @@ export interface ServerInfo {
   openSubsonic: boolean;
   extensions: OpenSubsonicExtension[];
   lastFetchedAt: number | null;
+  adminRole: boolean | null;
+  shareRole: boolean | null;
 }
 
 export interface ServerInfoState extends ServerInfo {
@@ -31,6 +33,8 @@ const initialServerInfo: ServerInfo = {
   openSubsonic: false,
   extensions: [],
   lastFetchedAt: null,
+  adminRole: null,
+  shareRole: null,
 };
 
 export const serverInfoStore = create<ServerInfoState>()(
@@ -56,6 +60,8 @@ export const serverInfoStore = create<ServerInfoState>()(
         openSubsonic: state.openSubsonic,
         extensions: state.extensions,
         lastFetchedAt: state.lastFetchedAt,
+        adminRole: state.adminRole,
+        shareRole: state.shareRole,
       }),
     }
   )

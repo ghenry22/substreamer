@@ -9,6 +9,8 @@ const baseInfo: ServerInfo = {
   openSubsonic: true,
   extensions: [{ name: 'transcodeOffset', versions: [1] }],
   lastFetchedAt: 999,
+  adminRole: true,
+  shareRole: true,
 };
 
 beforeEach(() => {
@@ -25,6 +27,15 @@ describe('serverInfoStore', () => {
     expect(state.openSubsonic).toBe(true);
     expect(state.extensions).toEqual([{ name: 'transcodeOffset', versions: [1] }]);
     expect(state.lastFetchedAt).toBe(999);
+    expect(state.adminRole).toBe(true);
+    expect(state.shareRole).toBe(true);
+  });
+
+  it('setServerInfo stores role values', () => {
+    serverInfoStore.getState().setServerInfo({ ...baseInfo, adminRole: false, shareRole: null });
+    const state = serverInfoStore.getState();
+    expect(state.adminRole).toBe(false);
+    expect(state.shareRole).toBeNull();
   });
 
   it('setServerInfo falls back to Date.now() when lastFetchedAt is null', () => {
@@ -45,5 +56,7 @@ describe('serverInfoStore', () => {
     expect(state.openSubsonic).toBe(false);
     expect(state.extensions).toEqual([]);
     expect(state.lastFetchedAt).toBeNull();
+    expect(state.adminRole).toBeNull();
+    expect(state.shareRole).toBeNull();
   });
 });

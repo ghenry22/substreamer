@@ -608,6 +608,17 @@ export async function removeFromPlaylist(
   }
 }
 
+export async function changePassword(username: string, password: string): Promise<boolean> {
+  const api = getApi();
+  if (!api) return false;
+  try {
+    const response = await api.changePassword({ username, password });
+    return response.status === 'ok';
+  } catch {
+    return false;
+  }
+}
+
 export async function fetchServerInfo(): Promise<ServerInfo | null> {
   const api = getApi();
   if (!api) return null;
@@ -641,6 +652,21 @@ export async function fetchServerInfo(): Promise<ServerInfo | null> {
       }
     }
 
+    let adminRole: boolean | null = null;
+    let shareRole: boolean | null = null;
+    try {
+      const username = authStore.getState().username;
+      if (username) {
+        const userResponse = await api.getUser({ username });
+        if (userResponse.status === 'ok' && userResponse.user) {
+          adminRole = userResponse.user.adminRole;
+          shareRole = userResponse.user.shareRole;
+        }
+      }
+    } catch {
+      /* Server may not support getUser, or user may lack permission — roles stay null */
+    }
+
     return {
       serverType,
       serverVersion,
@@ -648,6 +674,8 @@ export async function fetchServerInfo(): Promise<ServerInfo | null> {
       openSubsonic,
       extensions,
       lastFetchedAt: Date.now(),
+      adminRole,
+      shareRole,
     };
   } catch {
     return null;

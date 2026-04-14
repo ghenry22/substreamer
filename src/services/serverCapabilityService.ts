@@ -59,4 +59,21 @@ export function supports(capability: ServerCapability): boolean {
 	return false;
 }
 
+/** Server supports scan AND user is admin (or role is unknown). */
+export function canUserScan(): boolean {
+	const { adminRole } = serverInfoStore.getState();
+	return supports('scan') && adminRole !== false;
+}
+
+/** Server supports shares AND user has share role (or role is unknown). */
+export function canUserShare(): boolean {
+	const { shareRole } = serverInfoStore.getState();
+	return supports('shares') && shareRole !== false;
+}
+
+/** True when adminRole couldn't be determined (getUser failed/unsupported). */
+export function isAdminRoleUnknown(): boolean {
+	return supports('scan') && serverInfoStore.getState().adminRole === null;
+}
+
 export type { ServerCapability };
