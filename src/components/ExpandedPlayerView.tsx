@@ -36,6 +36,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AlbumInfoContent } from './AlbumInfoContent';
+import { LyricsContent } from './LyricsContent';
 import { CachedImage } from './CachedImage';
 import { MarqueeText } from './MarqueeText';
 import { MoreOptionsButton } from './MoreOptionsButton';
@@ -70,6 +71,7 @@ import { sanitizeBiographyText } from '../utils/formatters';
 import { minDelay } from '../utils/stringHelpers';
 import { type Child } from '../services/subsonicService';
 import { albumInfoStore } from '../store/albumInfoStore';
+import { lyricsStore } from '../store/lyricsStore';
 import { playbackSettingsStore } from '../store/playbackSettingsStore';
 import { createShareStore } from '../store/createShareStore';
 import { moreOptionsStore } from '../store/moreOptionsStore';
@@ -188,6 +190,38 @@ export function ExpandedPlayerView({
       currentTrack?.album ?? undefined,
     );
   }, [albumId, currentTrack?.artist, currentTrack?.album]);
+
+  // Lyrics state
+  const trackId = currentTrack?.id ?? null;
+  const lyricsEntry = lyricsStore((s) => (trackId ? s.entries[trackId] : undefined));
+  const lyricsLoading = lyricsStore((s) => (trackId ? (s.loading[trackId] ?? false) : false));
+  const lyricsError = lyricsStore((s) => (trackId ? (s.errors[trackId] ?? null) : null));
+  const lyricsFetchAttemptedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!trackId || lyricsEntry || lyricsLoading) return;
+    if (lyricsFetchAttemptedRef.current === trackId) return;
+    lyricsFetchAttemptedRef.current = trackId;
+    lyricsStore.getState().fetchLyrics(
+      trackId,
+      currentTrack?.artist ?? undefined,
+      currentTrack?.title ?? undefined,
+    );
+  }, [trackId, lyricsEntry, lyricsLoading, currentTrack?.artist, currentTrack?.title]);
+
+  useEffect(() => {
+    lyricsFetchAttemptedRef.current = null;
+  }, [trackId]);
+
+  const handleRetryLyrics = useCallback(() => {
+    if (!trackId) return;
+    lyricsFetchAttemptedRef.current = null;
+    lyricsStore.getState().fetchLyrics(
+      trackId,
+      currentTrack?.artist ?? undefined,
+      currentTrack?.title ?? undefined,
+    );
+  }, [trackId, currentTrack?.artist, currentTrack?.title]);
 
   // Measure the art area so cover art fills available height
   const [artMaxSize, setArtMaxSize] = useState(0);
@@ -612,12 +646,15 @@ export function ExpandedPlayerView({
                   colors={colors}
                 />
               ) : (
-                /* Lyrics placeholder */
-                <View style={styles.lyricsPlaceholder}>
-                  <MaterialCommunityIcons name="comment-quote-outline" size={48} color={colors.textSecondary} />
-                  <Text style={[styles.lyricsPlaceholderText, { color: colors.textSecondary }]}>
-                    {t('lyricsComingSoon')}
-                  </Text>
+                /* Lyrics panel */
+                <View style={styles.lyricsContainer}>
+                  <LyricsContent
+                    lyricsData={lyricsEntry}
+                    lyricsLoading={lyricsLoading}
+                    lyricsError={lyricsError}
+                    onRetry={handleRetryLyrics}
+                    colors={colors}
+                  />
                 </View>
               )}
 
@@ -929,16 +966,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  /* --- Right column: lyrics placeholder --- */
-  lyricsPlaceholder: {
+  /* --- Right column: lyrics panel --- */
+  lyricsContainer: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  lyricsPlaceholderText: {
-    fontSize: 16,
-    fontWeight: '500',
   },
 
   /* --- Right column: toggle buttons --- */

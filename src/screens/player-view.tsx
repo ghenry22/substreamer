@@ -7,7 +7,7 @@
  * and lyrics.
  */
 
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import { Stack, useNavigation, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -36,6 +36,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
 import { AlbumInfoContent } from '../components/AlbumInfoContent';
+import { LyricsContent } from '../components/LyricsContent';
 import { CachedImage } from '../components/CachedImage';
 import { EmptyState } from '../components/EmptyState';
 import { MarqueeText } from '../components/MarqueeText';
@@ -73,6 +74,7 @@ import { sanitizeBiographyText } from '../utils/formatters';
 import { minDelay } from '../utils/stringHelpers';
 import { type Child } from '../services/subsonicService';
 import { albumInfoStore } from '../store/albumInfoStore';
+import { lyricsStore } from '../store/lyricsStore';
 import { playbackSettingsStore } from '../store/playbackSettingsStore';
 import { createShareStore } from '../store/createShareStore';
 import { moreOptionsStore } from '../store/moreOptionsStore';
@@ -411,13 +413,8 @@ export function PlayerView() {
             style={[styles.tabPanel, { top: headerTopPadding }, lyricsAnimatedStyle]}
             pointerEvents={activeTab === 'lyrics' ? 'auto' : 'none'}
           >
-            {mountedTabs.has('lyrics') && (
-              <View style={styles.lyricsPlaceholder}>
-                <MaterialCommunityIcons name="comment-quote-outline" size={48} color={colors.textSecondary} />
-                <Text style={[styles.lyricsPlaceholderText, { color: colors.textSecondary }]}>
-                  {t('lyricsComingSoon')}
-                </Text>
-              </View>
+            {mountedTabs.has('lyrics') && currentTrack && (
+              <LyricsTab currentTrack={currentTrack} colors={colors} />
             )}
           </Animated.View>
         </View>
@@ -855,6 +852,60 @@ const AlbumInfoTab = memo(function AlbumInfoTab({
 });
 
 /* ------------------------------------------------------------------ */
+/*  Lyrics tab                                                         */
+/* ------------------------------------------------------------------ */
+
+const LyricsTab = memo(function LyricsTab({
+  currentTrack,
+  colors,
+}: {
+  currentTrack: Child;
+  colors: ThemeColors;
+}) {
+  const trackId = currentTrack.id;
+  const lyricsEntry = lyricsStore((s) => s.entries[trackId]);
+  const lyricsLoading = lyricsStore((s) => s.loading[trackId] ?? false);
+  const lyricsError = lyricsStore((s) => s.errors[trackId] ?? null);
+  const fetchAttemptedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (lyricsEntry || lyricsLoading) return;
+    if (fetchAttemptedRef.current === trackId) return;
+    fetchAttemptedRef.current = trackId;
+    lyricsStore.getState().fetchLyrics(
+      trackId,
+      currentTrack.artist ?? undefined,
+      currentTrack.title ?? undefined,
+    );
+  }, [trackId, lyricsEntry, lyricsLoading, currentTrack.artist, currentTrack.title]);
+
+  useEffect(() => {
+    fetchAttemptedRef.current = null;
+  }, [trackId]);
+
+  const handleRetry = useCallback(() => {
+    fetchAttemptedRef.current = null;
+    lyricsStore.getState().fetchLyrics(
+      trackId,
+      currentTrack.artist ?? undefined,
+      currentTrack.title ?? undefined,
+    );
+  }, [trackId, currentTrack.artist, currentTrack.title]);
+
+  return (
+    <View style={styles.lyricsContainer}>
+      <LyricsContent
+        lyricsData={lyricsEntry}
+        lyricsLoading={lyricsLoading}
+        lyricsError={lyricsError}
+        onRetry={handleRetry}
+        colors={colors}
+      />
+    </View>
+  );
+});
+
+/* ------------------------------------------------------------------ */
 /*  Styles                                                             */
 /* ------------------------------------------------------------------ */
 
@@ -1041,15 +1092,8 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
   },
-  lyricsPlaceholder: {
+  lyricsContainer: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  lyricsPlaceholderText: {
-    fontSize: 16,
-    fontWeight: '500',
   },
   shuffleOverlay: {
     ...StyleSheet.absoluteFillObject,

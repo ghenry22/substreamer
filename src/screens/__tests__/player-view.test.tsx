@@ -156,6 +156,26 @@ jest.mock('../../components/AlbumInfoContent', () => {
   return { AlbumInfoContent: () => <Text>AlbumInfoContent</Text> };
 });
 
+jest.mock('../../components/LyricsContent', () => {
+  const { Text } = require('react-native');
+  return { LyricsContent: () => <Text>LyricsContent</Text> };
+});
+
+jest.mock('../../store/lyricsStore', () => {
+  const fetchLyrics = jest.fn();
+  const state = {
+    entries: {},
+    loading: {},
+    errors: {},
+    fetchLyrics,
+    clearLyrics: jest.fn(),
+  };
+  const store = (selector: (s: typeof state) => unknown) => selector(state);
+  store.getState = () => state;
+  store.setState = jest.fn();
+  return { lyricsStore: store };
+});
+
 jest.mock('../../services/playerService', () => ({
   clearQueue: jest.fn(),
   retryPlayback: jest.fn(),
@@ -293,14 +313,14 @@ describe('PlayerView', () => {
     expect(getByLabelText('Clear Queue')).toBeTruthy();
   });
 
-  it('switches to lyrics tab showing placeholder', () => {
+  it('switches to lyrics tab and mounts LyricsContent', () => {
     const { getByLabelText, getByText } = render(<PlayerView />);
 
     act(() => {
       fireEvent.press(getByLabelText('Lyrics'));
     });
 
-    expect(getByText('Lyrics coming soon')).toBeTruthy();
+    expect(getByText('LyricsContent')).toBeTruthy();
   });
 
   it('switches to info tab showing album info', () => {
@@ -507,7 +527,7 @@ describe('PlayerView', () => {
     act(() => {
       fireEvent.press(getByLabelText('Lyrics'));
     });
-    expect(getByText('Lyrics coming soon')).toBeTruthy();
+    expect(getByText('LyricsContent')).toBeTruthy();
 
     // Queue items should still be rendered (mounted)
     expect(getByText('Second Song')).toBeTruthy();
