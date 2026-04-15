@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 
 import { SyncedLyricsView } from './SyncedLyricsView';
 import { UnsyncedLyricsView } from './UnsyncedLyricsView';
+import { useFakeLineTimings } from '../hooks/useFakeLineTimings';
 import { type LyricsData } from '../services/subsonicService';
 import { type LyricsErrorKind } from '../store/lyricsStore';
 import { hexWithAlpha } from '../utils/colors';
@@ -19,6 +20,8 @@ export interface LyricsContentProps {
   lyricsLoading: boolean;
   lyricsError?: LyricsErrorKind | null;
   onRetry?: () => void;
+  /** Track duration in seconds — when provided, enables fake-timing for unsynced lyrics. */
+  durationSec?: number | null;
   colors: {
     textPrimary: string;
     textSecondary: string;
@@ -32,9 +35,14 @@ export const LyricsContent = memo(function LyricsContent({
   lyricsLoading,
   lyricsError,
   onRetry,
+  durationSec,
   colors,
 }: LyricsContentProps) {
   const { t } = useTranslation();
+  const fakeLines = useFakeLineTimings(
+    lyricsData && !lyricsData.synced ? lyricsData.lines : [],
+    lyricsData && !lyricsData.synced ? durationSec : null,
+  );
 
   if (lyricsError && !lyricsLoading) {
     return (
@@ -111,6 +119,34 @@ export const LyricsContent = memo(function LyricsContent({
     );
   }
 
+  if (fakeLines) {
+    return (
+      <View style={styles.fakeContainer}>
+        <View style={styles.pillWrap} pointerEvents="none">
+          <View
+            style={[
+              styles.pill,
+              {
+                backgroundColor: hexWithAlpha(colors.border, 0.35),
+              },
+            ]}
+          >
+            <Text style={[styles.pillText, { color: colors.textSecondary }]}>
+              {t('lyricsApproximateTiming')}
+            </Text>
+          </View>
+        </View>
+        <SyncedLyricsView
+          lines={fakeLines}
+          offsetMs={lyricsData.offsetMs}
+          source="fake"
+          textColor={colors.textPrimary}
+          backgroundColor={colors.background}
+        />
+      </View>
+    );
+  }
+
   return (
     <UnsyncedLyricsView lines={lyricsData.lines} textColor={colors.textPrimary} />
   );
@@ -155,5 +191,25 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 6,
     backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  fakeContainer: {
+    flex: 1,
+  },
+  pillWrap: {
+    position: 'absolute',
+    top: 8,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  pill: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  pillText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
 });

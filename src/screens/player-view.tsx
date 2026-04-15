@@ -901,6 +901,7 @@ const LyricsTab = memo(function LyricsTab({
         lyricsLoading={lyricsLoading}
         lyricsError={lyricsError}
         onRetry={handleRetry}
+        durationSec={currentTrack.duration ?? null}
         colors={colors}
       />
     </View>

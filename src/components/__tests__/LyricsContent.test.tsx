@@ -168,6 +168,72 @@ describe('LyricsContent', () => {
     expect(queryByText('first line')).toBeNull();
   });
 
+  it('routes unsynced + eligible duration + line count to SyncedLyricsView with fake pill', () => {
+    const longUnsynced: LyricsData = {
+      synced: false,
+      lines: [
+        { startMs: 0, text: 'one' },
+        { startMs: 0, text: 'two' },
+        { startMs: 0, text: 'three' },
+        { startMs: 0, text: 'four' },
+      ],
+      offsetMs: 0,
+      source: 'classic',
+    };
+    const { getByText, queryByText } = render(
+      <LyricsContent
+        lyricsData={longUnsynced}
+        lyricsLoading={false}
+        lyricsError={null}
+        durationSec={180}
+        colors={COLORS}
+      />,
+    );
+    expect(getByText('SyncedLyricsView')).toBeTruthy();
+    expect(getByText('Approximate timing')).toBeTruthy();
+    // Unsynced-view plain text should not appear since we routed through synced.
+    expect(queryByText('one')).toBeNull();
+  });
+
+  it('falls back to unsynced view when duration is too short for fake timing', () => {
+    const shortUnsynced: LyricsData = {
+      synced: false,
+      lines: [
+        { startMs: 0, text: 'aa' },
+        { startMs: 0, text: 'bb' },
+        { startMs: 0, text: 'cc' },
+        { startMs: 0, text: 'dd' },
+      ],
+      offsetMs: 0,
+      source: 'classic',
+    };
+    const { getByText, queryByText } = render(
+      <LyricsContent
+        lyricsData={shortUnsynced}
+        lyricsLoading={false}
+        lyricsError={null}
+        durationSec={30}
+        colors={COLORS}
+      />,
+    );
+    expect(getByText('aa')).toBeTruthy();
+    expect(queryByText('Approximate timing')).toBeNull();
+    expect(queryByText('SyncedLyricsView')).toBeNull();
+  });
+
+  it('falls back to unsynced view when duration is not provided', () => {
+    const { getByText, queryByText } = render(
+      <LyricsContent
+        lyricsData={UNSYNCED}
+        lyricsLoading={false}
+        lyricsError={null}
+        colors={COLORS}
+      />,
+    );
+    expect(getByText('alpha')).toBeTruthy();
+    expect(queryByText('Approximate timing')).toBeNull();
+  });
+
   it('prefers error over loading when both are true', () => {
     // This is an invariant the parent maintains, but defend against it anyway.
     const { getByText, queryByText } = render(

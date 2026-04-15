@@ -655,6 +655,7 @@ export function ExpandedPlayerView({
                     lyricsLoading={lyricsLoading}
                     lyricsError={lyricsError}
                     onRetry={handleRetryLyrics}
+                    durationSec={currentTrack?.duration ?? null}
                     colors={colors}
                   />
                 </View>
