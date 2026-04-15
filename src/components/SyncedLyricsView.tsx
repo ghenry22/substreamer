@@ -15,6 +15,7 @@ import Animated, {
   useSharedValue,
 } from 'react-native-reanimated';
 
+import { LyricsInterludeRow } from './LyricsInterludeRow';
 import { LyricsLineRow } from './LyricsLineRow';
 import { seekTo } from '../services/playerService';
 import { type LyricsLine } from '../services/subsonicService';
@@ -33,6 +34,7 @@ interface SyncedLyricsViewProps {
 const EDGE_FADE_HEIGHT = 64;
 const USER_SCROLL_LOCKOUT_MS = 3000;
 const ACTIVE_LINE_VIEWPORT_RATIO = 0.4;
+const INTERLUDE_MIN_GAP_MS = 5000;
 
 /**
  * Apple-Music-style synced lyrics view.
@@ -191,6 +193,13 @@ export const SyncedLyricsView = memo(function SyncedLyricsView({
 
   const tapDisabled = source === 'fake';
 
+  // Precompute per-pair gap info so interlude rows can be inlined between
+  // lines only where the gap actually warrants one.
+  const lineMeta = useMemo(
+    () => lines.map((l) => l.startMs + offsetMs),
+    [lines, offsetMs],
+  );
+
   return (
     <View style={styles.container} onLayout={handleContainerLayout}>
       <Animated.ScrollView
@@ -202,18 +211,34 @@ export const SyncedLyricsView = memo(function SyncedLyricsView({
         scrollEventThrottle={16}
       >
         <View style={{ height: topSpacer }} />
-        {lines.map((line, i) => (
-          <LyricsLineRow
-            key={i}
-            index={i}
-            text={line.text}
-            activeIndex={activeIndex}
-            textColor={textColor}
-            disabled={tapDisabled}
-            onPress={handleLinePress}
-            onLayout={handleLineLayout}
-          />
-        ))}
+        {lines.map((line, i) => {
+          const fromMs = lineMeta[i];
+          const toMs = lineMeta[i + 1];
+          const showInterlude = toMs != null && toMs - fromMs > INTERLUDE_MIN_GAP_MS;
+          return (
+            <View key={i}>
+              <LyricsLineRow
+                index={i}
+                text={line.text}
+                activeIndex={activeIndex}
+                textColor={textColor}
+                disabled={tapDisabled}
+                onPress={handleLinePress}
+                onLayout={handleLineLayout}
+              />
+              {showInterlude && (
+                <LyricsInterludeRow
+                  pairIndex={i}
+                  activeIndex={activeIndex}
+                  fromMs={fromMs}
+                  toMs={toMs}
+                  extrapolatedMs={extrapolatedMs}
+                  textColor={textColor}
+                />
+              )}
+            </View>
+          );
+        })}
         <View style={{ height: bottomSpacer }} />
       </Animated.ScrollView>
 

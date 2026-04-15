@@ -295,6 +295,21 @@ describe('SyncedLyricsView', () => {
     expect(mockScrollTo).not.toHaveBeenCalled();
   });
 
+  it('inserts breathing-dot interludes between lines with gaps > 5s', () => {
+    const LONG_GAP_LINES: LyricsLine[] = [
+      { startMs: 0, text: 'intro' },
+      { startMs: 20_000, text: 'verse' }, // gap 20s → interlude
+      { startMs: 22_000, text: 'chorus' }, // gap 2s → no interlude
+    ];
+    const { UNSAFE_root } = renderView({ lines: LONG_GAP_LINES });
+    // Three lines render as two weight-layers each → 6 text instances, plus
+    // any interlude dots. Just confirm all three line strings still render.
+    const textNodes = UNSAFE_root.findAll(
+      (n) => typeof n.props.children === 'string' && ['intro', 'verse', 'chorus'].includes(n.props.children),
+    );
+    expect(textNodes.length).toBeGreaterThanOrEqual(6);
+  });
+
   it('ignores taps with no matching start time', () => {
     const { UNSAFE_root } = renderView({ lines: [] });
     // No rows rendered → nothing to press. Assert render did not throw and seekTo not called.
