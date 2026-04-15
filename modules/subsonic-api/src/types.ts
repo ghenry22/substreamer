@@ -521,6 +521,23 @@ export interface Line {
 	start?: number;
 }
 
+/**
+ * OpenSubsonic `lyricsList` wrapper. The field is optional on the response —
+ * spec-compliant servers (Navidrome) may omit the whole wrapper when no
+ * lyrics exist.
+ *
+ * At runtime, `structuredLyrics` may arrive as:
+ *   - an array (Navidrome, Gonic, Nextcloud Music — spec-compliant)
+ *   - a single object (Ampache — deviates from spec; clients must normalise)
+ *   - absent (Navidrome when no lyrics)
+ *
+ * The typed shape here stays spec-compliant (`StructuredLyrics[]`); clients
+ * must normalise the Ampache deviation before consuming the value.
+ */
+export interface LyricsList {
+	structuredLyrics?: StructuredLyrics[];
+}
+
 // apiKeyAuthentication extension
 
 export interface TokenInfo {

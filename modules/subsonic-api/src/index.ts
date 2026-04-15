@@ -1,7 +1,7 @@
 import { md5 } from "./md5";
 import { arrayBufferToBase64 } from "./utils";
 
-import type { AlbumInfo, AlbumList, AlbumList2, AlbumWithSongsID3, ArtistInfo, ArtistInfo2, ArtistWithAlbumsID3, ArtistsID3, Bookmarks, ChatMessages, Child, ClientInfo, Directory, Genres, Indexes, InternetRadioStations, JukeboxPlaylist, JukeboxStatus, License, Lyrics, MusicFolders, NewestPodcasts, NowPlaying, OpenSubsonicExtensions, PlayQueue, PlayQueueByIndex, Playlist, PlaylistWithSongs, Playlists, PodcastEpisode, Podcasts, ScanStatus, SearchResult2, SearchResult3, Shares, SimilarSongs, SimilarSongs2, Songs, Starred, Starred2, StructuredLyrics, TokenInfo, TopSongs, TranscodeDecision, User, Users, VideoInfo, Videos } from "./types";
+import type { AlbumInfo, AlbumList, AlbumList2, AlbumWithSongsID3, ArtistInfo, ArtistInfo2, ArtistWithAlbumsID3, ArtistsID3, Bookmarks, ChatMessages, Child, ClientInfo, Directory, Genres, Indexes, InternetRadioStations, JukeboxPlaylist, JukeboxStatus, License, Lyrics, LyricsList, MusicFolders, NewestPodcasts, NowPlaying, OpenSubsonicExtensions, PlayQueue, PlayQueueByIndex, Playlist, PlaylistWithSongs, Playlists, PodcastEpisode, Podcasts, ScanStatus, SearchResult2, SearchResult3, Shares, SimilarSongs, SimilarSongs2, Songs, Starred, Starred2, StructuredLyrics, TokenInfo, TopSongs, TranscodeDecision, User, Users, VideoInfo, Videos } from "./types";
 export * from "./types";
 
 interface SubsonicConfig {
@@ -275,7 +275,7 @@ export default class SubsonicAPI {
 	async getLyricsBySongId(args: { id: string }) {
 		return this.#requestJSON<
 			SubsonicBaseResponse & {
-				lyricsList: StructuredLyrics[];
+				lyricsList?: LyricsList;
 			}
 		>("getLyricsBySongId", args);
 	}
