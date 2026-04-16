@@ -4,28 +4,10 @@ api_token_env: CROWDIN_PERSONAL_TOKEN
 preserve_hierarchy: true
 
 files:
-  # All languages except Chinese use the two-letter code (fr, de, ru, …).
   - source: /src/i18n/locales/en.json
     translation: /src/i18n/locales/%two_letters_code%.json
     type: json
     languages_mapping:
       two_letters_code:
-        # Exclude Chinese variants — handled by the dedicated file entries below.
-        zh-CN: ''
-        zh-TW: ''
-
-  # Simplified Chinese (CN, SG) → zh-Hans.json
-  - source: /src/i18n/locales/en.json
-    translation: /src/i18n/locales/zh-Hans.json
-    type: json
-    languages_mapping:
-      two_letters_code:
         zh-CN: zh-Hans
-
-  # Traditional Chinese (TW, HK) → zh-Hant.json
-  - source: /src/i18n/locales/en.json
-    translation: /src/i18n/locales/zh-Hant.json
-    type: json
-    languages_mapping:
-      two_letters_code:
         zh-TW: zh-Hant
