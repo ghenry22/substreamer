@@ -833,5 +833,19 @@
   "monthDec": "Dic",
   "dayMon": "Lun",
   "dayWed": "Mer",
-  "dayFri": "Ven"
+  "dayFri": "Ven",
+  "lyricsLoading": "Caricamento testi…",
+  "lyricsFailedToLoad": "Impossibile caricare i testi.",
+  "lyricsTimedOut": "Impossibile caricare i testi — il server ha impiegato troppo tempo per rispondere.",
+  "lyricsNotAvailable": "Nessun testo disponibile per questo brano.",
+  "lyricsApproximateTiming": "Sincronizzazione approssimativa",
+  "albumInfoFailedToLoad": "Impossibile caricare le info dell'album.",
+  "albumInfoTimedOut": "Impossibile caricare le info dell'album — il server ha impiegato troppo tempo per rispondere.",
+  "streakDays_one": "{{count}}g",
+  "streakDays_other": "{{count}}g",
+  "storageGbLimit": "Limite di {{gb}} GB",
+  "storageNoLimit": "Nessun limite",
+  "storageLegendImages": "Immagini",
+  "storageLegendMusic": "Musica",
+  "storageLegendFree": "Disponibile"
 }
