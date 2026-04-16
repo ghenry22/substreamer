@@ -11,8 +11,12 @@
  * - Missing keys — source strings land on master before Crowdin's weekly sync
  *   catches up. i18next falls back to en at runtime, so user impact is zero.
  *
- * Plural-aware: languages that lack a "one" plural category (e.g. ja, zh, ko)
- * are not required to have _one suffixed keys — only the _other form is mandatory.
+ * Plural-aware:
+ *  - Languages that lack a "one" plural category (e.g. ja, zh, ko) do not
+ *    require _one suffixed keys — only the _other form is mandatory.
+ *  - Languages with separate "few" / "many" categories (e.g. ru, uk, pl) DO
+ *    require _few and _many variants; other locales are not expected to have
+ *    them and their absence is ignored.
  */
 
 const fs = require('fs');
@@ -24,7 +28,13 @@ const enPath = path.join(localesDir, 'en.json');
 // Languages that use only the "other" plural form (no grammatical singular).
 // CLDR: Japanese, Chinese, Korean, Vietnamese, Thai, Indonesian, Malay, etc.
 const NO_SINGULAR_LOCALES = new Set([
-  'ja', 'zh', 'ko', 'vi', 'th', 'id', 'ms',
+  'ja', 'zh', 'zh-Hans', 'zh-Hant', 'ko', 'vi', 'th', 'id', 'ms',
+]);
+
+// Languages with CLDR plural categories "few" and "many" in addition to
+// "one" and "other". Source: Unicode CLDR plural rules.
+const MULTI_PLURAL_LOCALES = new Set([
+  'ru', 'uk', 'pl', 'ar', 'cs', 'sk', 'be', 'hr', 'sr', 'bs',
 ]);
 
 const en = JSON.parse(fs.readFileSync(enPath, 'utf8'));
@@ -54,6 +64,11 @@ for (const file of localeFiles) {
     if (localeKeys.has(k)) return false;
     // Allow _one keys to be absent for languages without grammatical singular
     if (NO_SINGULAR_LOCALES.has(code) && k.endsWith('_one')) return false;
+    // _few / _many are only required for locales with those CLDR categories;
+    // for other locales the absence of these keys is expected, not missing.
+    if ((k.endsWith('_few') || k.endsWith('_many')) && !MULTI_PLURAL_LOCALES.has(code)) {
+      return false;
+    }
     return true;
   });
 
