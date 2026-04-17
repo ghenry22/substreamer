@@ -2,12 +2,13 @@ import { HeaderHeightContext } from '@react-navigation/elements';
 import { FlashList } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
 import { memo, useCallback, useContext, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { EmptyState } from '../components/EmptyState';
 import { GradientBackground } from '../components/GradientBackground';
 import { MiniPlayerFooter } from '../components/MiniPlayerFooter';
+import { SegmentControl, type Segment } from '../components/SegmentControl';
 import { SwipeableRow, type SwipeAction } from '../components/SwipeableRow';
 import { useTheme } from '../hooks/useTheme';
 import { albumInfoStore } from '../store/albumInfoStore';
@@ -18,54 +19,6 @@ import { offlineModeStore } from '../store/offlineModeStore';
 import { processingOverlayStore } from '../store/processingOverlayStore';
 
 const ROW_HEIGHT = 72;
-
-/* ------------------------------------------------------------------ */
-/*  Segment control                                                    */
-/* ------------------------------------------------------------------ */
-
-const SEGMENT_KEYS: { key: MbidOverrideType; labelKey: string }[] = [
-  { key: 'artist', labelKey: 'artists' },
-  { key: 'album', labelKey: 'albums' },
-];
-
-const SegmentControl = memo(function SegmentControl({
-  selected,
-  onSelect,
-  colors,
-}: {
-  selected: MbidOverrideType;
-  onSelect: (type: MbidOverrideType) => void;
-  colors: ReturnType<typeof useTheme>['colors'];
-}) {
-  const { t } = useTranslation();
-  return (
-    <View style={[styles.segmentContainer, { backgroundColor: colors.inputBg }]}>
-      {SEGMENT_KEYS.map((seg) => {
-        const isActive = seg.key === selected;
-        return (
-          <Pressable
-            key={seg.key}
-            onPress={() => onSelect(seg.key)}
-            style={[
-              styles.segment,
-              isActive && [styles.segmentActive, { backgroundColor: colors.card }],
-            ]}
-          >
-            <Text
-              style={[
-                styles.segmentText,
-                { color: isActive ? colors.textPrimary : colors.textSecondary },
-                isActive && styles.segmentTextActive,
-              ]}
-            >
-              {t(seg.labelKey)}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-});
 
 /* ------------------------------------------------------------------ */
 /*  Row                                                                */
@@ -167,6 +120,14 @@ export function MbidOverrideBrowserScreen() {
   const offlineMode = offlineModeStore((s) => s.offlineMode);
   const [selectedType, setSelectedType] = useState<MbidOverrideType>('artist');
 
+  const segments = useMemo<Segment<MbidOverrideType>[]>(
+    () => [
+      { key: 'artist', label: t('artists') },
+      { key: 'album', label: t('albums') },
+    ],
+    [t],
+  );
+
   const allEntries = useMemo(() => Object.values(overrides), [overrides]);
 
   const data = useMemo(
@@ -194,7 +155,7 @@ export function MbidOverrideBrowserScreen() {
         keyExtractor={keyExtractor}
         ListHeaderComponent={
           <View style={styles.segmentWrapper}>
-            <SegmentControl selected={selectedType} onSelect={setSelectedType} colors={colors} />
+            <SegmentControl segments={segments} selected={selectedType} onSelect={setSelectedType} />
           </View>
         }
         ListEmptyComponent={
@@ -216,34 +177,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   segmentWrapper: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 16,
-  },
-  segmentContainer: {
-    flexDirection: 'row',
-    borderRadius: 10,
-    padding: 3,
-  },
-  segment: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: 8,
-  },
-  segmentActive: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.15,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  segmentText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  segmentTextActive: {
-    fontWeight: '600',
+    paddingBottom: 12,
   },
   rowWrapper: {
     marginHorizontal: 16,

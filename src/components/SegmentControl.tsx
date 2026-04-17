@@ -20,7 +20,7 @@ export const SegmentControl = memo(function SegmentControl<K extends string>({
   const { colors } = useTheme();
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.inputBg + '99' }]}>
+    <View style={[styles.container, { backgroundColor: colors.inputBg + 'D9' }]}>
       {segments.map(({ key, label }) => {
         const isActive = selected === key;
         return (
