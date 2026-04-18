@@ -1,11 +1,32 @@
+// The store now delegates persistence to `scrobbleTable`. Tests mock that
+// module so we can assert the wiring (SQL calls happen at the right moments)
+// without needing a real SQLite handle. The in-memory state behaviour is
+// unchanged from the pre-migration store and is still exercised directly.
+jest.mock('../persistence/scrobbleTable', () => ({
+  insertScrobble: jest.fn(),
+  replaceAllScrobbles: jest.fn(),
+  clearScrobbles: jest.fn(),
+  hydrateScrobbles: jest.fn(() => []),
+}));
+
 import {
+  clearCompletedScrobbleTable,
   completedScrobbleStore,
   type AnalyticsAggregates,
   type CompletedScrobble,
   type ListeningStats,
 } from '../completedScrobbleStore';
+import {
+  clearScrobbles,
+  hydrateScrobbles,
+  insertScrobble,
+  replaceAllScrobbles,
+} from '../persistence/scrobbleTable';
 
-jest.mock('../sqliteStorage', () => require('../__mocks__/sqliteStorage'));
+const mockInsertScrobble = insertScrobble as jest.Mock;
+const mockReplaceAllScrobbles = replaceAllScrobbles as jest.Mock;
+const mockClearScrobbles = clearScrobbles as jest.Mock;
+const mockHydrateScrobbles = hydrateScrobbles as jest.Mock;
 
 const EMPTY_STATS: ListeningStats = {
   totalPlays: 0,
@@ -36,13 +57,21 @@ function resetStore() {
     completedScrobbles: [],
     stats: { ...EMPTY_STATS },
     aggregates: { ...EMPTY_AGGREGATES, hourBuckets: new Array(24).fill(0) },
+    hasHydrated: false,
   });
 }
 
-beforeEach(resetStore);
+beforeEach(() => {
+  resetStore();
+  mockInsertScrobble.mockClear();
+  mockReplaceAllScrobbles.mockClear();
+  mockClearScrobbles.mockClear();
+  mockHydrateScrobbles.mockReset();
+  mockHydrateScrobbles.mockReturnValue([]);
+});
 
 describe('addCompleted', () => {
-  it('adds valid scrobble and increments stats', () => {
+  it('adds valid scrobble, increments stats, and persists to SQL', () => {
     const s = validScrobble();
     completedScrobbleStore.getState().addCompleted(s);
 
@@ -52,11 +81,14 @@ describe('addCompleted', () => {
     expect(state.stats.totalPlays).toBe(1);
     expect(state.stats.totalListeningSeconds).toBe(180);
     expect(state.stats.uniqueArtists).toEqual({ Artist: true });
+    expect(mockInsertScrobble).toHaveBeenCalledTimes(1);
+    expect(mockInsertScrobble).toHaveBeenCalledWith(s);
   });
 
-  it('rejects when id is missing', () => {
+  it('rejects when id is missing and does not touch SQL', () => {
     completedScrobbleStore.getState().addCompleted(validScrobble({ id: '' }));
     expect(completedScrobbleStore.getState().completedScrobbles).toHaveLength(0);
+    expect(mockInsertScrobble).not.toHaveBeenCalled();
   });
 
   it('rejects when song.id is missing', () => {
@@ -64,6 +96,7 @@ describe('addCompleted', () => {
       validScrobble({ song: { id: '', title: 'X', artist: 'A' } as any }),
     );
     expect(completedScrobbleStore.getState().completedScrobbles).toHaveLength(0);
+    expect(mockInsertScrobble).not.toHaveBeenCalled();
   });
 
   it('rejects when song.title is missing', () => {
@@ -71,13 +104,15 @@ describe('addCompleted', () => {
       validScrobble({ song: { id: 's1', title: '', artist: 'A' } as any }),
     );
     expect(completedScrobbleStore.getState().completedScrobbles).toHaveLength(0);
+    expect(mockInsertScrobble).not.toHaveBeenCalled();
   });
 
-  it('rejects duplicates by id', () => {
+  it('rejects duplicates by id (in-memory) and does not double-write', () => {
     const s = validScrobble();
     completedScrobbleStore.getState().addCompleted(s);
     completedScrobbleStore.getState().addCompleted(s);
     expect(completedScrobbleStore.getState().completedScrobbles).toHaveLength(1);
+    expect(mockInsertScrobble).toHaveBeenCalledTimes(1);
   });
 
   it('handles missing duration', () => {
@@ -108,6 +143,7 @@ describe('addCompleted', () => {
       { id: 'x', song: null as any, time: Date.now() } as CompletedScrobble,
     );
     expect(completedScrobbleStore.getState().completedScrobbles).toHaveLength(0);
+    expect(mockInsertScrobble).not.toHaveBeenCalled();
   });
 
   it('accumulates stats correctly over many adds', () => {
@@ -123,6 +159,7 @@ describe('addCompleted', () => {
     expect(stats.totalPlays).toBe(10);
     expect(stats.totalListeningSeconds).toBe(1000);
     expect(Object.keys(stats.uniqueArtists)).toHaveLength(3);
+    expect(mockInsertScrobble).toHaveBeenCalledTimes(10);
   });
 });
 
@@ -249,7 +286,6 @@ describe('aggregates – incremental updates', () => {
     expect(incrementalAgg.genreCounts).toEqual(rebuiltAgg.genreCounts);
     expect(incrementalAgg.hourBuckets).toEqual(rebuiltAgg.hourBuckets);
     expect(incrementalAgg.dayCounts).toEqual(rebuiltAgg.dayCounts);
-    // songCounts: compare counts (song metadata may differ since rebuild uses last occurrence)
     for (const key of Object.keys(rebuiltAgg.songCounts)) {
       expect(incrementalAgg.songCounts[key].count).toBe(rebuiltAgg.songCounts[key].count);
     }
@@ -362,145 +398,109 @@ describe('rebuildAggregates', () => {
   });
 });
 
-describe('onRehydrateStorage', () => {
-  it('deduplicates scrobbles with same id and rebuilds stats', () => {
-    const duped: CompletedScrobble[] = [
-      validScrobble({ id: 'a', song: { id: 's1', title: 'X', artist: 'A', duration: 100 } as any }),
-      validScrobble({ id: 'a', song: { id: 's1', title: 'X', artist: 'A', duration: 100 } as any }),
-      validScrobble({ id: 'b', song: { id: 's2', title: 'Y', artist: 'B', duration: 200 } as any }),
+describe('hydrateFromDb', () => {
+  it('loads scrobbles from SQL, rebuilds derived state, and flips hasHydrated', () => {
+    const rows: CompletedScrobble[] = [
+      validScrobble({
+        id: 'a',
+        song: { id: 's1', title: 'A', artist: 'Art', duration: 100 } as any,
+        time: new Date(2025, 0, 15, 10).getTime(),
+      }),
+      validScrobble({
+        id: 'b',
+        song: { id: 's2', title: 'B', artist: 'Art', duration: 200 } as any,
+        time: new Date(2025, 0, 15, 14).getTime(),
+      }),
     ];
-    completedScrobbleStore.setState({
-      completedScrobbles: duped,
-      stats: { totalPlays: 3, totalListeningSeconds: 400, uniqueArtists: { A: true, B: true } },
-      aggregates: { ...EMPTY_AGGREGATES, hourBuckets: new Array(24).fill(0) },
-    });
-    // Trigger rehydrate callback
-    completedScrobbleStore.persist.rehydrate();
+    mockHydrateScrobbles.mockReturnValue(rows);
+
+    completedScrobbleStore.getState().hydrateFromDb();
+
     const state = completedScrobbleStore.getState();
-    expect(state.completedScrobbles).toHaveLength(2);
+    expect(state.hasHydrated).toBe(true);
+    expect(state.completedScrobbles).toEqual(rows);
     expect(state.stats.totalPlays).toBe(2);
     expect(state.stats.totalListeningSeconds).toBe(300);
+    expect(state.aggregates.artistCounts['Art']).toBe(2);
+    expect(state.aggregates.dayCounts['2025-01-15']).toBe(2);
   });
 
-  it('removes scrobbles with missing id or song fields', () => {
-    const dirty = [
-      validScrobble({ id: 'ok', song: { id: 's1', title: 'X', artist: 'A', duration: 100 } as any }),
-      { id: '', song: { id: 's2', title: 'Y' }, time: Date.now() } as CompletedScrobble,
-      { id: 'bad-song', song: { id: '', title: 'Z' }, time: Date.now() } as CompletedScrobble,
-      { id: 'no-title', song: { id: 's3', title: '' }, time: Date.now() } as CompletedScrobble,
+  it('is idempotent — second call is a no-op once hasHydrated is true', () => {
+    mockHydrateScrobbles.mockReturnValue([
+      validScrobble({ id: 'a', song: { id: 's1', title: 'A', artist: 'Art', duration: 100 } as any }),
+    ]);
+
+    completedScrobbleStore.getState().hydrateFromDb();
+    expect(mockHydrateScrobbles).toHaveBeenCalledTimes(1);
+
+    completedScrobbleStore.getState().hydrateFromDb();
+    expect(mockHydrateScrobbles).toHaveBeenCalledTimes(1);
+  });
+
+  it('hydrates empty when SQL returns no rows', () => {
+    mockHydrateScrobbles.mockReturnValue([]);
+    completedScrobbleStore.getState().hydrateFromDb();
+    const state = completedScrobbleStore.getState();
+    expect(state.hasHydrated).toBe(true);
+    expect(state.completedScrobbles).toEqual([]);
+    expect(state.stats).toEqual({ totalPlays: 0, totalListeningSeconds: 0, uniqueArtists: {} });
+  });
+});
+
+describe('replaceAll', () => {
+  it('writes to SQL and updates in-memory state with rebuilt stats/aggregates', () => {
+    const scrobbles: CompletedScrobble[] = [
+      validScrobble({ id: '1', song: { id: 's1', title: 'A', artist: 'Art', duration: 100 } as any, time: new Date(2025, 0, 15, 10).getTime() }),
+      validScrobble({ id: '2', song: { id: 's2', title: 'B', artist: 'Art', duration: 200 } as any, time: new Date(2025, 0, 15, 14).getTime() }),
     ];
-    completedScrobbleStore.setState({
-      completedScrobbles: dirty,
-      stats: { totalPlays: 4, totalListeningSeconds: 0, uniqueArtists: {} },
-      aggregates: { ...EMPTY_AGGREGATES, hourBuckets: new Array(24).fill(0) },
-    });
-    completedScrobbleStore.persist.rehydrate();
+
+    completedScrobbleStore.getState().replaceAll(scrobbles);
+
+    expect(mockReplaceAllScrobbles).toHaveBeenCalledTimes(1);
+    expect(mockReplaceAllScrobbles).toHaveBeenCalledWith(scrobbles);
+
+    const state = completedScrobbleStore.getState();
+    expect(state.completedScrobbles).toEqual(scrobbles);
+    expect(state.stats.totalPlays).toBe(2);
+    expect(state.stats.totalListeningSeconds).toBe(300);
+    expect(state.aggregates.artistCounts['Art']).toBe(2);
+  });
+
+  it('drops invalid records and dedupes before writing to SQL', () => {
+    const dirty = [
+      validScrobble({ id: 'ok', song: { id: 's1', title: 'A', artist: 'Art', duration: 100 } as any }),
+      validScrobble({ id: 'ok', song: { id: 's1', title: 'A', artist: 'Art', duration: 100 } as any }), // dup
+      validScrobble({ id: '', song: { id: 's2', title: 'B' } as any }),
+      validScrobble({ id: 'bad-song', song: { id: '', title: 'x' } as any }),
+      validScrobble({ id: 'no-title', song: { id: 's3', title: '' } as any }),
+      { id: 'null', song: null as any, time: Date.now() } as CompletedScrobble,
+    ];
+
+    completedScrobbleStore.getState().replaceAll(dirty);
+
+    expect(mockReplaceAllScrobbles).toHaveBeenCalledTimes(1);
+    const [cleaned] = mockReplaceAllScrobbles.mock.calls[0];
+    expect(cleaned).toHaveLength(1);
+    expect(cleaned[0].id).toBe('ok');
+
     expect(completedScrobbleStore.getState().completedScrobbles).toHaveLength(1);
-    expect(completedScrobbleStore.getState().stats.totalPlays).toBe(1);
   });
 
-  it('rebuilds stats when totalPlays is 0 but scrobbles exist', () => {
-    completedScrobbleStore.setState({
-      completedScrobbles: [
-        validScrobble({ id: 'a', song: { id: 's1', title: 'X', artist: 'A', duration: 100 } as any }),
-      ],
-      stats: { ...EMPTY_STATS },
-      aggregates: { ...EMPTY_AGGREGATES, hourBuckets: new Array(24).fill(0) },
-    });
-    completedScrobbleStore.persist.rehydrate();
-    expect(completedScrobbleStore.getState().stats.totalPlays).toBe(1);
-    expect(completedScrobbleStore.getState().stats.totalListeningSeconds).toBe(100);
-  });
+  it('replaceAll with empty array resets the store to empty', () => {
+    completedScrobbleStore.getState().addCompleted(validScrobble({ id: '1' }));
+    completedScrobbleStore.getState().replaceAll([]);
 
-  it('does not rebuild when stats are already correct', () => {
-    const scrobble = validScrobble({ id: 'a', song: { id: 's1', title: 'X', artist: 'A', duration: 100 } as any });
-    completedScrobbleStore.setState({
-      completedScrobbles: [scrobble],
-      stats: { totalPlays: 1, totalListeningSeconds: 100, uniqueArtists: { A: true } },
-      aggregates: { artistCounts: { A: 1 }, albumCounts: {}, songCounts: { s1: { song: scrobble.song, count: 1 } }, genreCounts: {}, hourBuckets: new Array(24).fill(0), dayCounts: { '2025-01-15': 1 } },
-    });
-    completedScrobbleStore.persist.rehydrate();
-    const statsAfter = completedScrobbleStore.getState().stats;
-    expect(statsAfter.totalPlays).toBe(1);
-    expect(statsAfter.totalListeningSeconds).toBe(100);
-  });
-
-  it('cleans up [object Object] keys in genreCounts on rehydration', () => {
-    const scrobble = validScrobble({
-      id: 'a',
-      song: { id: 's1', title: 'X', artist: 'A', duration: 100, genres: [{ name: 'Rock' }] } as any,
-      time: new Date(2025, 0, 15, 10).getTime(),
-    });
-    completedScrobbleStore.setState({
-      completedScrobbles: [scrobble],
-      stats: { totalPlays: 1, totalListeningSeconds: 100, uniqueArtists: { A: true } },
-      aggregates: {
-        artistCounts: { A: 1 },
-        albumCounts: {},
-        songCounts: { s1: { song: scrobble.song, count: 1 } },
-        genreCounts: { '[object Object]': 1 },
-        hourBuckets: new Array(24).fill(0),
-        dayCounts: { '2025-01-15': 1 },
-      },
-    });
-    completedScrobbleStore.persist.rehydrate();
-    const { aggregates } = completedScrobbleStore.getState();
-    expect(aggregates.genreCounts['[object Object]']).toBeUndefined();
-    expect(aggregates.genreCounts['Rock']).toBe(1);
-  });
-
-  it('rebuilds aggregates when dayCounts is missing (upgrade path)', () => {
-    const scrobble = validScrobble({
-      id: 'a',
-      song: { id: 's1', title: 'X', artist: 'A', duration: 100 } as any,
-      time: new Date(2025, 0, 15, 10).getTime(),
-    });
-    completedScrobbleStore.setState({
-      completedScrobbles: [scrobble],
-      stats: { totalPlays: 1, totalListeningSeconds: 100, uniqueArtists: { A: true } },
-      aggregates: { ...EMPTY_AGGREGATES, hourBuckets: new Array(24).fill(0) },
-    });
-    completedScrobbleStore.persist.rehydrate();
-    const { aggregates } = completedScrobbleStore.getState();
-    expect(aggregates.dayCounts['2025-01-15']).toBe(1);
-    expect(aggregates.artistCounts['A']).toBe(1);
-  });
-
-  it('resets to defaults when rehydrate body throws (corrupt persisted payload)', () => {
-    // Persist a non-array shape under `completedScrobbles`. After Zustand
-    // round-trips through JSON the field comes back as a plain object with
-    // no `.filter` method — exactly the kind of garbage a downgraded build
-    // or truncated JSON could leave behind. The rehydrate body would throw
-    // "filter is not a function" without the try/catch.
-    completedScrobbleStore.setState({
-      completedScrobbles: { not: 'an array' } as unknown as CompletedScrobble[],
-      stats: { totalPlays: 999, totalListeningSeconds: 999, uniqueArtists: { Garbage: true } },
-      aggregates: { ...EMPTY_AGGREGATES, hourBuckets: new Array(24).fill(0) },
-    });
-
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-
-    // Must NOT throw — the catch handler resets to safe defaults.
-    expect(() => completedScrobbleStore.persist.rehydrate()).not.toThrow();
-
+    expect(mockReplaceAllScrobbles).toHaveBeenCalledWith([]);
     const state = completedScrobbleStore.getState();
     expect(state.completedScrobbles).toEqual([]);
     expect(state.stats.totalPlays).toBe(0);
-    expect(state.stats.totalListeningSeconds).toBe(0);
-    expect(state.stats.uniqueArtists).toEqual({});
     expect(state.aggregates.artistCounts).toEqual({});
-    expect(state.aggregates.albumCounts).toEqual({});
-    expect(state.aggregates.songCounts).toEqual({});
-    expect(state.aggregates.genreCounts).toEqual({});
-    expect(state.aggregates.dayCounts).toEqual({});
-    expect(state.aggregates.hourBuckets).toEqual(new Array(24).fill(0));
-
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('rehydrate failed'),
-      expect.stringContaining('filter is not a function'),
-    );
-
-    warnSpy.mockRestore();
   });
+});
 
+describe('clearCompletedScrobbleTable', () => {
+  it('proxies to clearScrobbles on the persistence module', () => {
+    clearCompletedScrobbleTable();
+    expect(mockClearScrobbles).toHaveBeenCalledTimes(1);
+  });
 });

@@ -7,6 +7,7 @@
 
 import { clearAllStorage } from './sqliteStorage';
 import { clearDetailTables } from './persistence/detailTables';
+import { clearScrobbles } from './persistence/scrobbleTable';
 
 // Persisted stores
 import { albumDetailStore } from './albumDetailStore';
@@ -120,6 +121,9 @@ export function resetAllStores(): void {
   // `storage` key-value table that `clearAllStorage()` wipes, so they would
   // otherwise persist stale rows across logout.
   clearDetailTables();
+  // completedScrobbleStore also persists to a per-row table (`scrobble_events`)
+  // in its own connection; truncate it here so logged-out state is clean.
+  clearScrobbles();
   for (const store of allStores) {
     (store.setState as (state: unknown, replace: boolean) => void)(
       store.getInitialState(),

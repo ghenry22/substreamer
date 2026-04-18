@@ -14,6 +14,15 @@ jest.mock('expo-sqlite', () => ({
   },
 }));
 
+// Task #13 delegates bulk-insert to the scrobble table helper. Mock it so we
+// can assert wiring without needing a real SQLite handle.
+jest.mock('../../store/persistence/scrobbleTable', () => ({
+  replaceAllScrobbles: jest.fn(),
+  insertScrobble: jest.fn(),
+  clearScrobbles: jest.fn(),
+  hydrateScrobbles: jest.fn(() => []),
+}));
+
 jest.mock('expo-file-system', () => {
   class MockFile {
     uri: string;
@@ -65,7 +74,10 @@ import { completedScrobbleStore } from '../../store/completedScrobbleStore';
 import { mbidOverrideStore } from '../../store/mbidOverrideStore';
 import { musicCacheStore } from '../../store/musicCacheStore';
 import { playbackSettingsStore } from '../../store/playbackSettingsStore';
+import { replaceAllScrobbles } from '../../store/persistence/scrobbleTable';
 import { sqliteStorage } from '../../store/sqliteStorage';
+
+const mockReplaceAllScrobbles = replaceAllScrobbles as jest.Mock;
 
 function seedAuthInSqlite(serverUrl: string | null, username: string | null) {
   if (!serverUrl || !username) {
@@ -91,8 +103,10 @@ beforeEach(() => {
   sqliteStorage.removeItem('substreamer-playback-settings');
   sqliteStorage.removeItem('substreamer-shares');
   sqliteStorage.removeItem('substreamer-music-cache');
+  sqliteStorage.removeItem('substreamer-completed-scrobbles');
   mbidOverrideStore.setState({ overrides: {} } as any);
   musicCacheStore.setState({ downloadedFormats: {} } as any);
+  mockReplaceAllScrobbles.mockClear();
   seedAuthInSqlite('https://music.example.com', 'testuser');
 });
 
@@ -716,6 +730,109 @@ describe('Task 11 – Migrate legacy zh locale to zh-Hans', () => {
 
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('Failed to parse locale');
+  });
+});
+
+describe('Task 13 – Move completed scrobbles to per-row SQLite table', () => {
+  function seedBlob(scrobbles: any[]) {
+    sqliteStorage.setItem(
+      'substreamer-completed-scrobbles',
+      JSON.stringify({ state: { completedScrobbles: scrobbles } }),
+    );
+  }
+
+  it('skips when no persisted blob exists', async () => {
+    sqliteStorage.removeItem('substreamer-completed-scrobbles');
+    await runMigrations(12);
+    const logContent = mockFileWrite.mock.calls[0][0] as string;
+    expect(logContent).toContain('No persisted scrobble blob');
+    expect(mockReplaceAllScrobbles).not.toHaveBeenCalled();
+  });
+
+  it('removes corrupt blob and skips', async () => {
+    sqliteStorage.setItem('substreamer-completed-scrobbles', '{bad json');
+    await runMigrations(12);
+    const logContent = mockFileWrite.mock.calls[0][0] as string;
+    expect(logContent).toContain('Failed to parse scrobble blob');
+    expect(sqliteStorage.getItem('substreamer-completed-scrobbles')).toBeNull();
+    expect(mockReplaceAllScrobbles).not.toHaveBeenCalled();
+  });
+
+  it('removes blob and skips when scrobble array is empty', async () => {
+    seedBlob([]);
+    await runMigrations(12);
+    const logContent = mockFileWrite.mock.calls[0][0] as string;
+    expect(logContent).toContain('Scrobble blob was empty');
+    expect(sqliteStorage.getItem('substreamer-completed-scrobbles')).toBeNull();
+    expect(mockReplaceAllScrobbles).not.toHaveBeenCalled();
+  });
+
+  it('removes blob and skips when scrobble field is missing/non-array', async () => {
+    sqliteStorage.setItem(
+      'substreamer-completed-scrobbles',
+      JSON.stringify({ state: { completedScrobbles: 'not-an-array' } }),
+    );
+    await runMigrations(12);
+    const logContent = mockFileWrite.mock.calls[0][0] as string;
+    expect(logContent).toContain('Scrobble blob was empty');
+    expect(sqliteStorage.getItem('substreamer-completed-scrobbles')).toBeNull();
+    expect(mockReplaceAllScrobbles).not.toHaveBeenCalled();
+  });
+
+  it('migrates valid scrobbles into the table and deletes the blob', async () => {
+    const scrobbles = [
+      { id: 'a', song: { id: 's1', title: 'A', artist: 'Art', duration: 100 }, time: 1 },
+      { id: 'b', song: { id: 's2', title: 'B', artist: 'Art', duration: 200 }, time: 2 },
+    ];
+    seedBlob(scrobbles);
+
+    await runMigrations(12);
+
+    expect(mockReplaceAllScrobbles).toHaveBeenCalledTimes(1);
+    const [passed] = mockReplaceAllScrobbles.mock.calls[0];
+    expect(passed).toHaveLength(2);
+    expect(passed.map((s: any) => s.id)).toEqual(['a', 'b']);
+    expect(sqliteStorage.getItem('substreamer-completed-scrobbles')).toBeNull();
+
+    const logContent = mockFileWrite.mock.calls[0][0] as string;
+    expect(logContent).toContain('Migrated 2 scrobble(s) to per-row table');
+    expect(logContent).not.toContain('dropped');
+  });
+
+  it('drops invalid records and duplicates before migrating', async () => {
+    const scrobbles = [
+      { id: 'ok', song: { id: 's1', title: 'A', artist: 'Art', duration: 100 }, time: 1 },
+      { id: 'ok', song: { id: 's1', title: 'A', artist: 'Art', duration: 100 }, time: 2 }, // dup
+      { id: '', song: { id: 's2', title: 'x' }, time: 3 }, // missing id
+      { id: 'bad-song', song: { id: '', title: 'x' }, time: 4 }, // missing song.id
+      { id: 'no-title', song: { id: 's3', title: '' }, time: 5 }, // missing title
+      { id: 'null-song', song: null, time: 6 }, // null song
+      null, // bad entry
+      { id: 'keep', song: { id: 's9', title: 'Z', artist: 'Art' }, time: 7 },
+    ];
+    seedBlob(scrobbles);
+
+    await runMigrations(12);
+
+    expect(mockReplaceAllScrobbles).toHaveBeenCalledTimes(1);
+    const [passed] = mockReplaceAllScrobbles.mock.calls[0];
+    expect(passed.map((s: any) => s.id).sort()).toEqual(['keep', 'ok']);
+
+    const logContent = mockFileWrite.mock.calls[0][0] as string;
+    expect(logContent).toContain('Migrated 2 scrobble(s) to per-row table');
+    expect(logContent).toContain('dropped 6 invalid/duplicate');
+  });
+
+  it('is idempotent — second run is a no-op once the blob is gone', async () => {
+    seedBlob([{ id: 'a', song: { id: 's1', title: 'A', artist: 'Art', duration: 100 }, time: 1 }]);
+
+    await runMigrations(12);
+    expect(mockReplaceAllScrobbles).toHaveBeenCalledTimes(1);
+    expect(sqliteStorage.getItem('substreamer-completed-scrobbles')).toBeNull();
+
+    mockReplaceAllScrobbles.mockClear();
+    await runMigrations(12);
+    expect(mockReplaceAllScrobbles).not.toHaveBeenCalled();
   });
 });
 

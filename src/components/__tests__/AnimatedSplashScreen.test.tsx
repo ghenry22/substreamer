@@ -454,6 +454,43 @@ describe('AnimatedSplashScreen', () => {
       expect(onFinish).toHaveBeenCalledTimes(1);
     });
 
+    it('hydrates per-row stores (album, song index, completed scrobbles) after migrations', async () => {
+      mockPendingTasks = [{ version: 1, name: 'test-migration' }];
+      mockRunMigrations.mockResolvedValue(1);
+
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { albumDetailStore } = require('../../store/albumDetailStore');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { songIndexStore } = require('../../store/songIndexStore');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { completedScrobbleStore } = require('../../store/completedScrobbleStore');
+
+      const albumHydrate = jest.spyOn(albumDetailStore.getState(), 'hydrateFromDb').mockImplementation(() => {});
+      const songHydrate = jest.spyOn(songIndexStore.getState(), 'hydrateFromDb').mockImplementation(() => {});
+      const scrobbleHydrate = jest.spyOn(completedScrobbleStore.getState(), 'hydrateFromDb').mockImplementation(() => {});
+
+      const onFinish = jest.fn();
+      render(<AnimatedSplashScreen onFinish={onFinish} />);
+
+      act(() => {
+        completeBothFlags();
+      });
+      act(() => {
+        fireLastCallback();
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(albumHydrate).toHaveBeenCalledTimes(1);
+      expect(songHydrate).toHaveBeenCalledTimes(1);
+      expect(scrobbleHydrate).toHaveBeenCalledTimes(1);
+
+      albumHydrate.mockRestore();
+      songHydrate.mockRestore();
+      scrobbleHydrate.mockRestore();
+    });
+
     it('still finishes when runMigrations rejects unexpectedly', async () => {
       mockPendingTasks = [{ version: 1, name: 'test-migration' }];
       mockRunMigrations = jest

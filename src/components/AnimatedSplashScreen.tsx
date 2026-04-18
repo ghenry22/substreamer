@@ -24,6 +24,7 @@ import { useTranslation } from 'react-i18next';
 import AnimatedWaveformLogo from './AnimatedWaveformLogo';
 import { getPendingTasks, runMigrations } from '../services/migrationService';
 import { albumDetailStore } from '../store/albumDetailStore';
+import { completedScrobbleStore } from '../store/completedScrobbleStore';
 import { migrationStore } from '../store/migrationStore';
 import { songIndexStore } from '../store/songIndexStore';
 import { sqliteStorage } from '../store/sqliteStorage';
@@ -139,6 +140,7 @@ export default function AnimatedSplashScreen({ onFinish }: Props) {
           try {
             albumDetailStore.getState().hydrateFromDb();
             songIndexStore.getState().hydrateFromDb();
+            completedScrobbleStore.getState().hydrateFromDb();
           } catch (e) {
             console.warn('[splash] per-row hydration failed', e);
           }

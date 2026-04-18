@@ -1,7 +1,11 @@
 import { create } from 'zustand';
-import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { sqliteStorage } from './sqliteStorage';
+import {
+  clearScrobbles,
+  hydrateScrobbles,
+  insertScrobble,
+  replaceAllScrobbles,
+} from './persistence/scrobbleTable';
 
 import { type Child } from '../services/subsonicService';
 import { getPrimaryGenre } from '../utils/genreHelpers';
@@ -57,10 +61,20 @@ export interface CompletedScrobbleState {
   completedScrobbles: CompletedScrobble[];
   stats: ListeningStats;
   aggregates: AnalyticsAggregates;
+  /** True after the on-start hydration from SQLite has populated the store. */
+  hasHydrated: boolean;
 
   addCompleted: (scrobble: CompletedScrobble) => void;
   rebuildStats: () => void;
   rebuildAggregates: () => void;
+  /**
+   * Replace the entire scrobble set both in the SQLite table and in memory.
+   * Used by backup restore. Rebuilds derived stats + aggregates from the
+   * provided list.
+   */
+  replaceAll: (scrobbles: CompletedScrobble[]) => void;
+  /** Called once at app start to load persisted rows into memory. */
+  hydrateFromDb: () => void;
 }
 
 function buildStats(scrobbles: CompletedScrobble[]): ListeningStats {
@@ -116,168 +130,129 @@ function buildAggregates(scrobbles: CompletedScrobble[]): AnalyticsAggregates {
   return { artistCounts, albumCounts, songCounts, genreCounts, hourBuckets, dayCounts };
 }
 
-const PERSIST_KEY = 'substreamer-completed-scrobbles';
+export const completedScrobbleStore = create<CompletedScrobbleState>()((set, get) => ({
+  completedScrobbles: [],
+  stats: { ...EMPTY_STATS },
+  aggregates: { ...EMPTY_AGGREGATES, hourBuckets: new Array(24).fill(0) },
+  hasHydrated: false,
 
-export const completedScrobbleStore = create<CompletedScrobbleState>()(
-  persist(
-    (set, get) => ({
-      completedScrobbles: [],
-      stats: { ...EMPTY_STATS },
-      aggregates: { ...EMPTY_AGGREGATES, hourBuckets: new Array(24).fill(0) },
-
-      addCompleted: (scrobble) =>
-        set((state) => {
-          if (
-            !scrobble.id ||
-            !scrobble.song?.id ||
-            !scrobble.song.title ||
-            state.completedScrobbles.some((s) => s.id === scrobble.id)
-          ) {
-            return state;
-          }
-
-          const artist = scrobble.song.artist;
-          const newArtists =
-            artist && !(artist in state.stats.uniqueArtists)
-              ? { ...state.stats.uniqueArtists, [artist]: true as const }
-              : state.stats.uniqueArtists;
-
-          // Incremental aggregate updates
-          const agg = state.aggregates;
-          const artistName = artist ?? 'Unknown';
-          const newArtistCounts = { ...agg.artistCounts, [artistName]: (agg.artistCounts[artistName] ?? 0) + 1 };
-
-          const albumKey = `${scrobble.song.album ?? 'Unknown'}::${artistName}`;
-          const existingAlbum = agg.albumCounts[albumKey];
-          const newAlbumCounts = {
-            ...agg.albumCounts,
-            [albumKey]: existingAlbum
-              ? { ...existingAlbum, count: existingAlbum.count + 1, coverArt: scrobble.song.coverArt ?? existingAlbum.coverArt }
-              : { artist: artistName, coverArt: scrobble.song.coverArt ?? undefined, count: 1 },
-          };
-
-          const existingSong = agg.songCounts[scrobble.song.id];
-          const newSongCounts = {
-            ...agg.songCounts,
-            [scrobble.song.id]: { song: scrobble.song, count: (existingSong?.count ?? 0) + 1 },
-          };
-
-          const genre = getPrimaryGenre(scrobble.song);
-          let newGenreCounts = agg.genreCounts;
-          if (genre) {
-            newGenreCounts = { ...agg.genreCounts, [genre]: (agg.genreCounts[genre] ?? 0) + 1 };
-          }
-
-          const newHourBuckets = [...agg.hourBuckets];
-          newHourBuckets[new Date(scrobble.time).getHours()]++;
-
-          const dk = aggregateDateKey(scrobble.time);
-          const newDayCounts = { ...agg.dayCounts, [dk]: (agg.dayCounts[dk] ?? 0) + 1 };
-
-          return {
-            completedScrobbles: [...state.completedScrobbles, scrobble],
-            stats: {
-              totalPlays: state.stats.totalPlays + 1,
-              totalListeningSeconds:
-                state.stats.totalListeningSeconds + (scrobble.song.duration ?? 0),
-              uniqueArtists: newArtists,
-            },
-            aggregates: {
-              artistCounts: newArtistCounts,
-              albumCounts: newAlbumCounts,
-              songCounts: newSongCounts,
-              genreCounts: newGenreCounts,
-              hourBuckets: newHourBuckets,
-              dayCounts: newDayCounts,
-            },
-          };
-        }),
-
-      rebuildStats: () => {
-        const { completedScrobbles } = get();
-        set({ stats: buildStats(completedScrobbles) });
-      },
-
-      rebuildAggregates: () => {
-        const { completedScrobbles } = get();
-        set({ aggregates: buildAggregates(completedScrobbles) });
-      },
-    }),
-    {
-      name: PERSIST_KEY,
-      storage: createJSONStorage(() => sqliteStorage),
-      partialize: (state) => ({
-        completedScrobbles: state.completedScrobbles,
-        stats: state.stats,
-        aggregates: state.aggregates,
-      }),
-      onRehydrateStorage: () => (state) => {
-        if (!state) return;
-
-        // The rehydrate body touches user-supplied scrobble objects via array
-        // mutations, set lookups, and arbitrary genre keys. A corrupt persisted
-        // payload (truncated JSON, wrong shape from a downgraded build, garbage
-        // values from a flaky disk) could throw inside any of these — and a
-        // throw inside a Zustand `onRehydrateStorage` callback propagates up
-        // through the persist middleware and crashes the JS bundle before any
-        // React error boundary mounts. Wrap the entire body and reset to safe
-        // defaults if anything goes wrong; the user loses their scrobble cache
-        // but the app still launches and can rebuild from the server.
-        try {
-          const seen = new Set<string>();
-          const before = state.completedScrobbles.length;
-          state.completedScrobbles = state.completedScrobbles.filter((s) => {
-            if (!s.id || !s.song?.id || !s.song.title || seen.has(s.id)) return false;
-            seen.add(s.id);
-            return true;
-          });
-          if (state.completedScrobbles.length !== before) {
-            state.rebuildStats();
-            state.rebuildAggregates();
-            return;
-          }
-
-          if (
-            state.stats.totalPlays === 0 &&
-            state.completedScrobbles.length > 0
-          ) {
-            state.rebuildStats();
-          }
-
-          // Clean up corrupted "[object Object]" keys in genreCounts from the
-          // genres type mismatch bug (genres elements were {name} objects, not strings)
-          if (state.aggregates?.genreCounts && '[object Object]' in state.aggregates.genreCounts) {
-            if (state.completedScrobbles.length > 0) {
-              state.rebuildAggregates();
-              return;
-            }
-          }
-
-          // Rebuild aggregates if missing (upgrade from older version)
-          if (!state.aggregates?.dayCounts || Object.keys(state.aggregates.dayCounts).length === 0) {
-            if (state.completedScrobbles.length > 0) {
-              state.rebuildAggregates();
-            }
-          }
-        } catch (e) {
-          // eslint-disable-next-line no-console
-          console.warn(
-            '[completedScrobbleStore] rehydrate failed; resetting to defaults:',
-            e instanceof Error ? e.message : String(e),
-          );
-          state.completedScrobbles = [];
-          state.stats = { ...EMPTY_STATS, uniqueArtists: {} };
-          state.aggregates = {
-            ...EMPTY_AGGREGATES,
-            artistCounts: {},
-            albumCounts: {},
-            songCounts: {},
-            genreCounts: {},
-            hourBuckets: new Array(24).fill(0),
-            dayCounts: {},
-          };
-        }
-      },
+  addCompleted: (scrobble) => {
+    const state = get();
+    if (
+      !scrobble.id ||
+      !scrobble.song?.id ||
+      !scrobble.song.title ||
+      state.completedScrobbles.some((s) => s.id === scrobble.id)
+    ) {
+      return;
     }
-  )
-);
+
+    // Persist first so the row is on disk before any subscriber acts on the
+    // new in-memory state. insertScrobble is INSERT OR IGNORE so a collision
+    // with a concurrently-added row can't throw.
+    insertScrobble(scrobble);
+
+    const artist = scrobble.song.artist;
+    const newArtists =
+      artist && !(artist in state.stats.uniqueArtists)
+        ? { ...state.stats.uniqueArtists, [artist]: true as const }
+        : state.stats.uniqueArtists;
+
+    // Incremental aggregate updates
+    const agg = state.aggregates;
+    const artistName = artist ?? 'Unknown';
+    const newArtistCounts = { ...agg.artistCounts, [artistName]: (agg.artistCounts[artistName] ?? 0) + 1 };
+
+    const albumKey = `${scrobble.song.album ?? 'Unknown'}::${artistName}`;
+    const existingAlbum = agg.albumCounts[albumKey];
+    const newAlbumCounts = {
+      ...agg.albumCounts,
+      [albumKey]: existingAlbum
+        ? { ...existingAlbum, count: existingAlbum.count + 1, coverArt: scrobble.song.coverArt ?? existingAlbum.coverArt }
+        : { artist: artistName, coverArt: scrobble.song.coverArt ?? undefined, count: 1 },
+    };
+
+    const existingSong = agg.songCounts[scrobble.song.id];
+    const newSongCounts = {
+      ...agg.songCounts,
+      [scrobble.song.id]: { song: scrobble.song, count: (existingSong?.count ?? 0) + 1 },
+    };
+
+    const genre = getPrimaryGenre(scrobble.song);
+    let newGenreCounts = agg.genreCounts;
+    if (genre) {
+      newGenreCounts = { ...agg.genreCounts, [genre]: (agg.genreCounts[genre] ?? 0) + 1 };
+    }
+
+    const newHourBuckets = [...agg.hourBuckets];
+    newHourBuckets[new Date(scrobble.time).getHours()]++;
+
+    const dk = aggregateDateKey(scrobble.time);
+    const newDayCounts = { ...agg.dayCounts, [dk]: (agg.dayCounts[dk] ?? 0) + 1 };
+
+    set({
+      completedScrobbles: [...state.completedScrobbles, scrobble],
+      stats: {
+        totalPlays: state.stats.totalPlays + 1,
+        totalListeningSeconds:
+          state.stats.totalListeningSeconds + (scrobble.song.duration ?? 0),
+        uniqueArtists: newArtists,
+      },
+      aggregates: {
+        artistCounts: newArtistCounts,
+        albumCounts: newAlbumCounts,
+        songCounts: newSongCounts,
+        genreCounts: newGenreCounts,
+        hourBuckets: newHourBuckets,
+        dayCounts: newDayCounts,
+      },
+    });
+  },
+
+  rebuildStats: () => {
+    const { completedScrobbles } = get();
+    set({ stats: buildStats(completedScrobbles) });
+  },
+
+  rebuildAggregates: () => {
+    const { completedScrobbles } = get();
+    set({ aggregates: buildAggregates(completedScrobbles) });
+  },
+
+  replaceAll: (scrobbles) => {
+    // Dedupe + validate mirror what `hydrateScrobbles` / `insertScrobble`
+    // already enforce, so the in-memory array matches what lands on disk.
+    const seen = new Set<string>();
+    const valid: CompletedScrobble[] = [];
+    for (const s of scrobbles) {
+      if (!s?.id || !s.song?.id || !s.song.title || seen.has(s.id)) continue;
+      seen.add(s.id);
+      valid.push(s);
+    }
+    replaceAllScrobbles(valid);
+    set({
+      completedScrobbles: valid,
+      stats: buildStats(valid),
+      aggregates: buildAggregates(valid),
+    });
+  },
+
+  hydrateFromDb: () => {
+    if (get().hasHydrated) return;
+    const restored = hydrateScrobbles();
+    set({
+      completedScrobbles: restored,
+      stats: buildStats(restored),
+      aggregates: buildAggregates(restored),
+      hasHydrated: true,
+    });
+  },
+}));
+
+/**
+ * Convenience wrapper that exposes the underlying table clear so
+ * `resetAllStores` can wipe disk state alongside the in-memory reset.
+ */
+export function clearCompletedScrobbleTable(): void {
+  clearScrobbles();
+}

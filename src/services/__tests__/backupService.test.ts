@@ -60,8 +60,18 @@ jest.mock('expo-gzip', () => ({
 
 jest.mock('../../store/sqliteStorage', () => require('../../store/__mocks__/sqliteStorage'));
 
+// Mock the per-row scrobble table so we can assert SQL-layer wiring without
+// needing a real SQLite handle in the test.
+jest.mock('../../store/persistence/scrobbleTable', () => ({
+  insertScrobble: jest.fn(),
+  replaceAllScrobbles: jest.fn(),
+  clearScrobbles: jest.fn(),
+  hydrateScrobbles: jest.fn(() => []),
+}));
+
 import { authStore } from '../../store/authStore';
 import { completedScrobbleStore } from '../../store/completedScrobbleStore';
+import { replaceAllScrobbles } from '../../store/persistence/scrobbleTable';
 import { mbidOverrideStore } from '../../store/mbidOverrideStore';
 import { scrobbleExclusionStore } from '../../store/scrobbleExclusionStore';
 import { backupStore } from '../../store/backupStore';
@@ -426,20 +436,59 @@ describe('restoreBackup', () => {
     username: TEST_USER,
   };
 
-  it('restores scrobbles from backup', async () => {
-    const scrobbles = [{ id: 's1', song: { id: 't1' }, time: 1 }];
+  it('restores scrobbles from backup (in-memory + SQL round-trip)', async () => {
+    const mockReplace = replaceAllScrobbles as jest.Mock;
+    mockReplace.mockClear();
+
+    const scrobbles = [
+      { id: 's1', song: { id: 't1', title: 'Track 1', artist: 'Artist', duration: 100 }, time: 1 },
+      { id: 's2', song: { id: 't2', title: 'Track 2', artist: 'Artist', duration: 200 }, time: 2 },
+    ];
     mockDecompressFromFile.mockResolvedValue(JSON.stringify(scrobbles));
     mockFileInstances.set('backup-x.scrobbles.gz', { exists: true, content: '', deleted: false });
 
     const result = await restoreBackup({
       ...baseEntry,
       stem: 'backup-x',
-      scrobbleCount: 1,
+      scrobbleCount: 2,
       scrobbleSizeBytes: 50,
     });
 
+    // In-memory state reflects the restored set.
+    expect(result.scrobbleCount).toBe(2);
+    expect(completedScrobbleStore.getState().completedScrobbles).toHaveLength(2);
+    expect(completedScrobbleStore.getState().stats.totalPlays).toBe(2);
+    expect(completedScrobbleStore.getState().stats.totalListeningSeconds).toBe(300);
+
+    // SQL table was replaced with the same set in one call.
+    expect(mockReplace).toHaveBeenCalledTimes(1);
+    expect(mockReplace.mock.calls[0][0]).toHaveLength(2);
+  });
+
+  it('filters invalid scrobbles out of a restored backup before writing', async () => {
+    const mockReplace = replaceAllScrobbles as jest.Mock;
+    mockReplace.mockClear();
+
+    const scrobbles = [
+      { id: 'ok', song: { id: 't1', title: 'Track 1', artist: 'Artist', duration: 100 }, time: 1 },
+      { id: '', song: { id: 't2', title: 'Track 2' }, time: 2 }, // missing id
+      { id: 'ok', song: { id: 't1', title: 'Track 1' }, time: 3 }, // dup
+    ];
+    mockDecompressFromFile.mockResolvedValue(JSON.stringify(scrobbles));
+    mockFileInstances.set('backup-y.scrobbles.gz', { exists: true, content: '', deleted: false });
+
+    const result = await restoreBackup({
+      ...baseEntry,
+      stem: 'backup-y',
+      scrobbleCount: 3,
+      scrobbleSizeBytes: 50,
+    });
+
+    // The reported count reflects the validated (deduped + filtered) set.
     expect(result.scrobbleCount).toBe(1);
     expect(completedScrobbleStore.getState().completedScrobbles).toHaveLength(1);
+    expect(mockReplace).toHaveBeenCalledTimes(1);
+    expect(mockReplace.mock.calls[0][0]).toHaveLength(1);
   });
 
   it('restores MBID overrides from backup (new format)', async () => {

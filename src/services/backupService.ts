@@ -331,10 +331,11 @@ export async function restoreBackup(
     }
     const json = await decompressFromFile(dataFile.uri);
     const scrobbles: CompletedScrobble[] = JSON.parse(json);
-    completedScrobbleStore.setState({ completedScrobbles: scrobbles });
-    completedScrobbleStore.getState().rebuildStats();
-    completedScrobbleStore.getState().rebuildAggregates();
-    scrobbleCount = scrobbles.length;
+    // replaceAll writes the scrobble_events table in one transaction and then
+    // rebuilds stats/aggregates from the validated set, keeping SQL + memory
+    // coherent for any follow-up reads (home stats, my-listening, etc.).
+    completedScrobbleStore.getState().replaceAll(scrobbles);
+    scrobbleCount = completedScrobbleStore.getState().completedScrobbles.length;
   }
 
   if (entry.mbidOverrideCount > 0) {

@@ -13,7 +13,10 @@ import { Directory, File, Paths } from 'expo-file-system';
 import { Platform } from 'react-native';
 
 import { migrateV3BackupMetas } from './backupService';
-import { completedScrobbleStore } from '../store/completedScrobbleStore';
+import {
+  completedScrobbleStore,
+  type CompletedScrobble,
+} from '../store/completedScrobbleStore';
 import { mbidOverrideStore, type MbidOverride } from '../store/mbidOverrideStore';
 import { musicCacheStore } from '../store/musicCacheStore';
 import { playbackSettingsStore } from '../store/playbackSettingsStore';
@@ -22,6 +25,7 @@ import {
   upsertAlbumDetail,
   upsertSongsForAlbum,
 } from '../store/persistence/detailTables';
+import { replaceAllScrobbles } from '../store/persistence/scrobbleTable';
 import { sqliteStorage } from '../store/sqliteStorage';
 import { type EffectiveFormat } from '../types/audio';
 
@@ -554,6 +558,59 @@ const MIGRATION_TASKS: MigrationTask[] = [
       }
       await sqliteStorage.removeItem('substreamer-album-details');
       log(`Migrated ${albumCount} album detail(s) and ${songCount} song(s) to per-row tables.`);
+    },
+  },
+
+  {
+    id: 13,
+    name: 'Move completed scrobbles to per-row SQLite table',
+    run: async (log) => {
+      // completedScrobbleStore moved off the generic `persist(createJSONStorage)`
+      // blob model onto the per-row `scrobble_events` table owned by
+      // `src/store/persistence/scrobbleTable.ts`. This task reads the old blob
+      // once, bulk-inserts valid scrobbles into the new table via a
+      // transaction, then deletes the blob key. Idempotent: if the blob is
+      // missing or already been migrated, it's a no-op.
+      const raw = await sqliteStorage.getItem('substreamer-completed-scrobbles');
+      if (!raw) {
+        log('No persisted scrobble blob — nothing to migrate.');
+        return;
+      }
+      let parsed: any;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        // Corrupt blob — drop it so the new table starts clean.
+        await sqliteStorage.removeItem('substreamer-completed-scrobbles');
+        log('Failed to parse scrobble blob — removed.');
+        return;
+      }
+      const raws: any[] = Array.isArray(parsed?.state?.completedScrobbles)
+        ? parsed.state.completedScrobbles
+        : [];
+      if (raws.length === 0) {
+        await sqliteStorage.removeItem('substreamer-completed-scrobbles');
+        log('Scrobble blob was empty — removed.');
+        return;
+      }
+      const valid: CompletedScrobble[] = [];
+      const seen = new Set<string>();
+      for (const s of raws) {
+        if (!s || !s.id || !s.song?.id || !s.song?.title) continue;
+        if (seen.has(s.id)) continue;
+        seen.add(s.id);
+        valid.push(s as CompletedScrobble);
+      }
+      // Transactional bulk insert — blob removal only runs if the transaction
+      // commits, so a mid-migration crash preserves the original blob for the
+      // next launch to retry.
+      replaceAllScrobbles(valid);
+      await sqliteStorage.removeItem('substreamer-completed-scrobbles');
+      const dropped = raws.length - valid.length;
+      log(
+        `Migrated ${valid.length} scrobble(s) to per-row table` +
+          (dropped > 0 ? ` (dropped ${dropped} invalid/duplicate).` : '.'),
+      );
     },
   },
 

@@ -13,8 +13,26 @@ jest.mock('../../services/imageCacheService', () => ({
   cacheAllSizes: jest.fn().mockResolvedValue(undefined),
   cacheEntityCoverArt: jest.fn(),
 }));
+jest.mock('../persistence/detailTables', () => ({
+  clearDetailTables: jest.fn(),
+  hydrateAlbumDetails: jest.fn(() => ({})),
+  upsertAlbumDetail: jest.fn(),
+  deleteAlbumDetail: jest.fn(),
+  upsertSongsForAlbum: jest.fn(),
+  deleteSongsForAlbums: jest.fn(),
+  countAlbumDetails: jest.fn(() => 0),
+  countSongIndex: jest.fn(() => 0),
+}));
+jest.mock('../persistence/scrobbleTable', () => ({
+  clearScrobbles: jest.fn(),
+  insertScrobble: jest.fn(),
+  replaceAllScrobbles: jest.fn(),
+  hydrateScrobbles: jest.fn(() => []),
+}));
 
 import { clearAllStorage } from '../sqliteStorage';
+import { clearDetailTables } from '../persistence/detailTables';
+import { clearScrobbles } from '../persistence/scrobbleTable';
 import { authStore } from '../authStore';
 import { albumLibraryStore } from '../albumLibraryStore';
 import { completedScrobbleStore } from '../completedScrobbleStore';
@@ -26,12 +44,24 @@ import { resetAllStores } from '../resetAllStores';
 
 beforeEach(() => {
   (clearAllStorage as jest.Mock).mockClear();
+  (clearDetailTables as jest.Mock).mockClear();
+  (clearScrobbles as jest.Mock).mockClear();
 });
 
 describe('resetAllStores', () => {
   it('clears SQLite storage', () => {
     resetAllStores();
     expect(clearAllStorage).toHaveBeenCalledTimes(1);
+  });
+
+  it('truncates the per-row detail tables (album_details + song_index)', () => {
+    resetAllStores();
+    expect(clearDetailTables).toHaveBeenCalledTimes(1);
+  });
+
+  it('truncates the scrobble_events table', () => {
+    resetAllStores();
+    expect(clearScrobbles).toHaveBeenCalledTimes(1);
   });
 
   it('resets persisted stores to initial state', () => {
