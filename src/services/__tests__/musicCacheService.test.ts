@@ -158,6 +158,7 @@ import {
   getTrackQueueStatus,
   enqueueAlbumDownload,
   enqueuePlaylistDownload,
+  enqueueSongDownload,
   enqueueStarredSongsDownload,
   deleteCachedItem,
   removeCachedPlaylistTrack,
@@ -907,6 +908,71 @@ describe('enqueuePlaylistDownload', () => {
     expect(queue[0].itemId).toBe('pl-1');
     expect(queue[0].type).toBe('playlist');
     expect(queue[0].totalTracks).toBe(3);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  enqueueSongDownload                                                */
+/* ------------------------------------------------------------------ */
+
+describe('enqueueSongDownload', () => {
+  it('skips if song is already cached', async () => {
+    musicCacheStore.setState({
+      cachedItems: {
+        'song-1': { itemId: 'song-1', type: 'song', name: 'Test Song', tracks: [], totalBytes: 0 },
+      },
+    } as any);
+
+    await enqueueSongDownload(makeChild('song-1'));
+
+    expect(musicCacheStore.getState().downloadQueue).toHaveLength(0);
+  });
+
+  it('skips if song is already in download queue', async () => {
+    musicCacheStore.setState({
+      downloadQueue: [
+        { queueId: 'q1', itemId: 'song-1', status: 'queued', tracks: [], totalTracks: 0, completedTracks: 0, addedAt: Date.now() },
+      ],
+    } as any);
+
+    await enqueueSongDownload(makeChild('song-1'));
+
+    expect(musicCacheStore.getState().downloadQueue).toHaveLength(1);
+  });
+
+  it('enqueues a single song', async () => {
+    const song = makeChild('song-1', { title: 'My Track', artist: 'My Artist', coverArt: 'cover-1' });
+
+    await enqueueSongDownload(song);
+
+    const queue = musicCacheStore.getState().downloadQueue;
+    expect(queue).toHaveLength(1);
+    expect(queue[0].itemId).toBe('song-1');
+    expect(queue[0].type).toBe('song');
+    expect(queue[0].name).toBe('My Track');
+    expect(queue[0].artist).toBe('My Artist');
+    expect(queue[0].totalTracks).toBe(1);
+    expect(queue[0].tracks).toHaveLength(1);
+  });
+
+  it('caches cover art for the song', async () => {
+    const song = makeChild('song-1', { coverArt: 'song-cover' });
+
+    await enqueueSongDownload(song);
+
+    expect(cacheAllSizes).toHaveBeenCalledWith('song-cover');
+    expect(cacheEntityCoverArt).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ coverArt: 'song-cover' })]),
+    );
+  });
+
+  it('handles missing title gracefully', async () => {
+    const song = makeChild('song-1', { title: undefined });
+
+    await enqueueSongDownload(song);
+
+    const queue = musicCacheStore.getState().downloadQueue;
+    expect(queue[0].name).toBe('Unknown');
   });
 });
 

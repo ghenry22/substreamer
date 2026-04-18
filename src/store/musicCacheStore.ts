@@ -33,7 +33,7 @@ export interface CachedTrack {
 
 export interface CachedMusicItem {
   itemId: string;
-  type: 'album' | 'playlist';
+  type: 'album' | 'playlist' | 'song';
   name: string;
   artist?: string;
   coverArtId?: string;
@@ -51,7 +51,7 @@ export type DownloadItemStatus =
 export interface DownloadQueueItem {
   queueId: string;
   itemId: string;
-  type: 'album' | 'playlist';
+  type: 'album' | 'playlist' | 'song';
   name: string;
   artist?: string;
   coverArtId?: string;

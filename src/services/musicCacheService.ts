@@ -418,6 +418,35 @@ export async function enqueuePlaylistDownload(playlistId: string): Promise<void>
   processQueue();
 }
 
+/**
+ * Cache a single song for offline playback. Uses the song's own ID as the
+ * itemId so that `useDownloadStatus('song', id)` resolves correctly once the
+ * file is on disk.
+ */
+export async function enqueueSongDownload(song: Child): Promise<void> {
+  const state = musicCacheStore.getState();
+  if (song.id in state.cachedItems) return;
+  if (state.downloadQueue.some((q) => q.itemId === song.id)) return;
+
+  await ensureCoverArtAuth();
+  if (song.coverArt) {
+    cacheAllSizes(song.coverArt).catch(() => { /* non-critical */ });
+  }
+  cacheTrackCoverArt([song]);
+
+  musicCacheStore.getState().enqueue({
+    itemId: song.id,
+    type: 'song',
+    name: song.title ?? 'Unknown',
+    artist: song.artist,
+    coverArtId: song.coverArt,
+    totalTracks: 1,
+    tracks: [song],
+  });
+
+  processQueue();
+}
+
 /* ------------------------------------------------------------------ */
 /*  Queue processing                                                   */
 /* ------------------------------------------------------------------ */
@@ -593,7 +622,7 @@ async function downloadItem(queueItem: DownloadQueueItemSnapshot, myId: number):
 type DownloadQueueItemSnapshot = Readonly<{
   queueId: string;
   itemId: string;
-  type: 'album' | 'playlist';
+  type: 'album' | 'playlist' | 'song';
   name: string;
   artist?: string;
   coverArtId?: string;
@@ -714,8 +743,20 @@ export async function redownloadItem(itemId: string): Promise<void> {
 
   if (cached.type === 'album') {
     await enqueueAlbumDownload(itemId);
-  } else {
+  } else if (cached.type === 'playlist') {
     await enqueuePlaylistDownload(itemId);
+  } else {
+    // 'song' – reconstruct a minimal Child from cached metadata and re-enqueue
+    if (cached.tracks.length > 0) {
+      const t = cached.tracks[0];
+      await enqueueSongDownload({
+        id: t.id,
+        title: t.title,
+        artist: t.artist,
+        coverArt: t.coverArt,
+        isDir: false,
+      } as Child);
+    }
   }
 }
 

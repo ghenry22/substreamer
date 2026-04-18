@@ -189,7 +189,15 @@ jest.mock('../../services/playerService', () => ({
 
 jest.mock('../../services/moreOptionsService', () => ({
   toggleStar: jest.fn(),
+  enqueueSongDownload: jest.fn(),
 }));
+
+jest.mock('../../components/DownloadButton', () => {
+  const { View } = require('react-native');
+  return {
+    DownloadButton: () => <View testID="download-button" />,
+  };
+});
 
 jest.mock('../../utils/formatters', () => ({
   sanitizeBiographyText: jest.fn((text: string) => text),
