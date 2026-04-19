@@ -89,7 +89,8 @@
       ],
       "./plugins/strip-push-entitlement",
       "expo-notifications",
-      "expo-sharing"
+      "expo-sharing",
+      "expo-localization"
     ],
     "extra": {
       "router": {},
