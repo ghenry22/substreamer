@@ -701,6 +701,7 @@
   "syncErrorTap": "Library sync error — tap to retry",
   "syncLibrary": "Sync",
   "syncLibraryDescription": "Rebuilds your cached album list and every album's songs. Useful if content appears missing or out of date and pull-to-refresh hasn't fixed it.",
+  "syncLibraryOfflineNotice": "Offline — reconnect to the server to sync your library.",
   "pauseSync": "Pause",
   "resumeSync": "Resume",
   "syncNow": "Sync",

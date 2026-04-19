@@ -413,6 +413,14 @@ export function SettingsLibraryDataScreen() {
               </Pressable>
             )}
           </View>
+          {offlineMode && (
+            <View style={styles.offlineNotice}>
+              <Ionicons name="cloud-offline-outline" size={16} color={colors.textSecondary} />
+              <Text style={[styles.offlineNoticeText, { color: colors.textSecondary }]}>
+                {t('syncLibraryOfflineNotice')}
+              </Text>
+            </View>
+          )}
           <Text style={[settingsStyles.sectionHint, { color: colors.textSecondary }]}>
             {t('syncLibraryDescription')}
           </Text>
@@ -892,6 +900,18 @@ export function SettingsLibraryDataScreen() {
 }
 
 const styles = StyleSheet.create({
+  offlineNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+    paddingHorizontal: 4,
+  },
+  offlineNoticeText: {
+    fontSize: 13,
+    lineHeight: 18,
+    flex: 1,
+  },
   backupButtonRow: {
     flexDirection: 'row',
     gap: 8,

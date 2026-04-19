@@ -39,6 +39,22 @@ const WALK_CONCURRENCY = 4;
 /** Skip the walk entirely on tiny libraries — not worth the startup cost. */
 const MIN_LIBRARY_FOR_WALK = 1;
 
+/**
+ * True when there's library work to do — either the album list hasn't been
+ * fetched yet, or we have albums without detail cached. Used to decide
+ * whether an offline startup should surface the "paused — offline" banner
+ * or stay silent.
+ */
+function isLibrarySyncPending(): boolean {
+  const lib = albumLibraryStore.getState();
+  if (lib.albums.length === 0) return true;
+  const detail = albumDetailStore.getState().albums;
+  for (const album of lib.albums) {
+    if (!Object.prototype.hasOwnProperty.call(detail, album.id)) return true;
+  }
+  return false;
+}
+
 export type PullToRefreshScope =
   | 'home'
   | 'albums'
@@ -77,7 +93,10 @@ async function performScope(scope: SyncScope): Promise<void> {
       await playlistLibraryStore.getState().fetchAllPlaylists();
       return;
     case 'favorites':
-      await favoritesStore.getState().fetchStarred();
+      // Background sync: refresh metadata without kicking off the
+      // eager cover-art fan-out. Opening the Favourites tab directly
+      // still pre-caches art (that path doesn't go through performScope).
+      await favoritesStore.getState().fetchStarred({ prefetchCovers: false });
       return;
     case 'genres':
       await genreStore.getState().fetchGenres();
@@ -142,7 +161,15 @@ function dispatch(scope: SyncScope, work: () => Promise<void>): Promise<void> {
  * move the call site; in Phase 2 `_layout.tsx` will delegate here.
  */
 export async function onStartup(): Promise<void> {
-  if (offlineModeStore.getState().offlineMode) return;
+  if (offlineModeStore.getState().offlineMode) {
+    // Surface "paused — offline" so the user knows sync is waiting on
+    // connectivity. Without this the banner stayed silent and users
+    // couldn't tell whether their library was stale or already synced.
+    if (isLibrarySyncPending()) {
+      syncStatusStore.getState().setDetailSyncPhase('paused-offline');
+    }
+    return;
+  }
   await startupOrResumeFlow();
 }
 
@@ -204,7 +231,8 @@ async function startupOrResumeFlow(): Promise<void> {
   });
   fetchScanStatus();
   albumListsStore.getState().refreshAll();
-  favoritesStore.getState().fetchStarred();
+  // Startup sync — metadata only, art pre-caches on user-initiated views.
+  favoritesStore.getState().fetchStarred({ prefetchCovers: false });
 
   // Deferred library prefetches — mirrors _layout.tsx:341-354. Uses the same
   // requestIdleCallback + 1500ms settling pattern to avoid a thundering herd
@@ -306,9 +334,13 @@ export async function onScanCompleted(): Promise<void> {
   }
   // Fetch detail for each new album so the walk's reconciliation picks it up
   // and the flat song index stays in sync without waiting for a full walk.
+  // `prefetchCovers: false` — background metadata sync; covers cache on
+  // first user-visible view.
   const detail = albumDetailStore.getState();
   await Promise.all(
-    changedAlbumIds.map((id) => detail.fetchAlbum(id).catch(() => null)),
+    changedAlbumIds.map((id) =>
+      detail.fetchAlbum(id, { prefetchCovers: false }).catch(() => null),
+    ),
   );
 }
 
@@ -379,10 +411,12 @@ export function reconcilePlaylistLibrary(
     const detail = playlistDetailStore.getState();
     // Fire-and-forget with a small pool; playlist detail fetches are
     // individually large so we keep concurrency lower than the album walk.
+    // `prefetchCovers: false` — background metadata sync; the detail
+    // screen will cache art the first time the user opens a playlist.
     fireAndForget(
       runPool(
         added,
-        async (id) => detail.fetchPlaylist(id),
+        async (id) => detail.fetchPlaylist(id, { prefetchCovers: false }),
         { concurrency: PLAYLIST_PREFETCH_CONCURRENCY },
       ),
       'sync.playlistDetailPrefetch',
@@ -676,7 +710,13 @@ async function doWalk(): Promise<void> {
         if (offlineModeStore.getState().offlineMode) {
           throw new Error('walk-offline');
         }
-        const result = await albumDetailStore.getState().fetchAlbum(id);
+        // `prefetchCovers: false` — this is the background album-detail
+        // walk. It refreshes metadata for the entire library; we don't
+        // want a sync to kick off thousands of image downloads. Cover art
+        // lazily caches when the user actually opens an album detail.
+        const result = await albumDetailStore
+          .getState()
+          .fetchAlbum(id, { prefetchCovers: false });
         // fetchAlbum returns null on every non-2xx / timeout / swallowed-error
         // case. Classify those as rejected so the walk's error summary
         // reflects real counts and the next walk actually retries them.
@@ -794,6 +834,26 @@ albumListsStore.subscribe((state, prev) => {
     if (!knownIds.has(album.id)) {
       fireAndForget(onAlbumReferenced(album.id), 'sync.recentlyAddedReferenced');
       return; // one fetch covers all new ids via reconciliation
+    }
+  }
+});
+
+// React to offline-mode toggles at runtime so the sync banner tracks
+// reality without relying on the user to relaunch the app. An in-flight
+// walk is already handled by the per-walk subscription inside doWalk()
+// — this module-scope subscriber fills the gap when phase is 'idle'
+// (user flips offline on with a stale library) or 'paused-offline'
+// (user flips offline off and we need to resume).
+offlineModeStore.subscribe((state, prev) => {
+  if (state.offlineMode === prev.offlineMode) return;
+  const phase = syncStatusStore.getState().detailSyncPhase;
+  if (state.offlineMode) {
+    if (phase === 'idle' && isLibrarySyncPending()) {
+      syncStatusStore.getState().setDetailSyncPhase('paused-offline');
+    }
+  } else {
+    if (phase === 'paused-offline') {
+      fireAndForget(onOnlineResume(), 'sync.offlineToggle.resume');
     }
   }
 });

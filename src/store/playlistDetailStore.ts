@@ -20,8 +20,12 @@ export interface PlaylistDetailEntry {
 export interface PlaylistDetailState {
   /** Playlist details indexed by playlist ID. */
   playlists: Record<string, PlaylistDetailEntry>;
-  /** Fetch playlist from API, store it, and return it. Returns null on failure. */
-  fetchPlaylist: (id: string) => Promise<PlaylistWithSongs | null>;
+  /** Fetch playlist from API, store it, and return it. Returns null on failure.
+   *  Pass `{ prefetchCovers: false }` to skip the eager cover-art cache —
+   *  used by the background library sync so bulk prefetches don't kick off
+   *  hundreds of image downloads. User-facing fetches omit the flag so art
+   *  still pre-caches. */
+  fetchPlaylist: (id: string, opts?: { prefetchCovers?: boolean }) => Promise<PlaylistWithSongs | null>;
   /** Reorder a track within the cached playlist entry. */
   reorderTracks: (id: string, fromIndex: number, toIndex: number) => void;
   /** Remove a track from the cached playlist entry by index. */
@@ -39,7 +43,8 @@ export const playlistDetailStore = create<PlaylistDetailState>()(
     (set, get) => ({
       playlists: {},
 
-      fetchPlaylist: async (id: string) => {
+      fetchPlaylist: async (id: string, opts?: { prefetchCovers?: boolean }) => {
+        const prefetchCovers = opts?.prefetchCovers ?? true;
         await ensureCoverArtAuth();
         const data = await getPlaylist(id);
         if (data) {
@@ -55,9 +60,12 @@ export const playlistDetailStore = create<PlaylistDetailState>()(
             },
           });
 
-          // Proactively cache cover art for new IDs so they survive offline
-          if (data.coverArt) cacheAllSizes(data.coverArt).catch(() => { /* non-critical */ });
-          if (data.entry?.length) cacheEntityCoverArt(data.entry);
+          // Proactively cache cover art for new IDs so they survive offline.
+          // Skipped during bulk sync — see prefetchCovers contract above.
+          if (prefetchCovers) {
+            if (data.coverArt) cacheAllSizes(data.coverArt).catch(() => { /* non-critical */ });
+            if (data.entry?.length) cacheEntityCoverArt(data.entry);
+          }
         }
         return data;
       },

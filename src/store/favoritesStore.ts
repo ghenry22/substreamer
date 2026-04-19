@@ -36,8 +36,10 @@ export interface FavoritesState {
    */
   overrides: Record<string, boolean>;
 
-  /** Fetch all starred items from the server via getStarred2. */
-  fetchStarred: () => Promise<void>;
+  /** Fetch all starred items from the server via getStarred2.
+   *  Pass `{ prefetchCovers: false }` to skip the eager cover-art cache —
+   *  used by the background library sync. User-facing refreshes omit it. */
+  fetchStarred: (opts?: { prefetchCovers?: boolean }) => Promise<void>;
   /** Set an optimistic override for a single item. */
   setOverride: (id: string, starred: boolean) => void;
   /** Clear all favorites data */
@@ -57,7 +59,8 @@ export const favoritesStore = create<FavoritesState>()(
       lastFetchedAt: null,
       overrides: {},
 
-      fetchStarred: async () => {
+      fetchStarred: async (opts?: { prefetchCovers?: boolean }) => {
+        const prefetchCovers = opts?.prefetchCovers ?? true;
         // Prevent duplicate fetches
         if (get().loading) return;
 
@@ -82,13 +85,16 @@ export const favoritesStore = create<FavoritesState>()(
             overrides: {},
           });
 
-          // Proactively cache cover art for new IDs so they survive offline
-          cacheEntityCoverArt(songs);
-          for (const a of albums) {
-            if (a.coverArt) cacheAllSizes(a.coverArt).catch(() => { /* non-critical */ });
-          }
-          for (const a of artists) {
-            if (a.coverArt) cacheAllSizes(a.coverArt).catch(() => { /* non-critical */ });
+          // Proactively cache cover art for new IDs so they survive offline.
+          // Skipped during bulk sync — see prefetchCovers contract above.
+          if (prefetchCovers) {
+            cacheEntityCoverArt(songs);
+            for (const a of albums) {
+              if (a.coverArt) cacheAllSizes(a.coverArt).catch(() => { /* non-critical */ });
+            }
+            for (const a of artists) {
+              if (a.coverArt) cacheAllSizes(a.coverArt).catch(() => { /* non-critical */ });
+            }
           }
         } catch (e) {
           set({

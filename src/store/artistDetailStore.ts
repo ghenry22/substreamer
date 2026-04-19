@@ -43,8 +43,10 @@ export interface ArtistDetailEntry {
 export interface ArtistDetailState {
   /** Artist details indexed by artist ID. */
   artists: Record<string, ArtistDetailEntry>;
-  /** Fetch artist from API, store it, and return the entry. Returns null on failure. */
-  fetchArtist: (id: string) => Promise<ArtistDetailEntry | null>;
+  /** Fetch artist from API, store it, and return the entry. Returns null on failure.
+   *  Pass `{ prefetchCovers: false }` to skip the eager cover-art cache —
+   *  used by the background library sync. User-facing fetches omit it. */
+  fetchArtist: (id: string, opts?: { prefetchCovers?: boolean }) => Promise<ArtistDetailEntry | null>;
   /** Re-fetch only topSongs for all cached artists (lightweight refresh). */
   refreshTopSongs: () => Promise<void>;
   /** Clear all cached artist details. */
@@ -58,7 +60,8 @@ export const artistDetailStore = create<ArtistDetailState>()(
     (set, get) => ({
       artists: {},
 
-      fetchArtist: async (id: string) => {
+      fetchArtist: async (id: string, opts?: { prefetchCovers?: boolean }) => {
+        const prefetchCovers = opts?.prefetchCovers ?? true;
         const result = await withTimeout(async (signal) => {
           await ensureCoverArtAuth();
 
@@ -136,8 +139,9 @@ export const artistDetailStore = create<ArtistDetailState>()(
             },
           });
 
-          // Proactively cache cover art for new IDs so they survive offline
-          if (topSongs.length > 0) cacheEntityCoverArt(topSongs);
+          // Proactively cache cover art for new IDs so they survive offline.
+          // Skipped during bulk sync — see prefetchCovers contract above.
+          if (prefetchCovers && topSongs.length > 0) cacheEntityCoverArt(topSongs);
 
           return entry;
         }, FETCH_TIMEOUT_MS);

@@ -19,14 +19,20 @@ const artistLibraryState = { artists: [] as Array<{ id: string }> };
 const playlistLibraryState = { playlists: [] as Array<{ id: string }> };
 
 /**
- * Offline-mode subscribers tracked so tests can simulate offline-on mid-walk.
+ * Offline-mode subscribers are held inside the mock factory's closure (see
+ * jest.mock below) and exposed via `__offlineSubs` on the mocked module —
+ * that way dataSyncService's module-scope subscribers don't race a
+ * top-level `const` through babel-jest's import hoisting.
  */
-const mockOfflineSubscribers = new Set<(state: { offlineMode: boolean }, prev: { offlineMode: boolean }) => void>();
+function getOfflineSubscribers(): Set<(state: { offlineMode: boolean }, prev: { offlineMode: boolean }) => void> {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require('../../store/offlineModeStore').__offlineSubs;
+}
 function setOfflineMode(next: boolean): void {
   const prev = { offlineMode: offlineState.offline };
   offlineState.offline = next;
   const state = { offlineMode: next };
-  for (const cb of mockOfflineSubscribers) cb(state, prev);
+  for (const cb of getOfflineSubscribers()) cb(state, prev);
 }
 
 // NOTE: jest hoists `jest.mock` calls above the `const` declarations. To avoid
@@ -132,16 +138,26 @@ jest.mock('../../store/genreStore', () => ({
   },
 }));
 
-jest.mock('../../store/offlineModeStore', () => ({
-  __esModule: true,
-  offlineModeStore: {
-    getState: () => ({ offlineMode: offlineState.offline }),
-    subscribe: (cb: (state: { offlineMode: boolean }, prev: { offlineMode: boolean }) => void) => {
-      mockOfflineSubscribers.add(cb);
-      return () => { mockOfflineSubscribers.delete(cb); };
+jest.mock('../../store/offlineModeStore', () => {
+  // Subscriber set lives inside the factory closure so it's defined by
+  // the time dataSyncService's module-scope subscribe call fires (which
+  // happens during the test file's `import` hoisting, before any outer
+  // `const` declarations would be initialised). No type annotations
+  // inline here — babel-jest's mock-factory parser rejects TS type refs
+  // as out-of-scope variables.
+  const subs = new Set();
+  return {
+    __esModule: true,
+    offlineModeStore: {
+      getState: () => ({ offlineMode: offlineState.offline }),
+      subscribe: (cb: unknown) => {
+        subs.add(cb);
+        return () => { subs.delete(cb); };
+      },
     },
-  },
-}));
+    __offlineSubs: subs,
+  };
+});
 
 jest.mock('../../store/serverInfoStore', () => ({
   __esModule: true,
@@ -211,7 +227,7 @@ const mockFetchServerInfo = subsonicService.fetchServerInfo as jest.Mock;
 beforeEach(() => {
   jest.clearAllMocks();
   offlineState.offline = false;
-  mockOfflineSubscribers.clear();
+  getOfflineSubscribers().clear();
   albumLibraryState.albums = [];
   albumLibraryState.loading = false;
   artistLibraryState.artists = [];

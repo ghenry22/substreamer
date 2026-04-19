@@ -30,8 +30,12 @@ export interface AlbumDetailState {
   albums: Record<string, AlbumDetailEntry>;
   /** True after the on-start hydration from SQLite has populated `albums`. */
   hasHydrated: boolean;
-  /** Fetch album from API, store it, and return it. Returns null on failure. */
-  fetchAlbum: (id: string) => Promise<AlbumWithSongsID3 | null>;
+  /** Fetch album from API, store it, and return it. Returns null on failure.
+   *  Pass `{ prefetchCovers: false }` to skip the eager cover-art cache —
+   *  used by the background library sync so a metadata refresh doesn't
+   *  kick off hundreds of image downloads. User-facing fetches (detail
+   *  screens, pull-to-refresh) omit the flag so art still pre-caches. */
+  fetchAlbum: (id: string, opts?: { prefetchCovers?: boolean }) => Promise<AlbumWithSongsID3 | null>;
   /** True if an entry for `id` already exists in memory. Cheap check used by
    *  the Phase-4 walk to skip already-cached albums. */
   hasEntry: (id: string) => boolean;
@@ -49,7 +53,8 @@ export const albumDetailStore = create<AlbumDetailState>()((set, get) => ({
   albums: {},
   hasHydrated: false,
 
-  fetchAlbum: async (id: string) => {
+  fetchAlbum: async (id: string, opts?: { prefetchCovers?: boolean }) => {
+    const prefetchCovers = opts?.prefetchCovers ?? true;
     const result = await withTimeout(async () => {
       await ensureCoverArtAuth();
       const data = await getAlbum(id);
@@ -75,8 +80,11 @@ export const albumDetailStore = create<AlbumDetailState>()((set, get) => ({
         songIndexStore.getState().upsertSongsForAlbum(id, data.song ?? []);
 
         // Proactively cache cover art for new IDs so they survive offline.
-        if (data.coverArt) cacheAllSizes(data.coverArt).catch(() => { /* non-critical */ });
-        if (data.song?.length) cacheEntityCoverArt(data.song);
+        // Skipped during bulk sync — see prefetchCovers contract above.
+        if (prefetchCovers) {
+          if (data.coverArt) cacheAllSizes(data.coverArt).catch(() => { /* non-critical */ });
+          if (data.song?.length) cacheEntityCoverArt(data.song);
+        }
       }
       return data;
     }, FETCH_TIMEOUT_MS);
