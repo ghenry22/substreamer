@@ -258,31 +258,37 @@ function formatStoreCommit(msg) {
 }
 
 function updateStoreChangelog(commits, filePath, maxLength) {
+  // Hand-curated notes are the source of truth. If the file already has
+  // content, leave it alone — the user owns the final wording. Use
+  // `npm run reset-changelog` between releases to start fresh; this
+  // script will then seed from the commit log on the next release run.
+  let existing = '';
+  if (fs.existsSync(filePath)) {
+    existing = fs.readFileSync(filePath, 'utf-8').trim();
+  }
+  if (existing.length > 0) return false;
+
   const filtered = filterStoreCommits(commits);
   if (filtered.length === 0) return false;
 
   const formatted = filtered.map(formatStoreCommit).filter((line) => line.length > 0);
   if (formatted.length === 0) return false;
 
-  // Read existing content for accumulation
-  let existing = '';
-  if (fs.existsSync(filePath)) {
-    existing = fs.readFileSync(filePath, 'utf-8').trim();
+  // Compose the seed content in memory and refuse to write if the raw
+  // commit log already exceeds the store limit. A prior bug would write
+  // oversized content to disk, fail validation afterwards, and leave the
+  // file blown out for the user to clean up manually.
+  const content = formatted.join('\n') + '\n';
+  if (content.length - 1 > maxLength) {
+    console.warn(
+      `  ⚠  Auto-seeded changelog for ${path.relative(ROOT, filePath)} is ` +
+        `${content.length - 1} chars (limit ${maxLength}); leaving file empty ` +
+        `for hand-curation.`,
+    );
+    return false;
   }
 
-  // Deduplicate against existing lines
-  const existingLines = new Set(existing.split('\n').map((l) => l.trim().toLowerCase()));
-  const newLines = formatted.filter((line) => !existingLines.has(line.toLowerCase()));
-
-  if (newLines.length === 0) return false;
-
-  // Prepend new entries above existing content
-  let content = newLines.join('\n');
-  if (existing.length > 0) {
-    content = content + '\n\n' + existing;
-  }
-
-  fs.writeFileSync(filePath, content + '\n');
+  fs.writeFileSync(filePath, content);
   return true;
 }
 
