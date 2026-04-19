@@ -48,7 +48,7 @@ export async function performOnlineSearch(query: string): Promise<SearchResults>
 
 export function performOfflineSearch(query: string): SearchResults {
   const q = query.toLowerCase();
-  const { cachedItems } = musicCacheStore.getState();
+  const { cachedItems, cachedSongs } = musicCacheStore.getState();
 
   const cachedIds = new Set(Object.keys(cachedItems));
 
@@ -82,11 +82,13 @@ export function performOfflineSearch(query: string): SearchResults {
   const songs: Child[] = [];
   const seenSongIds = new Set<string>();
   for (const item of Object.values(cachedItems)) {
-    for (const track of item.tracks) {
-      if (seenSongIds.has(track.id)) continue;
+    for (const songId of item.songIds) {
+      if (seenSongIds.has(songId)) continue;
+      const track = cachedSongs[songId];
+      if (!track) continue;
       if (
         track.title.toLowerCase().includes(q) ||
-        track.artist.toLowerCase().includes(q)
+        (track.artist?.toLowerCase().includes(q) ?? false)
       ) {
         seenSongIds.add(track.id);
         songs.push({
@@ -116,8 +118,8 @@ function collectOfflineSongs(genreFilter?: string): Child[] {
   const cachedItemIds = new Set(Object.keys(cachedItems));
   const cachedTrackIds = new Set<string>();
   for (const item of Object.values(cachedItems)) {
-    for (const track of item.tracks) {
-      cachedTrackIds.add(track.id);
+    for (const songId of item.songIds) {
+      cachedTrackIds.add(songId);
     }
   }
 

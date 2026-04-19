@@ -3,6 +3,12 @@ let mockFileExists = false;
 let mockDirExists = false;
 const mockDirDelete = jest.fn();
 const mockFileDelete = jest.fn();
+const mockFileMove = jest.fn();
+const mockDirCreate = jest.fn();
+// Per-path overrides — when set, these take precedence over the global flags.
+// Keyed by the uri produced by MockFile/MockDirectory (segments joined with '/').
+let mockFileExistsForUri: ((uri: string) => boolean) | null = null;
+let mockDirExistsForUri: ((uri: string) => boolean) | null = null;
 
 jest.mock('../../store/sqliteStorage', () => require('../../store/__mocks__/sqliteStorage'));
 
@@ -23,15 +29,51 @@ jest.mock('../../store/persistence/scrobbleTable', () => ({
   hydrateScrobbles: jest.fn(() => []),
 }));
 
+// Task #14 calls bulkReplace to write the v2 rows. Mock the whole module so
+// tests don't need a real SQLite handle; assertions are on the mock calls.
+jest.mock('../../store/persistence/musicCacheTables', () => ({
+  bulkReplace: jest.fn(),
+  deleteCachedSong: jest.fn(),
+  deleteCachedItem: jest.fn(),
+  clearAllMusicCacheRows: jest.fn(),
+  hydrateCachedSongs: jest.fn(() => ({})),
+  hydrateCachedItems: jest.fn(() => ({})),
+  hydrateDownloadQueue: jest.fn(() => []),
+  // Task 14 diagnostic helpers.
+  countCachedSongs: jest.fn(() => 0),
+  countCachedItems: jest.fn(() => 0),
+  countCachedItemSongs: jest.fn(() => 0),
+  countDownloadQueueItems: jest.fn(() => 0),
+  readPragma: jest.fn(() => '1'),
+  insertCachedItemSong: jest.fn(),
+  upsertCachedItem: jest.fn(),
+  musicCacheTablesHealthy: true,
+  musicCacheTablesInitError: null,
+}));
+
+// Task #14 consults albumDetailStore for albumId resolution when a playlist
+// track's album wasn't itself cached as a v1 album item. Mock with a
+// controllable getState() so tests can dial the resolution map up and down.
+let mockAlbumDetailAlbums: Record<string, any> = {};
+jest.mock('../../store/albumDetailStore', () => ({
+  albumDetailStore: {
+    getState: () => ({ albums: mockAlbumDetailAlbums }),
+  },
+}));
+
 jest.mock('expo-file-system', () => {
   class MockFile {
     uri: string;
     constructor(...parts: any[]) {
       this.uri = parts.map((p: any) => (typeof p === 'string' ? p : p.uri ?? '')).join('/');
     }
-    get exists() { return mockFileExists; }
+    get exists() {
+      if (mockFileExistsForUri) return mockFileExistsForUri(this.uri);
+      return mockFileExists;
+    }
     write = mockFileWrite;
     delete = mockFileDelete;
+    move = (target: any) => mockFileMove(this.uri, target?.uri ?? target);
     text = jest.fn().mockResolvedValue('');
   }
   class MockDirectory {
@@ -39,8 +81,11 @@ jest.mock('expo-file-system', () => {
     constructor(...parts: any[]) {
       this.uri = parts.map((p: any) => (typeof p === 'string' ? p : p.uri ?? '')).join('/');
     }
-    get exists() { return mockDirExists; }
-    create = jest.fn();
+    get exists() {
+      if (mockDirExistsForUri) return mockDirExistsForUri(this.uri);
+      return mockDirExists;
+    }
+    create = (...args: any[]) => mockDirCreate(this.uri, ...args);
     delete = mockDirDelete;
     get parentDirectory() { return new MockDirectory('parent'); }
   }
@@ -74,10 +119,12 @@ import { completedScrobbleStore } from '../../store/completedScrobbleStore';
 import { mbidOverrideStore } from '../../store/mbidOverrideStore';
 import { musicCacheStore } from '../../store/musicCacheStore';
 import { playbackSettingsStore } from '../../store/playbackSettingsStore';
+import { bulkReplace } from '../../store/persistence/musicCacheTables';
 import { replaceAllScrobbles } from '../../store/persistence/scrobbleTable';
 import { sqliteStorage } from '../../store/sqliteStorage';
 
 const mockReplaceAllScrobbles = replaceAllScrobbles as jest.Mock;
+const mockBulkReplace = bulkReplace as jest.Mock;
 
 function seedAuthInSqlite(serverUrl: string | null, username: string | null) {
   if (!serverUrl || !username) {
@@ -92,21 +139,41 @@ function seedAuthInSqlite(serverUrl: string | null, username: string | null) {
 
 beforeEach(() => {
   mockFileWrite.mockClear();
-  mockDirDelete.mockClear();
-  mockFileDelete.mockClear();
+  // Use mockReset (not mockClear) on mocks that individual tests override
+  // via mockImplementation — mockClear preserves implementations, which
+  // leaks test-specific behaviour into unrelated later tests.
+  mockDirDelete.mockReset();
+  mockFileDelete.mockReset();
+  mockFileMove.mockReset();
+  mockDirCreate.mockReset();
   mockListDirectoryAsync.mockReset().mockResolvedValue([]);
   mockFileExists = false;
   mockDirExists = false;
+  mockFileExistsForUri = null;
+  mockDirExistsForUri = null;
   (Platform as any).OS = 'ios';
   sqliteStorage.removeItem('substreamer-auth');
   sqliteStorage.removeItem('substreamer-mbid-overrides');
   sqliteStorage.removeItem('substreamer-playback-settings');
   sqliteStorage.removeItem('substreamer-shares');
   sqliteStorage.removeItem('substreamer-music-cache');
+  sqliteStorage.removeItem('substreamer-music-cache-settings');
   sqliteStorage.removeItem('substreamer-completed-scrobbles');
+  sqliteStorage.removeItem('substreamer-playlist-details');
+  sqliteStorage.removeItem('substreamer-favorites');
   mbidOverrideStore.setState({ overrides: {} } as any);
-  musicCacheStore.setState({ downloadedFormats: {} } as any);
+  musicCacheStore.setState({ cachedSongs: {}, cachedItems: {} } as any);
   mockReplaceAllScrobbles.mockClear();
+  mockBulkReplace.mockClear();
+  // Reset mocks used by Task 14's diagnostic logging between tests.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const mct = require('../../store/persistence/musicCacheTables');
+  mct.countCachedSongs.mockReset().mockReturnValue(0);
+  mct.countCachedItems.mockReset().mockReturnValue(0);
+  mct.countCachedItemSongs.mockReset().mockReturnValue(0);
+  mct.countDownloadQueueItems.mockReset().mockReturnValue(0);
+  mct.readPragma.mockReset().mockReturnValue('1');
+  mockAlbumDetailAlbums = {};
   seedAuthInSqlite('https://music.example.com', 'testuser');
 });
 
@@ -594,85 +661,45 @@ describe('runMigrations', () => {
   });
 });
 
-describe('Task 10 – Backfill downloaded track formats', () => {
-  function seedMusicCache(cachedItems: Record<string, any>, downloadedFormats?: Record<string, any>) {
-    sqliteStorage.setItem('substreamer-music-cache', JSON.stringify({
-      state: { cachedItems, downloadedFormats: downloadedFormats ?? {} },
-    }));
-  }
-
-  it('backfills format from fileName extension for cached tracks', async () => {
-    seedMusicCache({
-      album1: {
-        tracks: [
-          { id: 't1', fileName: 'song.flac' },
-          { id: 't2', fileName: 'track.mp3' },
-        ],
-      },
-    });
-
-    await runMigrations(9);
-
-    const logContent = mockFileWrite.mock.calls[0][0] as string;
-    expect(logContent).toContain('Backfilled format for 2 cached track(s)');
-
-    // Verify the store was updated.
-    const { downloadedFormats } = musicCacheStore.getState();
-    expect(downloadedFormats.t1.suffix).toBe('flac');
-    expect(downloadedFormats.t1.capturedAt).toBe(0);
-    expect(downloadedFormats.t2.suffix).toBe('mp3');
-  });
-
-  it('skips tracks that already have a format stamp', async () => {
-    const existing = { suffix: 'opus', bitRate: 128, capturedAt: 999 };
-    seedMusicCache(
-      { album1: { tracks: [{ id: 't1', fileName: 'song.flac' }] } },
-      { t1: existing },
+describe('Task 10 – Backfill downloaded track formats (deprecated in v2)', () => {
+  // Task 10 was the v1 migration that populated `downloadedFormats` on the
+  // music-cache blob. In v2 that map no longer exists — format metadata
+  // lives inline on the `cached_songs` per-row table, and Task 14 owns the
+  // v1 → v2 migration. Task 10 is kept as a no-op so the migration ID
+  // sequence is preserved for users whose `completedVersion` is still < 10.
+  it('logs the deprecated-task notice and makes no store or blob writes', async () => {
+    // Seed a v1 blob that would previously have exercised the backfill path
+    // to prove that the no-op implementation ignores it.
+    sqliteStorage.setItem(
+      'substreamer-music-cache',
+      JSON.stringify({
+        state: {
+          cachedItems: {
+            album1: {
+              tracks: [
+                { id: 't1', fileName: 'song.flac' },
+                { id: 't2', fileName: 'track.mp3' },
+              ],
+            },
+          },
+          downloadedFormats: {},
+        },
+      }),
     );
 
     await runMigrations(9);
 
     const logContent = mockFileWrite.mock.calls[0][0] as string;
-    expect(logContent).toContain('No unstamped tracks found');
-
-    // Existing format preserved in SQLite blob (migration didn't overwrite).
-    const raw = sqliteStorage.getItem('substreamer-music-cache') as string;
-    const parsed = JSON.parse(raw);
-    expect(parsed.state.downloadedFormats.t1).toEqual(existing);
+    expect(logContent).toContain('Task deprecated in v2');
+    expect(logContent).toContain('format data now lives in cached_songs');
   });
 
-  it('skips when no music cache exists', async () => {
-    // Ensure no music cache is stored (the persist middleware may write defaults).
+  it('is a no-op when no music-cache blob exists', async () => {
     sqliteStorage.removeItem('substreamer-music-cache');
     await runMigrations(9);
 
     const logContent = mockFileWrite.mock.calls[0][0] as string;
-    expect(logContent).toContain('No persisted music cache');
-  });
-
-  it('skips when music cache is unparseable', async () => {
-    sqliteStorage.setItem('substreamer-music-cache', '{bad json');
-    await runMigrations(9);
-
-    const logContent = mockFileWrite.mock.calls[0][0] as string;
-    expect(logContent).toContain('Failed to parse music cache');
-  });
-
-  it('handles tracks without fileName gracefully', async () => {
-    seedMusicCache({
-      album1: {
-        tracks: [
-          { id: 't1' },  // no fileName
-          { id: 't2', fileName: 'track.ogg' },
-        ],
-      },
-    });
-
-    await runMigrations(9);
-
-    const { downloadedFormats } = musicCacheStore.getState();
-    expect(downloadedFormats.t1).toBeUndefined();
-    expect(downloadedFormats.t2.suffix).toBe('ogg');
+    expect(logContent).toContain('Task deprecated in v2');
   });
 });
 
@@ -833,6 +860,712 @@ describe('Task 13 – Move completed scrobbles to per-row SQLite table', () => {
     mockReplaceAllScrobbles.mockClear();
     await runMigrations(12);
     expect(mockReplaceAllScrobbles).not.toHaveBeenCalled();
+  });
+});
+
+describe('Task 14 – Move music cache to per-row SQLite tables and album-rooted directory layout', () => {
+  function seedBlob(state: any) {
+    sqliteStorage.setItem(
+      'substreamer-music-cache',
+      JSON.stringify({ state }),
+    );
+  }
+
+  it('skips when no persisted blob exists', async () => {
+    sqliteStorage.removeItem('substreamer-music-cache');
+    await runMigrations(13);
+    const logContent = mockFileWrite.mock.calls[0][0] as string;
+    expect(logContent).toContain('No persisted music-cache blob');
+    expect(mockBulkReplace).not.toHaveBeenCalled();
+  });
+
+  it('removes corrupt blob and skips', async () => {
+    sqliteStorage.setItem('substreamer-music-cache', '{bad json');
+    await runMigrations(13);
+    const logContent = mockFileWrite.mock.calls[0][0] as string;
+    expect(logContent).toContain('Failed to parse music-cache blob — removed.');
+    expect(sqliteStorage.getItem('substreamer-music-cache')).toBeNull();
+    expect(mockBulkReplace).not.toHaveBeenCalled();
+  });
+
+  it('removes blob and skips when state is missing', async () => {
+    sqliteStorage.setItem(
+      'substreamer-music-cache',
+      JSON.stringify({ state: null }),
+    );
+    await runMigrations(13);
+    const logContent = mockFileWrite.mock.calls[0][0] as string;
+    expect(logContent).toContain('Music-cache blob had no state — removed.');
+    expect(sqliteStorage.getItem('substreamer-music-cache')).toBeNull();
+    expect(mockBulkReplace).not.toHaveBeenCalled();
+  });
+
+  it('migrates an album-only cache into v2 rows + settings; RETAINS the v1 blob for diagnostic purposes', async () => {
+    seedBlob({
+      cachedItems: {
+        'album-1': {
+          itemId: 'album-1',
+          type: 'album',
+          name: 'First Album',
+          artist: 'Artist A',
+          coverArtId: 'cover-1',
+          downloadedAt: 1000,
+          tracks: [
+            { id: 't1', title: 'Track 1', artist: 'Artist A', fileName: 't1.mp3', bytes: 100, duration: 180 },
+            { id: 't2', title: 'Track 2', artist: 'Artist A', fileName: 't2.mp3', bytes: 200, duration: 200 },
+          ],
+        },
+      },
+      downloadQueue: [],
+      maxConcurrentDownloads: 3,
+    });
+
+    await runMigrations(13);
+
+    expect(mockBulkReplace).toHaveBeenCalledTimes(1);
+    const payload = mockBulkReplace.mock.calls[0][0];
+    expect(payload.items).toHaveLength(1);
+    expect(payload.items[0]).toMatchObject({
+      itemId: 'album-1',
+      type: 'album',
+      name: 'First Album',
+      artist: 'Artist A',
+      coverArtId: 'cover-1',
+      expectedSongCount: 2,
+      downloadedAt: 1000,
+      lastSyncAt: 1000,
+    });
+    expect(payload.songs).toHaveLength(2);
+    expect(payload.songs.map((s: any) => s.id).sort()).toEqual(['t1', 't2']);
+    // All songs in an album item take that album's id.
+    expect(payload.songs.every((s: any) => s.albumId === 'album-1')).toBe(true);
+    expect(payload.edges).toHaveLength(2);
+    expect(payload.edges.find((e: any) => e.songId === 't1')).toMatchObject({
+      itemId: 'album-1',
+      position: 1,
+    });
+    expect(payload.edges.find((e: any) => e.songId === 't2')).toMatchObject({
+      itemId: 'album-1',
+      position: 2,
+    });
+
+    // Settings blob picks up maxConcurrentDownloads.
+    const settings = sqliteStorage.getItem('substreamer-music-cache-settings');
+    expect(settings).not.toBeNull();
+    expect(JSON.parse(settings as string)).toEqual({ maxConcurrentDownloads: 3 });
+
+    // Task 14 retains the v1 blob: the cleanup call is currently commented
+    // out so we can re-test migration end-to-end on the same device. Will
+    // be uncommented before beta.
+    expect(sqliteStorage.getItem('substreamer-music-cache')).not.toBeNull();
+
+    const logContent = mockFileWrite.mock.calls[0][0] as string;
+    expect(logContent).toContain('Migrated 1 item(s), 2 song(s), 2 edge(s), 0 queue item(s)');
+    expect(logContent).toContain('v1 blob retained');
+  });
+
+  it('resolves album_id for playlist tracks via v1 album items; falls back to _unknown otherwise', async () => {
+    seedBlob({
+      cachedItems: {
+        'album-X': {
+          itemId: 'album-X',
+          type: 'album',
+          name: 'Album X',
+          downloadedAt: 2000,
+          tracks: [
+            { id: 't-x1', title: 'X1', fileName: 'x1.mp3', bytes: 10, duration: 60 },
+            { id: 't-x2', title: 'X2', fileName: 'x2.mp3', bytes: 10, duration: 60 },
+          ],
+        },
+        'playlist-Y': {
+          itemId: 'playlist-Y',
+          type: 'playlist',
+          name: 'Playlist Y',
+          downloadedAt: 3000,
+          tracks: [
+            { id: 't-x1', title: 'X1', fileName: 'x1.mp3', bytes: 10, duration: 60 },
+            { id: 't-orphan', title: 'Orphan', fileName: 'orphan.mp3', bytes: 10, duration: 60 },
+          ],
+        },
+      },
+      downloadQueue: [],
+    });
+
+    await runMigrations(13);
+
+    expect(mockBulkReplace).toHaveBeenCalledTimes(1);
+    const { songs } = mockBulkReplace.mock.calls[0][0];
+    const byId = new Map(songs.map((s: any) => [s.id, s]));
+    expect((byId.get('t-x1') as any).albumId).toBe('album-X');
+    expect((byId.get('t-x2') as any).albumId).toBe('album-X');
+    expect((byId.get('t-orphan') as any).albumId).toBe('_unknown');
+  });
+
+  it('resolves album_id for a playlist track via the persisted substreamer-playlist-details blob', async () => {
+    // Playlist blob carries full Child entries (each with albumId). This
+    // covers tracks from playlist downloads whose parent album was never
+    // cached as its own item.
+    sqliteStorage.setItem(
+      'substreamer-playlist-details',
+      JSON.stringify({
+        state: {
+          playlists: {
+            'playlist-P': {
+              playlist: {
+                id: 'playlist-P',
+                entry: [{ id: 't-detail', title: 'Detail Track', albumId: 'detail-album-Z' }],
+              },
+            },
+          },
+        },
+      }),
+    );
+    seedBlob({
+      cachedItems: {
+        'playlist-P': {
+          itemId: 'playlist-P',
+          type: 'playlist',
+          name: 'Playlist P',
+          downloadedAt: 4000,
+          tracks: [
+            { id: 't-detail', title: 'Detail Track', fileName: 'd.flac', bytes: 1, duration: 1 },
+          ],
+        },
+      },
+      downloadQueue: [],
+    });
+
+    await runMigrations(13);
+
+    const { songs } = mockBulkReplace.mock.calls[0][0];
+    expect(songs).toHaveLength(1);
+    expect(songs[0].albumId).toBe('detail-album-Z');
+    // suffix derived from fileName extension
+    expect(songs[0].suffix).toBe('flac');
+  });
+
+  it('resolves album_id for a starred song via the persisted substreamer-favorites blob', async () => {
+    // Favorites blob carries full Child entries (each with albumId). This
+    // covers __starred__ virtual-playlist tracks whose parent album
+    // wasn't cached as its own item.
+    sqliteStorage.setItem(
+      'substreamer-favorites',
+      JSON.stringify({
+        state: {
+          songs: [{ id: 't-fav', title: 'Starred Track', albumId: 'fav-album-Y' }],
+        },
+      }),
+    );
+    seedBlob({
+      cachedItems: {
+        __starred__: {
+          itemId: '__starred__',
+          type: 'playlist',
+          name: 'Favorite Songs',
+          downloadedAt: 5000,
+          tracks: [
+            { id: 't-fav', title: 'Starred Track', fileName: 'fav.mp3', bytes: 1, duration: 1 },
+          ],
+        },
+      },
+      downloadQueue: [],
+    });
+
+    await runMigrations(13);
+
+    const { songs } = mockBulkReplace.mock.calls[0][0];
+    expect(songs).toHaveLength(1);
+    expect(songs[0].albumId).toBe('fav-album-Y');
+  });
+
+  it('maps __starred__ virtual playlist to type=favorites', async () => {
+    seedBlob({
+      cachedItems: {
+        __starred__: {
+          itemId: '__starred__',
+          type: 'playlist',
+          name: 'Favorite Songs',
+          downloadedAt: 5000,
+          tracks: [
+            { id: 't-star', title: 'Starred', fileName: 's.mp3', bytes: 1, duration: 1 },
+          ],
+        },
+      },
+      downloadQueue: [],
+    });
+
+    await runMigrations(13);
+
+    const { items } = mockBulkReplace.mock.calls[0][0];
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ itemId: '__starred__', type: 'favorites' });
+  });
+
+  it('deduplicates songs across items — one song row, two edges', async () => {
+    seedBlob({
+      cachedItems: {
+        'album-A': {
+          itemId: 'album-A',
+          type: 'album',
+          name: 'A',
+          downloadedAt: 1000,
+          tracks: [
+            { id: 'shared', title: 'Shared', fileName: 'shared.mp3', bytes: 42, duration: 100 },
+          ],
+        },
+        'playlist-B': {
+          itemId: 'playlist-B',
+          type: 'playlist',
+          name: 'B',
+          downloadedAt: 2000,
+          tracks: [
+            { id: 'shared', title: 'Shared', fileName: 'shared.mp3', bytes: 42, duration: 100 },
+          ],
+        },
+      },
+      downloadQueue: [],
+    });
+
+    await runMigrations(13);
+
+    const { songs, edges } = mockBulkReplace.mock.calls[0][0];
+    expect(songs).toHaveLength(1);
+    expect(songs[0].id).toBe('shared');
+    expect(edges).toHaveLength(2);
+    expect(edges.map((e: any) => e.itemId).sort()).toEqual(['album-A', 'playlist-B']);
+  });
+
+  it('merges downloadedFormats into song rows', async () => {
+    seedBlob({
+      cachedItems: {
+        'album-A': {
+          itemId: 'album-A',
+          type: 'album',
+          name: 'A',
+          downloadedAt: 1000,
+          tracks: [
+            { id: 'track-1', title: 'T1', fileName: 'track-1.flac', bytes: 500, duration: 200 },
+          ],
+        },
+      },
+      downloadedFormats: {
+        'track-1': {
+          suffix: 'flac',
+          bitRate: 1411,
+          bitDepth: 16,
+          samplingRate: 44100,
+          capturedAt: 123,
+        },
+      },
+      downloadQueue: [],
+    });
+
+    await runMigrations(13);
+
+    const { songs } = mockBulkReplace.mock.calls[0][0];
+    expect(songs).toHaveLength(1);
+    expect(songs[0]).toMatchObject({
+      id: 'track-1',
+      bitRate: 1411,
+      bitDepth: 16,
+      samplingRate: 44100,
+      formatCapturedAt: 123,
+    });
+  });
+
+  it('migrates the download queue; any in-flight status resets to queued', async () => {
+    seedBlob({
+      cachedItems: {},
+      downloadQueue: [
+        {
+          queueId: 'q1',
+          itemId: 'album-1',
+          type: 'album',
+          name: 'Album One',
+          artist: 'Artist',
+          coverArtId: 'c1',
+          status: 'downloading',
+          totalTracks: 3,
+          completedTracks: 1,
+          addedAt: 9000,
+          tracks: [{ id: 't1' }, { id: 't2' }, { id: 't3' }],
+        },
+      ],
+    });
+
+    await runMigrations(13);
+
+    const { queue } = mockBulkReplace.mock.calls[0][0];
+    expect(queue).toHaveLength(1);
+    expect(queue[0]).toMatchObject({
+      queueId: 'q1',
+      itemId: 'album-1',
+      type: 'album',
+      name: 'Album One',
+      artist: 'Artist',
+      coverArtId: 'c1',
+      status: 'queued',
+      totalSongs: 3,
+      completedSongs: 1,
+      addedAt: 9000,
+      queuePosition: 1,
+    });
+    expect(JSON.parse(queue[0].songsJson)).toEqual([
+      { id: 't1' },
+      { id: 't2' },
+      { id: 't3' },
+    ]);
+  });
+
+  it('handles __starred__ in the queue as type=favorites and preserves non-downloading statuses', async () => {
+    seedBlob({
+      cachedItems: {},
+      downloadQueue: [
+        {
+          queueId: 'q-fav',
+          itemId: '__starred__',
+          type: 'playlist',
+          name: 'Favorite Songs',
+          status: 'error',
+          error: 'boom',
+          totalTracks: 2,
+          completedTracks: 0,
+          addedAt: 1000,
+          tracks: [],
+        },
+      ],
+    });
+
+    await runMigrations(13);
+
+    const { queue } = mockBulkReplace.mock.calls[0][0];
+    expect(queue).toHaveLength(1);
+    expect(queue[0]).toMatchObject({
+      queueId: 'q-fav',
+      type: 'favorites',
+      status: 'error',
+      error: 'boom',
+    });
+  });
+
+  it('ignores unknown maxConcurrentDownloads values', async () => {
+    seedBlob({
+      cachedItems: {},
+      downloadQueue: [],
+      maxConcurrentDownloads: 99,
+    });
+    await runMigrations(13);
+    expect(sqliteStorage.getItem('substreamer-music-cache-settings')).toBeNull();
+  });
+
+  it('persists maxConcurrentDownloads = 5 into the settings blob', async () => {
+    seedBlob({
+      cachedItems: {},
+      downloadQueue: [],
+      maxConcurrentDownloads: 5,
+    });
+    await runMigrations(13);
+    const settings = sqliteStorage.getItem('substreamer-music-cache-settings');
+    expect(JSON.parse(settings as string)).toEqual({ maxConcurrentDownloads: 5 });
+  });
+
+  it('second runMigrations(13) with the retained blob re-runs idempotently', async () => {
+    seedBlob({
+      cachedItems: {
+        'album-1': {
+          itemId: 'album-1',
+          type: 'album',
+          name: 'A',
+          downloadedAt: 1000,
+          tracks: [{ id: 't1', title: 'T', fileName: 't1.mp3', bytes: 1, duration: 1 }],
+        },
+      },
+      downloadQueue: [],
+    });
+
+    await runMigrations(13);
+    expect(mockBulkReplace).toHaveBeenCalledTimes(1);
+    // Blob is RETAINED (cleanup call is commented out pending beta).
+    expect(sqliteStorage.getItem('substreamer-music-cache')).not.toBeNull();
+
+    mockBulkReplace.mockClear();
+    mockFileWrite.mockClear();
+    // Second runMigrations(13): Task 14 re-runs (blob still present) and
+    // bulkReplace is invoked again with identical input. UPSERT makes this
+    // a safe idempotent no-op at the SQL level.
+    await runMigrations(13);
+    expect(mockBulkReplace).toHaveBeenCalledTimes(1);
+  });
+
+  describe('filesystem migration', () => {
+    // v2 layout = {music-cache}/{albumId}/{songId}.{ext}. v1 albums already
+    // used this layout so they're no-ops; v1 playlists/starred used the same
+    // shape with playlistId as the parent dir and need moves into albumId.
+
+    it('album-cached files stay in place — zero moves, zero stale-dir sweeps', async () => {
+      seedBlob({
+        cachedItems: {
+          'album-A': {
+            itemId: 'album-A',
+            type: 'album',
+            name: 'A',
+            downloadedAt: 1000,
+            tracks: [
+              { id: 's1', title: 'S1', fileName: 's1.mp3', bytes: 1, duration: 1 },
+              { id: 's2', title: 'S2', fileName: 's2.mp3', bytes: 1, duration: 1 },
+            ],
+          },
+        },
+        downloadQueue: [],
+      });
+
+      const cacheRoot = 'document/music-cache';
+      mockDirExistsForUri = (uri) =>
+        uri === cacheRoot || uri === `${cacheRoot}/album-A`;
+      // v1 album files ARE at the v2 target path (same layout).
+      mockFileExistsForUri = (uri) =>
+        uri === `${cacheRoot}/album-A/s1.mp3` ||
+        uri === `${cacheRoot}/album-A/s2.mp3`;
+      mockListDirectoryAsync.mockImplementation(async (uri: string) => {
+        if (uri === cacheRoot) return ['album-A'];
+        if (uri === `${cacheRoot}/album-A`) return ['s1.mp3', 's2.mp3'];
+        return [];
+      });
+
+      await runMigrations(13);
+
+      expect(mockBulkReplace).toHaveBeenCalledTimes(1);
+      // Album files already at target path — no moves.
+      expect(mockFileMove).not.toHaveBeenCalled();
+      // album-A is a valid album_id, so the top-level sweep doesn't delete it.
+      expect(mockDirDelete).not.toHaveBeenCalled();
+
+      const logContent = mockFileWrite.mock.calls[0][0] as string;
+      expect(logContent).toContain(
+        'Filesystem migration: 2 in-place, 0 moved, 0 duplicate(s) deleted, 0 missing, 0 stale dir(s) swept.',
+      );
+    });
+
+    it('playlist-cached song moves into its parent album dir', async () => {
+      // Playlist P contains song s1 with albumId album-A. v1 had the file
+      // at {music-cache}/P/s1.mp3; v2 wants it at {music-cache}/album-A/s1.mp3.
+      sqliteStorage.setItem(
+        'substreamer-playlist-details',
+        JSON.stringify({
+          state: {
+            playlists: {
+              P: { playlist: { id: 'P', entry: [{ id: 's1', albumId: 'album-A' }] } },
+            },
+          },
+        }),
+      );
+      seedBlob({
+        cachedItems: {
+          P: {
+            itemId: 'P',
+            type: 'playlist',
+            name: 'Playlist P',
+            downloadedAt: 1000,
+            tracks: [
+              { id: 's1', title: 'S1', fileName: 's1.mp3', bytes: 1, duration: 1 },
+            ],
+          },
+        },
+        downloadQueue: [],
+      });
+
+      const cacheRoot = 'document/music-cache';
+      const createdDirs = new Set<string>();
+      mockDirExistsForUri = (uri) =>
+        uri === cacheRoot || uri === `${cacheRoot}/P` || createdDirs.has(uri);
+      mockDirCreate.mockImplementation((uri: string) => { createdDirs.add(uri); });
+
+      const movedTargets = new Set<string>();
+      mockFileMove.mockImplementation((_src: string, target: string) => {
+        movedTargets.add(target);
+      });
+      mockFileExistsForUri = (uri) => {
+        if (movedTargets.has(uri)) return true;
+        // Source lives under v1 playlist dir.
+        return uri === `${cacheRoot}/P/s1.mp3`;
+      };
+      mockListDirectoryAsync.mockImplementation(async (uri: string) => {
+        if (uri === cacheRoot) return ['P'];
+        if (uri === `${cacheRoot}/P`) return ['s1.mp3'];
+        return [];
+      });
+
+      await runMigrations(13);
+
+      expect(mockFileMove).toHaveBeenCalledTimes(1);
+      const [[src, dst]] = mockFileMove.mock.calls;
+      expect(src).toBe(`${cacheRoot}/P/s1.mp3`);
+      expect(dst).toBe(`${cacheRoot}/album-A/s1.mp3`);
+      // The playlist directory P is not a valid album_id — swept.
+      expect(mockDirDelete).toHaveBeenCalled();
+
+      const logContent = mockFileWrite.mock.calls[0][0] as string;
+      expect(logContent).toContain(
+        'Filesystem migration: 0 in-place, 1 moved, 0 duplicate(s) deleted, 0 missing, 1 stale dir(s) swept.',
+      );
+    });
+
+    it('duplicates across album + playlist collapse to the album copy', async () => {
+      // Album A already has s1.mp3. A playlist P also has a copy of s1.mp3.
+      // Expected: no move, the playlist copy is deleted, dir P swept.
+      seedBlob({
+        cachedItems: {
+          'album-A': {
+            itemId: 'album-A',
+            type: 'album',
+            name: 'A',
+            downloadedAt: 1000,
+            tracks: [
+              { id: 's1', title: 'S1', fileName: 's1.mp3', bytes: 1, duration: 1 },
+            ],
+          },
+          P: {
+            itemId: 'P',
+            type: 'playlist',
+            name: 'P',
+            downloadedAt: 1000,
+            tracks: [
+              { id: 's1', title: 'S1', fileName: 's1.mp3', bytes: 1, duration: 1 },
+            ],
+          },
+        },
+        downloadQueue: [],
+      });
+
+      const cacheRoot = 'document/music-cache';
+      mockDirExistsForUri = (uri) =>
+        uri === cacheRoot ||
+        uri === `${cacheRoot}/album-A` ||
+        uri === `${cacheRoot}/P`;
+      mockFileExistsForUri = (uri) =>
+        uri === `${cacheRoot}/album-A/s1.mp3` ||
+        uri === `${cacheRoot}/P/s1.mp3`;
+      mockListDirectoryAsync.mockImplementation(async (uri: string) => {
+        if (uri === cacheRoot) return ['album-A', 'P'];
+        if (uri === `${cacheRoot}/album-A`) return ['s1.mp3'];
+        if (uri === `${cacheRoot}/P`) return ['s1.mp3'];
+        return [];
+      });
+
+      await runMigrations(13);
+
+      // No moves — the album copy is already at target.
+      expect(mockFileMove).not.toHaveBeenCalled();
+      // The playlist duplicate gets deleted.
+      expect(mockFileDelete).toHaveBeenCalled();
+
+      const logContent = mockFileWrite.mock.calls[0][0] as string;
+      expect(logContent).toContain(
+        'Filesystem migration: 1 in-place, 0 moved, 1 duplicate(s) deleted, 0 missing, 1 stale dir(s) swept.',
+      );
+    });
+
+    it('skips songs whose target file already exists (idempotent re-run)', async () => {
+      seedBlob({
+        cachedItems: {
+          'album-A': {
+            itemId: 'album-A',
+            type: 'album',
+            name: 'A',
+            downloadedAt: 1000,
+            tracks: [
+              { id: 's1', title: 'S1', fileName: 's1.mp3', bytes: 1, duration: 1 },
+            ],
+          },
+        },
+        downloadQueue: [],
+      });
+
+      const cacheRoot = 'document/music-cache';
+      mockDirExistsForUri = (uri) =>
+        uri === cacheRoot || uri === `${cacheRoot}/album-A`;
+      mockFileExistsForUri = (uri) =>
+        uri === `${cacheRoot}/album-A/s1.mp3`;
+      mockListDirectoryAsync.mockImplementation(async (uri: string) => {
+        if (uri === cacheRoot) return ['album-A'];
+        if (uri === `${cacheRoot}/album-A`) return ['s1.mp3'];
+        return [];
+      });
+
+      await runMigrations(13);
+
+      expect(mockFileMove).not.toHaveBeenCalled();
+      const logContent = mockFileWrite.mock.calls[0][0] as string;
+      expect(logContent).toContain('1 in-place, 0 moved');
+    });
+
+    it('counts songs whose source file is missing without throwing', async () => {
+      seedBlob({
+        cachedItems: {
+          'album-A': {
+            itemId: 'album-A',
+            type: 'album',
+            name: 'A',
+            downloadedAt: 1000,
+            tracks: [
+              { id: 's1', title: 'S1', fileName: 's1.mp3', bytes: 1, duration: 1 },
+            ],
+          },
+        },
+        downloadQueue: [],
+      });
+
+      const cacheRoot = 'document/music-cache';
+      mockDirExistsForUri = (uri) =>
+        uri === cacheRoot || uri === `${cacheRoot}/album-A`;
+      // Neither source nor target exists anywhere.
+      mockFileExistsForUri = () => false;
+      mockListDirectoryAsync.mockImplementation(async (uri: string) => {
+        if (uri === cacheRoot) return ['album-A'];
+        return [];
+      });
+
+      await expect(runMigrations(13)).resolves.toBeGreaterThanOrEqual(14);
+
+      expect(mockFileMove).not.toHaveBeenCalled();
+      const logContent = mockFileWrite.mock.calls[0][0] as string;
+      expect(logContent).toContain('0 moved, 0 duplicate(s) deleted, 1 missing');
+      expect(mockBulkReplace).toHaveBeenCalledTimes(1);
+      // Blob is RETAINED (cleanup call is commented out pending beta).
+      expect(sqliteStorage.getItem('substreamer-music-cache')).not.toBeNull();
+    });
+
+    it('no filesystem work when the cache directory does not exist', async () => {
+      seedBlob({
+        cachedItems: {
+          'album-A': {
+            itemId: 'album-A',
+            type: 'album',
+            name: 'A',
+            downloadedAt: 1000,
+            tracks: [
+              { id: 's1', title: 'S1', fileName: 's1.mp3', bytes: 1, duration: 1 },
+            ],
+          },
+        },
+        downloadQueue: [],
+      });
+
+      // cache dir doesn't exist → the whole filesystem branch is skipped.
+      mockDirExistsForUri = () => false;
+
+      await runMigrations(13);
+
+      expect(mockFileMove).not.toHaveBeenCalled();
+      expect(mockListDirectoryAsync).not.toHaveBeenCalled();
+      // SQL side of the migration still ran.
+      expect(mockBulkReplace).toHaveBeenCalledTimes(1);
+      // Blob is RETAINED (cleanup call is commented out pending beta).
+      expect(sqliteStorage.getItem('substreamer-music-cache')).not.toBeNull();
+      const logContent = mockFileWrite.mock.calls[0][0] as string;
+      // The filesystem-migration log line is absent when the branch is skipped.
+      expect(logContent).not.toContain('Filesystem migration:');
+    });
   });
 });
 

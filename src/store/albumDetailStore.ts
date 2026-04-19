@@ -120,7 +120,10 @@ export const albumDetailStore = create<AlbumDetailState>()((set, get) => ({
   },
 
   hydrateFromDb: () => {
-    if (get().hasHydrated) return;
+    // Idempotent re-read. Can be called multiple times (e.g. once at the
+    // auth-rehydrated useEffect, once after migrations complete on splash)
+    // without losing data — every write path is write-through so the SQL
+    // table is the canonical source of truth.
     const restored = hydrateAlbumDetails();
     set({ albums: restored, hasHydrated: true });
   },

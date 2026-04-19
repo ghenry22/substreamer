@@ -2,6 +2,10 @@ jest.mock('../sqliteStorage', () => {
   const mock = require('../__mocks__/sqliteStorage');
   return {
     ...mock,
+    sqliteStorage: {
+      ...mock.sqliteStorage,
+      removeItem: jest.fn(),
+    },
     clearAllStorage: jest.fn(),
   };
 });
@@ -29,10 +33,29 @@ jest.mock('../persistence/scrobbleTable', () => ({
   replaceAllScrobbles: jest.fn(),
   hydrateScrobbles: jest.fn(() => []),
 }));
+jest.mock('../persistence/musicCacheTables', () => ({
+  clearAllMusicCacheRows: jest.fn(),
+  hydrateCachedSongs: jest.fn(() => ({})),
+  hydrateCachedItems: jest.fn(() => ({})),
+  hydrateDownloadQueue: jest.fn(() => []),
+  countSongRefs: jest.fn(() => 0),
+  deleteCachedItem: jest.fn(),
+  deleteCachedSong: jest.fn(),
+  insertDownloadQueueItem: jest.fn(),
+  markDownloadComplete: jest.fn(),
+  removeCachedItemSong: jest.fn(),
+  removeDownloadQueueItem: jest.fn(),
+  reorderCachedItemSongs: jest.fn(),
+  reorderDownloadQueue: jest.fn(),
+  updateDownloadQueueItem: jest.fn(),
+  upsertCachedItem: jest.fn(),
+  upsertCachedSong: jest.fn(),
+}));
 
-import { clearAllStorage } from '../sqliteStorage';
+import { sqliteStorage, clearAllStorage } from '../sqliteStorage';
 import { clearDetailTables } from '../persistence/detailTables';
 import { clearScrobbles } from '../persistence/scrobbleTable';
+import { clearAllMusicCacheRows } from '../persistence/musicCacheTables';
 import { authStore } from '../authStore';
 import { albumLibraryStore } from '../albumLibraryStore';
 import { completedScrobbleStore } from '../completedScrobbleStore';
@@ -46,6 +69,8 @@ beforeEach(() => {
   (clearAllStorage as jest.Mock).mockClear();
   (clearDetailTables as jest.Mock).mockClear();
   (clearScrobbles as jest.Mock).mockClear();
+  (clearAllMusicCacheRows as jest.Mock).mockClear();
+  (sqliteStorage.removeItem as jest.Mock).mockClear();
 });
 
 describe('resetAllStores', () => {
@@ -62,6 +87,16 @@ describe('resetAllStores', () => {
   it('truncates the scrobble_events table', () => {
     resetAllStores();
     expect(clearScrobbles).toHaveBeenCalledTimes(1);
+  });
+
+  it('truncates the music cache tables (cached_songs + cached_items + cached_item_songs + download_queue)', () => {
+    resetAllStores();
+    expect(clearAllMusicCacheRows).toHaveBeenCalledTimes(1);
+  });
+
+  it('removes the music cache settings blob', () => {
+    resetAllStores();
+    expect(sqliteStorage.removeItem).toHaveBeenCalledWith('substreamer-music-cache-settings');
   });
 
   it('resets persisted stores to initial state', () => {

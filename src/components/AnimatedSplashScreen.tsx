@@ -23,10 +23,8 @@ import { useTranslation } from 'react-i18next';
 
 import AnimatedWaveformLogo from './AnimatedWaveformLogo';
 import { getPendingTasks, runMigrations } from '../services/migrationService';
-import { albumDetailStore } from '../store/albumDetailStore';
-import { completedScrobbleStore } from '../store/completedScrobbleStore';
+import { hydratePerRowStores } from '../store/hydratePerRowStores';
 import { migrationStore } from '../store/migrationStore';
-import { songIndexStore } from '../store/songIndexStore';
 import { sqliteStorage } from '../store/sqliteStorage';
 
 /**
@@ -135,15 +133,7 @@ export default function AnimatedSplashScreen({ onFinish }: Props) {
       runMigrations(completedVersion)
         .then((finalVersion) => {
           migrationStore.getState().setCompletedVersion(finalVersion);
-          // Hydrate stores that load from per-row SQLite tables now that
-          // migrations have had a chance to populate those tables.
-          try {
-            albumDetailStore.getState().hydrateFromDb();
-            songIndexStore.getState().hydrateFromDb();
-            completedScrobbleStore.getState().hydrateFromDb();
-          } catch (e) {
-            console.warn('[splash] per-row hydration failed', e);
-          }
+          hydratePerRowStores();
           setMigrationPhase('done');
         })
         .catch((e) => {
@@ -212,6 +202,9 @@ export default function AnimatedSplashScreen({ onFinish }: Props) {
     const pending = getPendingTasks(completedVersion);
 
     if (pending.length === 0) {
+      // No migrations to run, but the per-row stores still need to be
+      // hydrated from SQLite on every launch.
+      hydratePerRowStores();
       fadeOut();
       return;
     }

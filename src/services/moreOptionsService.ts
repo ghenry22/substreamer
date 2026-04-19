@@ -16,6 +16,10 @@ import { layoutPreferencesStore } from '../store/layoutPreferencesStore';
 import { playlistLibraryStore } from '../store/playlistLibraryStore';
 import { processingOverlayStore } from '../store/processingOverlayStore';
 import { shuffleArray } from '../utils/arrayHelpers';
+import {
+  deleteCachedItem as deleteCachedItemService,
+  enqueueSongDownload as enqueueSongDownloadService,
+} from './musicCacheService';
 import { addToQueue, playTrack, removeFromQueue } from './playerService';
 import {
   createNewPlaylist,
@@ -253,10 +257,12 @@ async function fetchAllArtistSongs(
   const offline = offlineModeStore.getState().offlineMode;
 
   if (offline) {
-    const items = Object.values(musicCacheStore.getState().cachedItems);
+    const state = musicCacheStore.getState();
+    const items = Object.values(state.cachedItems);
     const songs = items.flatMap((item) =>
-      item.tracks
-        .filter((t) => t.artist === artistName)
+      item.songIds
+        .map((id) => state.cachedSongs[id])
+        .filter((t): t is NonNullable<typeof t> => t !== undefined && t.artist === artistName)
         .map((t) => ({
           id: t.id,
           title: t.title,
@@ -376,6 +382,51 @@ export async function playAllByArtist(
 /*  Download management                                                */
 /* ------------------------------------------------------------------ */
 
-export { enqueueAlbumDownload, enqueuePlaylistDownload } from './musicCacheService';
+export {
+  enqueueAlbumDownload,
+  enqueuePlaylistDownload,
+  enqueueSongDownload,
+} from './musicCacheService';
 
 export { deleteCachedItem as removeDownload, cancelDownload } from './musicCacheService';
+
+/** Synthetic itemId used for single-song download items. */
+export function songItemId(songId: string): string {
+  return `song:${songId}`;
+}
+
+/**
+ * Trigger a single-song download and surface a toast / overlay confirming the
+ * action. If the underlying song is already fully pooled, the call still
+ * creates the `song:` item edge so the song is visible in the music-cache
+ * browser — the service layer handles that short-circuit internally.
+ */
+export async function handleDownloadSong(song: Child): Promise<void> {
+  if (!song?.id) return;
+  try {
+    await enqueueSongDownloadService(song);
+    processingOverlayStore.getState().showSuccess(
+      i18n.t('songDownloadStarted', { title: song.title ?? i18n.t('unknownSong') }),
+    );
+  } catch {
+    processingOverlayStore.getState().showError(i18n.t('downloadFailed'));
+  }
+}
+
+/**
+ * Remove a single-song download. Deletes the synthetic `song:` item — the
+ * service layer refcounts the underlying song and only removes the file if
+ * nothing else references it.
+ */
+export function handleRemoveSongDownload(song: Child): void {
+  if (!song?.id) return;
+  const itemId = songItemId(song.id);
+  try {
+    deleteCachedItemService(itemId);
+    processingOverlayStore.getState().showSuccess(
+      i18n.t('songDownloadRemoved', { title: song.title ?? i18n.t('unknownSong') }),
+    );
+  } catch {
+    processingOverlayStore.getState().showError(i18n.t('failedToLoad'));
+  }
+}

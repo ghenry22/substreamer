@@ -75,8 +75,8 @@ export function DownloadBanner() {
   }, [router]);
 
   const progress = useMemo(() => {
-    if (!activeItem || activeItem.totalTracks === 0) return 0;
-    return activeItem.completedTracks / activeItem.totalTracks;
+    if (!activeItem || activeItem.totalSongs === 0) return 0;
+    return activeItem.completedSongs / activeItem.totalSongs;
   }, [activeItem]);
 
   const label = activeItem
@@ -84,7 +84,7 @@ export function DownloadBanner() {
     : t('itemQueued', { count: queueCount });
 
   const trackText = activeItem
-    ? `${activeItem.completedTracks}/${activeItem.totalTracks}`
+    ? `${activeItem.completedSongs}/${activeItem.totalSongs}`
     : '';
 
   return (

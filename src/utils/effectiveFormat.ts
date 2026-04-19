@@ -95,9 +95,18 @@ function resolveEffectiveBitRate(
  * Returns null only when absolutely nothing is known.
  */
 export function getEffectiveFormat(track: Child): EffectiveFormat | null {
-  // 1. Downloaded copy is authoritative.
-  const downloaded = musicCacheStore.getState().downloadedFormats[track.id];
-  if (downloaded) return downloaded;
+  // 1. Downloaded copy is authoritative. Format info lives inline on the
+  //    cached song row since v2 (previously in a separate downloadedFormats map).
+  const downloadedSong = musicCacheStore.getState().cachedSongs[track.id];
+  if (downloadedSong) {
+    return {
+      suffix: downloadedSong.suffix.toLowerCase(),
+      bitRate: downloadedSong.bitRate,
+      bitDepth: downloadedSong.bitDepth,
+      samplingRate: downloadedSong.samplingRate,
+      capturedAt: downloadedSong.formatCapturedAt,
+    };
+  }
 
   // 2. Live streaming queue stamp.
   const queued = playerStore.getState().queueFormats[track.id];

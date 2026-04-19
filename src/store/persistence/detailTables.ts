@@ -214,6 +214,28 @@ export function countSongIndex(): number {
   }
 }
 
+/**
+ * Read every (song_id, album_id) pair from the song_index table. Used by
+ * migration task #14 to resolve a song's parent album without relying on
+ * the blob/store hydration path. Returns an empty map if the DB is
+ * unavailable or the table is empty.
+ */
+export function getAllSongAlbumIds(): Map<string, string> {
+  const out = new Map<string, string>();
+  if (db === null) return out;
+  try {
+    const rows = db.getAllSync<{ id: string; albumId: string }>(
+      'SELECT id, albumId FROM song_index;',
+    );
+    for (const row of rows) {
+      if (row.id && row.albumId) out.set(row.id, row.albumId);
+    }
+  } catch {
+    /* return whatever we collected */
+  }
+  return out;
+}
+
 /** Return the total album_details row count. */
 export function countAlbumDetails(): number {
   if (db === null) return 0;

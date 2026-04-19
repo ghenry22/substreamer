@@ -425,16 +425,24 @@ describe('hydrateFromDb', () => {
     expect(state.aggregates.dayCounts['2025-01-15']).toBe(2);
   });
 
-  it('is idempotent — second call is a no-op once hasHydrated is true', () => {
+  it('is idempotent — second call re-reads and produces the same state', () => {
     mockHydrateScrobbles.mockReturnValue([
       validScrobble({ id: 'a', song: { id: 's1', title: 'A', artist: 'Art', duration: 100 } as any }),
     ]);
 
     completedScrobbleStore.getState().hydrateFromDb();
-    expect(mockHydrateScrobbles).toHaveBeenCalledTimes(1);
+    const firstState = completedScrobbleStore.getState();
+    expect(firstState.hasHydrated).toBe(true);
+    expect(firstState.completedScrobbles).toHaveLength(1);
 
     completedScrobbleStore.getState().hydrateFromDb();
-    expect(mockHydrateScrobbles).toHaveBeenCalledTimes(1);
+    // Hydrate is intentionally re-callable (e.g. once from the auth-
+    // rehydrated useEffect, once from the splash post-migration callback).
+    // The SQL re-read is cheap; the end state is identical.
+    expect(mockHydrateScrobbles).toHaveBeenCalledTimes(2);
+    const secondState = completedScrobbleStore.getState();
+    expect(secondState.hasHydrated).toBe(true);
+    expect(secondState.completedScrobbles).toHaveLength(1);
   });
 
   it('hydrates empty when SQL returns no rows', () => {

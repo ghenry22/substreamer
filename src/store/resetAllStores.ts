@@ -5,9 +5,10 @@
  * Backup files on disk are intentionally preserved.
  */
 
-import { clearAllStorage } from './sqliteStorage';
+import { sqliteStorage, clearAllStorage } from './sqliteStorage';
 import { clearDetailTables } from './persistence/detailTables';
 import { clearScrobbles } from './persistence/scrobbleTable';
+import { clearMusicCacheTables } from './musicCacheStore';
 
 // Persisted stores
 import { albumDetailStore } from './albumDetailStore';
@@ -124,6 +125,11 @@ export function resetAllStores(): void {
   // completedScrobbleStore also persists to a per-row table (`scrobble_events`)
   // in its own connection; truncate it here so logged-out state is clean.
   clearScrobbles();
+  // musicCacheStore persists its four v2 tables (cached_songs, cached_items,
+  // cached_item_songs, download_queue) in yet another connection; truncate
+  // them here and drop the settings blob too.
+  clearMusicCacheTables();
+  sqliteStorage.removeItem('substreamer-music-cache-settings');
   for (const store of allStores) {
     (store.setState as (state: unknown, replace: boolean) => void)(
       store.getInitialState(),

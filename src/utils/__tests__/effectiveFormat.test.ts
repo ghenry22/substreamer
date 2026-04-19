@@ -8,7 +8,7 @@ import { type EffectiveFormat } from '../../types/audio';
 import { type Child } from '../../services/subsonicService';
 
 beforeEach(() => {
-  musicCacheStore.setState({ downloadedFormats: {} });
+  musicCacheStore.setState({ cachedSongs: {} });
   playerStore.setState({ queueFormats: {} });
 });
 
@@ -117,16 +117,30 @@ describe('getEffectiveFormat', () => {
   const track = { id: 't1', suffix: 'flac', bitRate: 900 } as Child;
 
   it('prefers downloaded format over queue and source', () => {
-    const downloaded: EffectiveFormat = {
-      suffix: 'mp3', bitRate: 192, capturedAt: 1000,
-    };
-    musicCacheStore.setState({ downloadedFormats: { t1: downloaded } });
+    musicCacheStore.setState({
+      cachedSongs: {
+        t1: {
+          id: 't1',
+          title: 'T',
+          albumId: 'a1',
+          bytes: 1,
+          duration: 1,
+          suffix: 'mp3',
+          bitRate: 192,
+          formatCapturedAt: 1000,
+          downloadedAt: 1000,
+        } as any,
+      },
+    });
     playerStore.setState({
       queueFormats: { t1: { suffix: 'opus', bitRate: 128, capturedAt: 2000 } },
     });
 
     const result = getEffectiveFormat(track);
-    expect(result).toBe(downloaded);
+    expect(result).not.toBeNull();
+    expect(result!.suffix).toBe('mp3');
+    expect(result!.bitRate).toBe(192);
+    expect(result!.capturedAt).toBe(1000);
   });
 
   it('falls back to queue format when no download entry', () => {

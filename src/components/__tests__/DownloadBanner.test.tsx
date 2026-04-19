@@ -61,10 +61,11 @@ function makeQueueItem(overrides: Partial<DownloadQueueItem> = {}): DownloadQueu
     type: 'album',
     name: 'Kind of Blue',
     status: 'queued',
-    totalTracks: 9,
-    completedTracks: 0,
+    totalSongs: 9,
+    completedSongs: 0,
     addedAt: 0,
-    tracks: [],
+    queuePosition: 1,
+    songsJson: '[]',
     ...overrides,
   };
 }
@@ -85,7 +86,7 @@ describe('DownloadBanner', () => {
 
   it('expands to BANNER_HEIGHT when queue has items', () => {
     musicCacheStore.setState({
-      downloadQueue: [makeQueueItem({ status: 'downloading', completedTracks: 3 })],
+      downloadQueue: [makeQueueItem({ status: 'downloading', completedSongs: 3 })],
     });
     const { toJSON } = render(<DownloadBanner />);
     const root = toJSON() as import('react-test-renderer').ReactTestRendererJSON;
@@ -100,8 +101,8 @@ describe('DownloadBanner', () => {
         makeQueueItem({
           status: 'downloading',
           name: 'Kind of Blue',
-          completedTracks: 3,
-          totalTracks: 9,
+          completedSongs: 3,
+          totalSongs: 9,
         }),
       ],
     });
@@ -160,13 +161,13 @@ describe('DownloadBanner', () => {
     );
   });
 
-  it('renders zero progress when active item has zero totalTracks', () => {
+  it('renders zero progress when active item has zero totalSongs', () => {
     musicCacheStore.setState({
       downloadQueue: [
         makeQueueItem({
           status: 'downloading',
-          completedTracks: 0,
-          totalTracks: 0,
+          completedSongs: 0,
+          totalSongs: 0,
         }),
       ],
     });

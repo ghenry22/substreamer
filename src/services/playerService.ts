@@ -103,8 +103,16 @@ function mimeFromUri(uri: string): string | undefined {
  * otherwise resolve from the current streaming settings.
  */
 function stampQueueFormat(child: Child): EffectiveFormat {
-  const downloaded = musicCacheStore.getState().downloadedFormats[child.id];
-  if (downloaded) return downloaded;
+  const downloadedSong = musicCacheStore.getState().cachedSongs[child.id];
+  if (downloadedSong) {
+    return {
+      suffix: downloadedSong.suffix.toLowerCase(),
+      bitRate: downloadedSong.bitRate,
+      bitDepth: downloadedSong.bitDepth,
+      samplingRate: downloadedSong.samplingRate,
+      capturedAt: downloadedSong.formatCapturedAt,
+    };
+  }
 
   const { streamFormat, maxBitRate } = playbackSettingsStore.getState();
   return resolveEffectiveFormat({

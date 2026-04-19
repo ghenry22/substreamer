@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { useShallow } from 'zustand/react/shallow';
 
 import { CachedImage } from '../components/CachedImage';
 import { EmptyState } from '../components/EmptyState';
@@ -38,8 +39,8 @@ import { clearQueue } from '../services/playerService';
 import { offlineModeStore } from '../store/offlineModeStore';
 import {
   musicCacheStore,
-  type CachedMusicItem,
-  type CachedTrack,
+  type CachedItemMeta,
+  type CachedSongMeta,
 } from '../store/musicCacheStore';
 import { formatBytes } from '../utils/formatters';
 
@@ -52,7 +53,7 @@ const TrackFileRow = memo(function TrackFileRow({
   itemId,
   colors,
 }: {
-  track: CachedTrack;
+  track: CachedSongMeta;
   itemId: string;
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
@@ -107,7 +108,7 @@ const CacheRow = memo(function CacheRow({
   onDelete,
   onRedownload,
 }: {
-  item: CachedMusicItem;
+  item: CachedItemMeta;
   colors: ReturnType<typeof useTheme>['colors'];
   expanded: boolean;
   onToggle: (itemId: string) => void;
@@ -116,7 +117,24 @@ const CacheRow = memo(function CacheRow({
 }) {
   const offlineMode = offlineModeStore((s) => s.offlineMode);
   const { t } = useTranslation();
-  const trackLabel = t('trackWithCount', { count: item.tracks.length });
+  // Resolve the songs this item references from the canonical song pool.
+  // `useShallow` compares element-by-element so an unchanged set of songs
+  // returns the same reference — without this, the `.map().filter()` chain
+  // produces a fresh array every render and any unrelated store update
+  // (e.g. a background library sync) causes an infinite re-render loop.
+  const tracks = musicCacheStore(
+    useShallow((s) =>
+      item.songIds
+        .map((id) => s.cachedSongs[id])
+        .filter((s): s is CachedSongMeta => s !== undefined),
+    ),
+  );
+  const knownCount = item.songIds.length;
+  const isPartial = knownCount < item.expectedSongCount;
+  const trackLabel = isPartial
+    ? t('songsPartial', { count: knownCount, total: item.expectedSongCount })
+    : t('songCount', { count: knownCount });
+  const totalBytes = tracks.reduce((sum, s) => sum + (s.bytes ?? 0), 0);
 
   // Defer track list rendering by one frame so the chevron flip and row
   // expansion feel instant before mounting potentially many TrackFileRows.
@@ -177,7 +195,11 @@ const CacheRow = memo(function CacheRow({
               </Text>
             )}
             <Text style={[styles.rowMeta, { color: colors.textSecondary }]}>
-              {item.type === 'album' ? t('album') : t('playlist')} · {trackLabel} · {formatBytes(item.totalBytes)}
+              {item.type === 'album'
+                ? t('album')
+                : item.type === 'song'
+                  ? t('song')
+                  : t('playlist')} · {trackLabel} · {formatBytes(totalBytes)}
             </Text>
           </View>
           <Ionicons
@@ -191,7 +213,7 @@ const CacheRow = memo(function CacheRow({
         {expanded && (
           <View style={[styles.trackList, { borderTopColor: colors.border }]}>
             {tracksReady ? (
-              item.tracks.map((track) => (
+              tracks.map((track) => (
                 <TrackFileRow
                   key={track.id}
                   track={track}
@@ -212,6 +234,18 @@ const CacheRow = memo(function CacheRow({
     </SwipeableRow>
   );
 });
+
+/* ------------------------------------------------------------------ */
+/*  List entry types                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The list renders a mixed sequence of cached items and synthetic section
+ * headers. Section headers sit between album / playlist / favorites items
+ * and the trailing "Song downloads" section (items with `type === 'song'`).
+ */
+type SectionHeader = { kind: 'header'; id: string; label: string };
+type ListEntry = { kind: 'item'; data: CachedItemMeta } | SectionHeader;
 
 /* ------------------------------------------------------------------ */
 /*  Screen                                                             */
@@ -266,28 +300,51 @@ export function MusicCacheBrowserScreen() {
     });
   }, [navigation, hasItems, handleClearAll, colors.primary]);
 
-  const entries = useMemo(() => {
+  const entries = useMemo<ListEntry[]>(() => {
     const all = Object.values(cachedItems);
-    all.sort((a, b) => b.downloadedAt - a.downloadedAt);
     const query = filter.trim().toLowerCase();
-    if (query.length === 0) return all;
-    return all.filter(
-      (e) =>
-        e.name.toLowerCase().includes(query) ||
-        (e.artist?.toLowerCase().includes(query) ?? false),
-    );
-  }, [cachedItems, filter]);
+    const filtered = query.length === 0
+      ? all
+      : all.filter(
+          (e) =>
+            e.name.toLowerCase().includes(query) ||
+            (e.artist?.toLowerCase().includes(query) ?? false),
+        );
+
+    // Partition: non-song items first (albums, playlists, favorites) sorted
+    // by downloadedAt desc; song items grouped into a trailing section.
+    const nonSong = filtered
+      .filter((e) => e.type !== 'song')
+      .sort((a, b) => b.downloadedAt - a.downloadedAt);
+    const songOnly = filtered
+      .filter((e) => e.type === 'song')
+      .sort((a, b) => b.downloadedAt - a.downloadedAt);
+
+    const result: ListEntry[] = nonSong.map((item) => ({ kind: 'item', data: item }));
+    if (songOnly.length > 0) {
+      result.push({ kind: 'header', id: '__songs_header__', label: t('songDownloads') });
+      for (const item of songOnly) {
+        result.push({ kind: 'item', data: item });
+      }
+    }
+    return result;
+  }, [cachedItems, filter, t]);
 
   const handleToggle = useCallback((itemId: string) => {
     setExpandedId((prev) => (prev === itemId ? null : itemId));
   }, []);
 
   const handleDelete = useCallback((itemId: string) => {
-    const item = musicCacheStore.getState().cachedItems[itemId];
+    const state = musicCacheStore.getState();
+    const item = state.cachedItems[itemId];
     if (!item) return;
+    const itemBytes = item.songIds.reduce(
+      (sum, id) => sum + (state.cachedSongs[id]?.bytes ?? 0),
+      0,
+    );
     alert(
       t('removeDownload'),
-      t('removeDownloadMessage', { name: item.name, size: formatBytes(item.totalBytes) }),
+      t('removeDownloadMessage', { name: item.name, size: formatBytes(itemBytes) }),
       [
         { text: t('cancel'), style: 'cancel' },
         {
@@ -322,21 +379,30 @@ export function MusicCacheBrowserScreen() {
   }, []);
 
   const renderItem = useCallback(
-    ({ item }: { item: CachedMusicItem }) => (
-      <CacheRow
-        item={item}
-        colors={colors}
-        expanded={expandedId === item.itemId}
-        onToggle={handleToggle}
-        onDelete={handleDelete}
-        onRedownload={handleRedownload}
-      />
-    ),
+    ({ item }: { item: ListEntry }) => {
+      if (item.kind === 'header') {
+        return (
+          <Text style={[styles.sectionHeader, { color: colors.textSecondary }]}>
+            {item.label}
+          </Text>
+        );
+      }
+      return (
+        <CacheRow
+          item={item.data}
+          colors={colors}
+          expanded={expandedId === item.data.itemId}
+          onToggle={handleToggle}
+          onDelete={handleDelete}
+          onRedownload={handleRedownload}
+        />
+      );
+    },
     [colors, expandedId, handleToggle, handleDelete, handleRedownload],
   );
 
   const keyExtractor = useCallback(
-    (item: CachedMusicItem) => item.itemId,
+    (item: ListEntry) => item.kind === 'header' ? item.id : item.data.itemId,
     [],
   );
 
@@ -448,6 +514,15 @@ const styles = StyleSheet.create({
   },
   chevron: {
     marginLeft: 8,
+  },
+  sectionHeader: {
+    fontSize: 13,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 16,
+    marginBottom: 6,
+    paddingHorizontal: 4,
   },
   trackList: {
     paddingLeft: 84,

@@ -47,8 +47,8 @@ export const DownloadButton = memo(function DownloadButton({
   const downloadProgress = musicCacheStore((s) => {
     if (!itemId) return 0;
     const item = s.downloadQueue.find((q) => q.itemId === itemId);
-    if (!item || item.totalTracks === 0) return 0;
-    return item.completedTracks / item.totalTracks;
+    if (!item || item.totalSongs === 0) return 0;
+    return item.completedSongs / item.totalSongs;
   });
 
   const [showingRing, setShowingRing] = useState(false);

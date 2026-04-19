@@ -92,12 +92,25 @@ export async function getAlbum(albumId: string): Promise<AlbumWithSongsID3 | nul
 - `startMonitoring()` / `stopMonitoring()` lifecycle tied to login state and offline mode.
 - Updates `connectivityStore` with reachability state.
 
-## Music Cache Service (`musicCacheService.ts`)
+## Music Cache Service (`musicCacheService.ts`) — v2 (per-row + cross-item dedup)
 
 - Manages on-disk cache of downloaded music files for offline playback.
-- `initMusicCache()` ensures cache directories exist at launch.
-- `getMusicCacheStats()` returns total size and file count for the settings UI.
-- Handles download queue processing for album/playlist downloads.
+- `initMusicCache()` ensures cache directories exist at launch; module-scope AppState listener triggers `recoverStalledDownloadsAsync` on resume.
+- `deferredMusicCacheInit()` (post-first-render) populates in-memory `trackUriMap` / `trackToItems` from SQL and runs `reconcileMusicCacheAsync()` to heal FS↔SQL drift.
+- `getMusicCacheStats()` returns total size and file count for the settings UI (filesystem walk).
+- Handles download queue processing for album, playlist, favorites (virtual playlist `'__starred__'`), **and single-song** downloads (`enqueueSongDownload(song)`).
+
+**Architecture (v2):**
+- **Cross-item deduplication.** A song is stored once on disk regardless of how many items (album, playlist, favorites, single-song) reference it. When `downloadSong` sees an existing `cached_songs` row, it just inserts a new edge in `cached_item_songs` and skips the network transfer entirely.
+- **Album-rooted disk layout:** `{Paths.document}/music-cache/albums/{albumId}/{songId}.{suffix}`. Every song has a parent album (Subsonic `Child.albumId`); `_unknown` sentinel for the rare case it's missing. Keeps any single directory bounded to one album's worth of files.
+- **Persistence:** four SQLite tables in `src/store/persistence/musicCacheTables.ts` — `cached_songs` (canonical song pool), `cached_items` (album/playlist/favorites/song intents), `cached_item_songs` (many-to-many edges), `download_queue`. FK `ON DELETE CASCADE` from items to edges. Refcount of a song = `COUNT(*) FROM cached_item_songs WHERE song_id = ?` — never stored, never drifts.
+- **Partial albums:** a `cached_items` row with `type='album'` can exist even when `songIds.length < expected_song_count` — this is what cross-item song downloads look like. UI in `music-cache-browser.tsx` differentiates partial vs complete and surfaces a dedicated "Song downloads" section.
+- **In-memory mirrors** (`trackUriMap: Map<songId, fileUri>`, `trackToItems: Map<songId, Set<itemId>>`) rebuilt from SQL at startup, not from filesystem walk. `trackMapsReady` flag guards favorites-subscription during init.
+- **Preserved v1 robustness:** queue recovery on resume, retry-on-null, `.tmp` atomicity (download to `.tmp`, `move` to final on success), startup `.tmp` cleanup, item-level resumption, parallel `maxConcurrentDownloads` workers, real-time `downloadSpeedTracker`, storage-limit-aware pause/resume, AppState listener.
+
+**Format info lives on the song row, not a separate map.** The v1 `downloadedFormats` record is gone; `cached_songs.{suffix,bitRate,bitDepth,samplingRate,formatCapturedAt}` replace it. `effectiveFormat.ts` reads directly from `cachedSongs[id]`.
+
+**Store action contract** (see `src/store/musicCacheStore.ts`): all mutations write-through to `musicCacheTables` before updating in-memory state. `removeCachedItem(itemId)` returns `string[]` of now-orphan songIds so the service can delete files. `removeCachedItemSong(itemId, position)` returns `{ orphanedSongId: string | null }`.
 
 ## Storage Service (`storageService.ts`)
 

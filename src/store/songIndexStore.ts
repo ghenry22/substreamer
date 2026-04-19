@@ -58,7 +58,7 @@ export const songIndexStore = create<SongIndexState>()((set, get) => ({
   },
 
   hydrateFromDb: () => {
-    if (get().hasHydrated) return;
+    // Idempotent re-read — see `albumDetailStore.hydrateFromDb` for rationale.
     set({ totalCount: countSongIndex(), hasHydrated: true });
   },
 

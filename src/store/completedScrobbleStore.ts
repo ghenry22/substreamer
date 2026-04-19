@@ -238,7 +238,7 @@ export const completedScrobbleStore = create<CompletedScrobbleState>()((set, get
   },
 
   hydrateFromDb: () => {
-    if (get().hasHydrated) return;
+    // Idempotent re-read — see `albumDetailStore.hydrateFromDb` for rationale.
     const restored = hydrateScrobbles();
     set({
       completedScrobbles: restored,

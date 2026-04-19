@@ -9,6 +9,7 @@ jest.mock('../subsonicService');
 jest.mock('../musicCacheService', () => ({
   enqueueAlbumDownload: jest.fn(),
   enqueuePlaylistDownload: jest.fn(),
+  enqueueSongDownload: jest.fn().mockResolvedValue(undefined),
   deleteCachedItem: jest.fn(),
   cancelDownload: jest.fn(),
 }));
@@ -92,6 +93,10 @@ jest.mock('../../store/processingOverlayStore', () => ({
 
 import { addToQueue, playTrack, removeFromQueue } from '../playerService';
 import {
+  enqueueSongDownload as mockEnqueueSongDownload,
+  deleteCachedItem as mockDeleteCachedItem,
+} from '../musicCacheService';
+import {
   starSong,
   unstarSong,
   starAlbum,
@@ -122,6 +127,9 @@ import {
   saveArtistTopSongsPlaylist,
   playMoreByArtist,
   playAllByArtist,
+  handleDownloadSong,
+  handleRemoveSongDownload,
+  songItemId,
 } from '../moreOptionsService';
 
 const mockStarSong = starSong as jest.Mock;
@@ -671,26 +679,16 @@ describe('playMoreByArtist', () => {
     it('plays songs from cached items matching artist name', async () => {
       (musicCacheStore.getState as jest.Mock).mockReturnValue({
         cachedItems: {
-          alb1: {
-            itemId: 'alb1',
-            name: 'Album One',
-            coverArtId: 'cov1',
-            tracks: [
-              { id: 's1', title: 'Song 1', artist: 'Artist A', duration: 200, bytes: 1000, fileName: 'f1.mp3' },
-              { id: 's2', title: 'Song 2', artist: 'Other', duration: 180, bytes: 900, fileName: 'f2.mp3' },
-              { id: 's4', title: 'Song 4', artist: 'Artist A', duration: 190, bytes: 950, fileName: 'f4.mp3' },
-              { id: 's5', title: 'Song 5', artist: 'Artist A', duration: 220, bytes: 1050, fileName: 'f5.mp3' },
-            ],
-          },
-          alb2: {
-            itemId: 'alb2',
-            name: 'Album Two',
-            coverArtId: 'cov2',
-            tracks: [
-              { id: 's3', title: 'Song 3', artist: 'Artist A', duration: 210, bytes: 1100, fileName: 'f3.mp3' },
-              { id: 's6', title: 'Song 6', artist: 'Artist A', duration: 230, bytes: 1200, fileName: 'f6.mp3' },
-            ],
-          },
+          alb1: { itemId: 'alb1', name: 'Album One', coverArtId: 'cov1', songIds: ['s1', 's2', 's4', 's5'] },
+          alb2: { itemId: 'alb2', name: 'Album Two', coverArtId: 'cov2', songIds: ['s3', 's6'] },
+        },
+        cachedSongs: {
+          s1: { id: 's1', title: 'Song 1', artist: 'Artist A', duration: 200, bytes: 1000 },
+          s2: { id: 's2', title: 'Song 2', artist: 'Other', duration: 180, bytes: 900 },
+          s3: { id: 's3', title: 'Song 3', artist: 'Artist A', duration: 210, bytes: 1100 },
+          s4: { id: 's4', title: 'Song 4', artist: 'Artist A', duration: 190, bytes: 950 },
+          s5: { id: 's5', title: 'Song 5', artist: 'Artist A', duration: 220, bytes: 1050 },
+          s6: { id: 's6', title: 'Song 6', artist: 'Artist A', duration: 230, bytes: 1200 },
         },
       });
 
@@ -712,14 +710,10 @@ describe('playMoreByArtist', () => {
     it('shows error when no offline songs match', async () => {
       (musicCacheStore.getState as jest.Mock).mockReturnValue({
         cachedItems: {
-          alb1: {
-            itemId: 'alb1',
-            name: 'Album One',
-            coverArtId: 'cov1',
-            tracks: [
-              { id: 's1', title: 'Song 1', artist: 'Other', duration: 200, bytes: 1000, fileName: 'f1.mp3' },
-            ],
-          },
+          alb1: { itemId: 'alb1', name: 'Album One', coverArtId: 'cov1', songIds: ['s1'] },
+        },
+        cachedSongs: {
+          s1: { id: 's1', title: 'Song 1', artist: 'Other', duration: 200, bytes: 1000 },
         },
       });
 
@@ -730,7 +724,7 @@ describe('playMoreByArtist', () => {
     });
 
     it('shows error when cache is empty', async () => {
-      (musicCacheStore.getState as jest.Mock).mockReturnValue({ cachedItems: {} });
+      (musicCacheStore.getState as jest.Mock).mockReturnValue({ cachedItems: {}, cachedSongs: {} });
 
       await playMoreByArtist('ar1', 'Artist A');
 
@@ -741,15 +735,11 @@ describe('playMoreByArtist', () => {
     it('shows error when fewer than 5 offline songs match', async () => {
       (musicCacheStore.getState as jest.Mock).mockReturnValue({
         cachedItems: {
-          alb1: {
-            itemId: 'alb1',
-            name: 'Album One',
-            coverArtId: 'cov1',
-            tracks: [
-              { id: 's1', title: 'Song 1', artist: 'Artist A', duration: 200, bytes: 1000, fileName: 'f1.mp3' },
-              { id: 's2', title: 'Song 2', artist: 'Artist A', duration: 180, bytes: 900, fileName: 'f2.mp3' },
-            ],
-          },
+          alb1: { itemId: 'alb1', name: 'Album One', coverArtId: 'cov1', songIds: ['s1', 's2'] },
+        },
+        cachedSongs: {
+          s1: { id: 's1', title: 'Song 1', artist: 'Artist A', duration: 200, bytes: 1000 },
+          s2: { id: 's2', title: 'Song 2', artist: 'Artist A', duration: 180, bytes: 900 },
         },
       });
 
@@ -760,18 +750,22 @@ describe('playMoreByArtist', () => {
     });
 
     it('limits offline queue to 20', async () => {
-      const tracks = Array.from({ length: 25 }, (_, i) => ({
-        id: `s${i}`,
-        title: `Song ${i}`,
-        artist: 'Artist A',
-        duration: 200,
-        bytes: 1000,
-        fileName: `f${i}.mp3`,
-      }));
+      const songIds = Array.from({ length: 25 }, (_, i) => `s${i}`);
+      const cachedSongs: Record<string, any> = {};
+      for (let i = 0; i < 25; i++) {
+        cachedSongs[`s${i}`] = {
+          id: `s${i}`,
+          title: `Song ${i}`,
+          artist: 'Artist A',
+          duration: 200,
+          bytes: 1000,
+        };
+      }
       (musicCacheStore.getState as jest.Mock).mockReturnValue({
         cachedItems: {
-          alb1: { itemId: 'alb1', name: 'Album', coverArtId: 'cov', tracks },
+          alb1: { itemId: 'alb1', name: 'Album', coverArtId: 'cov', songIds },
         },
+        cachedSongs,
       });
 
       await playMoreByArtist('ar1', 'Artist A');
@@ -911,15 +905,11 @@ describe('playAllByArtist', () => {
     it('plays offline songs sorted by year when shuffle=false', async () => {
       (musicCacheStore.getState as jest.Mock).mockReturnValue({
         cachedItems: {
-          alb1: {
-            itemId: 'alb1',
-            name: 'Album',
-            coverArtId: 'cov',
-            tracks: [
-              { id: 's1', title: 'Song 1', artist: 'A', duration: 200, bytes: 1000, fileName: 'f1.mp3' },
-              { id: 's2', title: 'Song 2', artist: 'A', duration: 180, bytes: 900, fileName: 'f2.mp3' },
-            ],
-          },
+          alb1: { itemId: 'alb1', name: 'Album', coverArtId: 'cov', songIds: ['s1', 's2'] },
+        },
+        cachedSongs: {
+          s1: { id: 's1', title: 'Song 1', artist: 'A', duration: 200, bytes: 1000 },
+          s2: { id: 's2', title: 'Song 2', artist: 'A', duration: 180, bytes: 900 },
         },
       });
 
@@ -931,12 +921,89 @@ describe('playAllByArtist', () => {
     });
 
     it('shows error when no offline songs match', async () => {
-      (musicCacheStore.getState as jest.Mock).mockReturnValue({ cachedItems: {} });
+      (musicCacheStore.getState as jest.Mock).mockReturnValue({ cachedItems: {}, cachedSongs: {} });
 
       await playAllByArtist('ar1', 'A', false);
 
       expect(mockOverlayShowError).toHaveBeenCalledWith('No offline songs by A');
       expect(mockPlayTrack).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('songItemId', () => {
+  it('returns the deterministic synthetic item id', () => {
+    expect(songItemId('abc')).toBe('song:abc');
+    expect(songItemId('')).toBe('song:');
+  });
+});
+
+describe('handleDownloadSong', () => {
+  const mockEnqueue = mockEnqueueSongDownload as jest.Mock;
+
+  it('no-ops on falsy song', async () => {
+    await handleDownloadSong(undefined as any);
+    await handleDownloadSong({} as any);
+    expect(mockEnqueue).not.toHaveBeenCalled();
+    expect(mockOverlayShowSuccess).not.toHaveBeenCalled();
+  });
+
+  it('enqueues and shows success toast on happy path', async () => {
+    const song = { id: 's1', title: 'Cool Song', artist: 'A' } as any;
+    await handleDownloadSong(song);
+    expect(mockEnqueue).toHaveBeenCalledWith(song);
+    expect(mockOverlayShowSuccess).toHaveBeenCalledWith('Downloading "Cool Song"');
+  });
+
+  it('falls back to unknownSong when title is missing', async () => {
+    const song = { id: 's1' } as any;
+    await handleDownloadSong(song);
+    expect(mockOverlayShowSuccess).toHaveBeenCalledWith('Downloading "Unknown Song"');
+  });
+
+  it('shows error overlay when enqueue throws', async () => {
+    mockEnqueue.mockRejectedValueOnce(new Error('boom'));
+    const song = { id: 's1', title: 'Cool Song' } as any;
+    await handleDownloadSong(song);
+    expect(mockOverlayShowError).toHaveBeenCalledWith('Download failed');
+  });
+
+  it('still fires enqueue when song is already cached (service short-circuits)', async () => {
+    // The service layer handles the already-cached short-circuit. From the
+    // more-options perspective we still call through and show a toast.
+    const song = { id: 'cached', title: 'Cached' } as any;
+    await handleDownloadSong(song);
+    expect(mockEnqueue).toHaveBeenCalledWith(song);
+    expect(mockOverlayShowSuccess).toHaveBeenCalled();
+  });
+});
+
+describe('handleRemoveSongDownload', () => {
+  const mockDelete = mockDeleteCachedItem as jest.Mock;
+
+  it('no-ops on falsy song', () => {
+    handleRemoveSongDownload(undefined as any);
+    handleRemoveSongDownload({} as any);
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
+  it('deletes the song: item and shows a success toast', () => {
+    const song = { id: 's1', title: 'Cool Song' } as any;
+    handleRemoveSongDownload(song);
+    expect(mockDelete).toHaveBeenCalledWith('song:s1');
+    expect(mockOverlayShowSuccess).toHaveBeenCalledWith('Removed "Cool Song"');
+  });
+
+  it('falls back to unknownSong when title is missing', () => {
+    const song = { id: 's1' } as any;
+    handleRemoveSongDownload(song);
+    expect(mockOverlayShowSuccess).toHaveBeenCalledWith('Removed "Unknown Song"');
+  });
+
+  it('shows error overlay when delete throws', () => {
+    mockDelete.mockImplementationOnce(() => { throw new Error('nope'); });
+    const song = { id: 's1', title: 'Cool Song' } as any;
+    handleRemoveSongDownload(song);
+    expect(mockOverlayShowError).toHaveBeenCalledWith('Failed to load');
   });
 });

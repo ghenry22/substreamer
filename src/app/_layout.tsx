@@ -69,6 +69,7 @@ import { runAutoBackupIfNeeded } from '../services/backupService';
 import { startAutoOffline, stopAutoOffline } from '../services/autoOfflineService';
 import { excludeFromBackup } from 'expo-backup-exclusions';
 import { moveToBack } from 'expo-move-to-back';
+import { hydratePerRowStores } from '../store/hydratePerRowStores';
 import { imageCacheStore } from '../store/imageCacheStore';
 import { musicCacheStore } from '../store/musicCacheStore';
 import { authStore } from '../store/authStore';
@@ -322,6 +323,14 @@ export default function RootLayout() {
   // --- Initialise audio player & pre-fetch server data when logged in ---
   useEffect(() => {
     if (!rehydrated || !isLoggedIn) return;
+    // Hydrate per-row SQLite-backed stores BEFORE any data-sync flow
+    // reads them. Must precede `onStartup()` — the full album-detail walk
+    // it fires checks `albumDetailStore.albums` 1500 ms later, which beats
+    // the splash's own post-migration hydrate in a race on any launch
+    // whose splash animation runs longer than that deferred start.
+    // Symptom of getting this order wrong: a "full library resync" banner
+    // showing `missing = library.length` on every launch.
+    hydratePerRowStores();
     initPlayer();
     initScrobbleService();
 

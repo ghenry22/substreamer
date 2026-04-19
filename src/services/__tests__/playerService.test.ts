@@ -127,7 +127,7 @@ jest.mock('../musicCacheService', () => ({
 jest.mock('../../store/musicCacheStore', () => ({
   musicCacheStore: {
     getState: jest.fn(() => ({
-      downloadedFormats: {},
+      cachedSongs: {},
     })),
   },
 }));
@@ -2247,9 +2247,19 @@ describe('queue format stamping', () => {
 
   it('playTrack uses downloaded format when available', async () => {
     const { musicCacheStore } = require('../../store/musicCacheStore');
-    const downloadedFmt = { suffix: 'opus', bitRate: 128, capturedAt: 999 };
+    const cachedSong = {
+      id: 't1',
+      title: 'Song t1',
+      albumId: 'a1',
+      bytes: 1000,
+      duration: 200,
+      suffix: 'opus',
+      bitRate: 128,
+      formatCapturedAt: 999,
+      downloadedAt: 999,
+    };
     (musicCacheStore.getState as jest.Mock).mockReturnValue({
-      downloadedFormats: { t1: downloadedFmt },
+      cachedSongs: { t1: cachedSong },
     });
 
     playbackSettingsStore.setState({ streamFormat: 'mp3', maxBitRate: 320 } as any);
@@ -2258,10 +2268,12 @@ describe('queue format stamping', () => {
     await playTrack(queue[0], queue);
 
     const fmts = mockSetQueueFormats.mock.calls[0][0];
-    expect(fmts.t1).toBe(downloadedFmt);
+    expect(fmts.t1.suffix).toBe('opus');
+    expect(fmts.t1.bitRate).toBe(128);
+    expect(fmts.t1.capturedAt).toBe(999);
 
     // Restore default
-    (musicCacheStore.getState as jest.Mock).mockReturnValue({ downloadedFormats: {} });
+    (musicCacheStore.getState as jest.Mock).mockReturnValue({ cachedSongs: {} });
   });
 
   it('addToQueue stamps format for appended tracks', async () => {

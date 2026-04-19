@@ -41,11 +41,14 @@ import {
   cancelDownload,
   enqueueAlbumDownload,
   enqueuePlaylistDownload,
+  handleDownloadSong,
+  handleRemoveSongDownload,
   playMoreByArtist,
   playMoreLikeThis,
   playSimilarArtistsMix,
   removeDownload,
   saveArtistTopSongsPlaylist,
+  songItemId,
   toggleStar,
 } from '../services/moreOptionsService';
 import { deleteCachedItem } from '../services/musicCacheService';
@@ -206,6 +209,20 @@ export function MoreOptionsSheet() {
   const downloadStatus: DownloadStatus = useDownloadStatus(
     downloadType,
     entity && canDownload(entity) ? entity.item.id : '',
+  );
+
+  // Song-level download status (true when the song is individually downloaded
+  // or pooled via any album / playlist that contains it).
+  const songId = entity?.type === 'song' ? entity.item.id : '';
+  const songDownloadStatus: DownloadStatus = useDownloadStatus('song', songId);
+  // Whether a dedicated `song:${id}` item exists — used to distinguish
+  // "single-song download" (can be removed) from "song is part of a
+  // downloaded album / playlist" (must be removed via parent item).
+  const hasSongItem = musicCacheStore(
+    useCallback(
+      (s) => songId ? songItemId(songId) in s.cachedItems : false,
+      [songId],
+    ),
   );
 
   const { colors } = useTheme();
@@ -407,6 +424,20 @@ export function MoreOptionsSheet() {
     }
   }, [entity, downloadStatus, handleClose]);
 
+  const handleSongDownload = useCallback(async () => {
+    if (!entity || entity.type !== 'song') return;
+    const song = entity.item as Child;
+    handleClose();
+    await handleDownloadSong(song);
+  }, [entity, handleClose]);
+
+  const handleSongRemoveDownload = useCallback(() => {
+    if (!entity || entity.type !== 'song') return;
+    const song = entity.item as Child;
+    handleClose();
+    handleRemoveSongDownload(song);
+  }, [entity, handleClose]);
+
   const handleShare = useCallback(() => {
     if (!entity) return;
     handleClose();
@@ -533,6 +564,17 @@ export function MoreOptionsSheet() {
   const showTrackDetails = hasTrackDetails(entity);
   const showShare = !offline && canShare(entity) && canUserShare();
   const showDownload = canDownload(entity);
+  // Single-song download controls (song rows only).
+  // - Show "Remove Download" when a `song:${id}` item exists (user explicitly
+  //   downloaded this song).
+  // - Show "Download Song" when song isn't already pooled AND we're online.
+  //   Hide both if the song is pooled via an album / playlist the user owns
+  //   (user should remove it via the parent item).
+  const showRemoveSongDownload = entity?.type === 'song' && hasSongItem;
+  const showDownloadSong =
+    entity?.type === 'song' &&
+    !offline &&
+    songDownloadStatus === 'none';
   const showDelete = !offline && canDeletePlaylist(entity);
   const isVA = entity?.type === 'artist' && isVariousArtists(entity.item.name);
   const showSaveTopSongsPlaylist = !offline && entity?.type === 'artist' && !isVA;
@@ -544,7 +586,7 @@ export function MoreOptionsSheet() {
   const hasAnyOption =
     starrable || showRating || showAddToPlaylist || showAddQueueToPlaylist ||
     showAddToQueue || showPlayMoreLikeThis || showPlaySimilarArtistsMix ||
-    showPlayMoreByArtist || showDownload ||
+    showPlayMoreByArtist || showDownload || showDownloadSong || showRemoveSongDownload ||
     showAlbumLink || showArtistLink || showShare || showDetails || showTrackDetails || showDelete ||
     showSaveTopSongsPlaylist || showSetMbid || showScrobbleExclusion;
 
@@ -932,6 +974,50 @@ export function MoreOptionsSheet() {
                   />
                   <Text style={[styles.optionLabel, { color: colors.textPrimary }]}>
                     {isScrobbleExcluded ? t('includeInScrobbling') : t('excludeFromScrobbling')}
+                  </Text>
+                </Pressable>
+              )}
+
+              {/* Download Song (single-song download) */}
+              {showDownloadSong && (
+                <Pressable
+                  onPress={handleSongDownload}
+                  style={({ pressed }) => [
+                    styles.option,
+                    styles.deleteOption,
+                    pressed && styles.optionPressed,
+                  ]}
+                >
+                  <Ionicons
+                    name="arrow-down-circle-outline"
+                    size={22}
+                    color={colors.textPrimary}
+                    style={styles.optionIcon}
+                  />
+                  <Text style={[styles.optionLabel, { color: colors.textPrimary }]}>
+                    {t('downloadSong')}
+                  </Text>
+                </Pressable>
+              )}
+
+              {/* Remove Song Download (single-song) */}
+              {showRemoveSongDownload && (
+                <Pressable
+                  onPress={handleSongRemoveDownload}
+                  style={({ pressed }) => [
+                    styles.option,
+                    styles.deleteOption,
+                    pressed && styles.optionPressed,
+                  ]}
+                >
+                  <Ionicons
+                    name="trash-outline"
+                    size={22}
+                    color={colors.red}
+                    style={styles.optionIcon}
+                  />
+                  <Text style={[styles.optionLabel, { color: colors.red }]}>
+                    {t('removeDownload')}
                   </Text>
                 </Pressable>
               )}
@@ -1371,6 +1457,50 @@ export function MoreOptionsSheet() {
                   />
                   <Text style={[styles.optionLabel, { color: colors.textPrimary }]}>
                     {isScrobbleExcluded ? t('includeInScrobbling') : t('excludeFromScrobbling')}
+                  </Text>
+                </Pressable>
+              )}
+
+              {/* Download Song (single-song download) */}
+              {showDownloadSong && (
+                <Pressable
+                  onPress={handleSongDownload}
+                  style={({ pressed }) => [
+                    styles.option,
+                    styles.deleteOption,
+                    pressed && styles.optionPressed,
+                  ]}
+                >
+                  <Ionicons
+                    name="arrow-down-circle-outline"
+                    size={22}
+                    color={colors.textPrimary}
+                    style={styles.optionIcon}
+                  />
+                  <Text style={[styles.optionLabel, { color: colors.textPrimary }]}>
+                    {t('downloadSong')}
+                  </Text>
+                </Pressable>
+              )}
+
+              {/* Remove Song Download (single-song) */}
+              {showRemoveSongDownload && (
+                <Pressable
+                  onPress={handleSongRemoveDownload}
+                  style={({ pressed }) => [
+                    styles.option,
+                    styles.deleteOption,
+                    pressed && styles.optionPressed,
+                  ]}
+                >
+                  <Ionicons
+                    name="trash-outline"
+                    size={22}
+                    color={colors.red}
+                    style={styles.optionIcon}
+                  />
+                  <Text style={[styles.optionLabel, { color: colors.red }]}>
+                    {t('removeDownload')}
                   </Text>
                 </Pressable>
               )}

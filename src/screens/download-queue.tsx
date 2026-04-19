@@ -130,8 +130,8 @@ const QueueRow = memo(function QueueRow({
   const isQueued = item.status === 'queued';
   const isError = item.status === 'error';
 
-  const progress = item.totalTracks > 0
-    ? item.completedTracks / item.totalTracks
+  const progress = item.totalSongs > 0
+    ? item.completedSongs / item.totalSongs
     : 0;
 
   const fillFrac = useSharedValue(progress);
@@ -184,7 +184,7 @@ const QueueRow = memo(function QueueRow({
             {isDownloading && (
               <View style={styles.progressSection}>
                 <Text style={[styles.progressText, { color: colors.textSecondary }]}>
-                  {t('downloadProgress', { completed: item.completedTracks, total: item.totalTracks })}
+                  {t('downloadProgress', { completed: item.completedSongs, total: item.totalSongs })}
                 </Text>
                 <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
                   {progress > 0 && (
@@ -201,7 +201,7 @@ const QueueRow = memo(function QueueRow({
 
             {isQueued && (
               <Text style={[styles.statusText, { color: colors.textSecondary }]}>
-                {t('trackWithCount', { count: item.totalTracks })} · {t('queued')}
+                {t('trackWithCount', { count: item.totalSongs })} · {t('queued')}
               </Text>
             )}
 

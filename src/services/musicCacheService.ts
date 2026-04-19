@@ -1,24 +1,35 @@
 /**
- * Offline music cache service.
+ * Offline music cache service — v2 (album-rooted, cross-item deduplicated).
  *
- * Downloads album and playlist tracks to {Paths.document}/music-cache/
- * for offline playback. Each album or playlist gets its own subdirectory
- * containing one file per track:
+ * Downloads album, playlist, favorites, and single-song tracks to an album-
+ * rooted on-disk layout:
  *
- *   music-cache/{itemId}/{trackId}.{ext}
+ *   {Paths.document}/music-cache/{albumId}/{songId}.{ext}
  *
- * Uses downloadFileAsyncWithProgress from expo-async-fs for native
- * downloads with byte-level progress events.
- * Queue processing follows the sequential pattern from scrobbleService
- * (one item at a time, configurable concurrent track downloads within
- * each item).
+ * Cross-item deduplication is enforced by the `cached_songs` SQL table: before
+ * downloading, the service checks whether a song is already in the pool. If
+ * so, it just inserts a new `cached_item_songs` edge — no bytes, no network.
+ *
+ * See `plans/music-downloads-v2.md` for the full architectural plan. Key
+ * guarantees preserved from v1:
+ *   - Tmp-file atomicity (download to .tmp, move on success)
+ *   - Kill-mid-item resumption via pre-scan + `recoverStalledDownloadsAsync`
+ *   - Retry-once-on-null inside `downloadItem`
+ *   - AppState listener for background→foreground recovery
+ *   - Starred-songs virtual playlist under itemId `__starred__`
+ *   - Storage-limit aware queue pausing
+ *   - Real-time download speed tracking via `downloadSpeedTracker`
  */
 
 import { Directory, File, Paths } from 'expo-file-system';
 import { AppState, type AppStateStatus } from 'react-native';
 
 import i18n from '../i18n/i18n';
-import { listDirectoryAsync, getDirectorySizeAsync, downloadFileAsyncWithProgress } from 'expo-async-fs';
+import {
+  listDirectoryAsync,
+  getDirectorySizeAsync,
+  downloadFileAsyncWithProgress,
+} from 'expo-async-fs';
 import { checkStorageLimit } from './storageService';
 import { beginDownload, clearDownload } from './downloadSpeedTracker';
 import { albumDetailStore } from '../store/albumDetailStore';
@@ -26,9 +37,11 @@ import { favoritesStore } from '../store/favoritesStore';
 import { storageLimitStore } from '../store/storageLimitStore';
 import {
   musicCacheStore,
-  type CachedMusicItem,
-  type CachedTrack,
+  type CachedItemMeta,
+  type CachedSongMeta,
+  type DownloadQueueItem,
 } from '../store/musicCacheStore';
+import { insertCachedItemSong } from '../store/persistence/musicCacheTables';
 import { playbackSettingsStore } from '../store/playbackSettingsStore';
 import { resolveEffectiveFormat } from '../utils/effectiveFormat';
 import { playlistDetailStore } from '../store/playlistDetailStore';
@@ -37,13 +50,17 @@ import {
   getDownloadStreamUrl,
   type Child,
 } from './subsonicService';
-import { cacheAllSizes, cacheEntityCoverArt, getCachedImageUri } from './imageCacheService';
+import {
+  cacheAllSizes,
+  cacheEntityCoverArt,
+} from './imageCacheService';
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
 
 const CACHE_DIR_NAME = 'music-cache';
+const UNKNOWN_ALBUM_ID = '_unknown';
 
 /**
  * Hook invoked when an album is enqueued for download and the library cache
@@ -77,8 +94,8 @@ const MIME_TO_AUDIO_EXT: Record<string, string> = {
 };
 
 /**
- * Determine the file extension for a downloaded track based on the
- * current download format setting and the track's original metadata.
+ * Determine the file extension for a downloaded track based on the current
+ * download format setting and the track's original metadata.
  */
 function getTrackFileExtension(track: Child): string {
   const { downloadFormat } = playbackSettingsStore.getState();
@@ -101,50 +118,62 @@ let processingId = 0;
 let appStateSubscription: { remove: () => void } | null = null;
 
 /**
- * Set to true after populateTrackMapsAsync() finishes scanning the
- * music-cache directory.  Module-scope subscriptions (e.g. the
- * favoritesStore listener) must NOT run syncStarredSongsDownload()
- * before this flag is set — trackUriMap and trackToItems would be
- * empty, causing incorrect reference-counting and potential file
- * deletion or premature re-enqueue of the starred-songs download.
+ * Set to true after `populateTrackMapsAsync()` finishes. Module-scope
+ * subscriptions (e.g. the favoritesStore listener) MUST NOT run
+ * `syncStarredSongsDownload()` before this flag is set — doing so with an
+ * empty trackUriMap / trackToItems risks spurious file deletion and wrong
+ * refcounting.
  */
 let trackMapsReady = false;
 
 /**
- * In-memory map from trackId -> local file URI for O(1) lookups.
- * Populated on init by scanning the music-cache directory and updated
- * as downloads complete.
+ * In-memory map from songId -> local file URI for O(1) lookups. Rebuilt from
+ * `cachedSongs` on startup; updated incrementally as downloads complete.
  */
 const trackUriMap = new Map<string, string>();
 
 /**
- * Reverse map: trackId -> set of itemIds that contain this track.
- * Used by getTrackQueueStatus() for song-level queue status checks.
+ * Reverse map: songId -> set of itemIds that reference this song. Used for
+ * fast synchronous orphan-detection during cancel/sync. Rebuilt from
+ * `cachedItems[*].songIds` on startup.
  */
 const trackToItems = new Map<string, Set<string>>();
+
+/* ------------------------------------------------------------------ */
+/*  Path helpers                                                       */
+/* ------------------------------------------------------------------ */
+
+function ensureCacheDir(): Directory {
+  if (!cacheDir) initMusicCache();
+  return cacheDir!;
+}
+
+function ensureAlbumDir(albumId: string): Directory {
+  const dir = new Directory(ensureCacheDir(), albumId || UNKNOWN_ALBUM_ID);
+  if (!dir.exists) {
+    try { dir.create(); } catch { /* best-effort */ }
+  }
+  return dir;
+}
+
+/** Resolve the final-path File for a cached song (no mutation). */
+function resolveSongFile(song: { id: string; albumId?: string; suffix: string }): File {
+  const albumId = song.albumId || UNKNOWN_ALBUM_ID;
+  const albumDir = new Directory(ensureCacheDir(), albumId);
+  return new File(albumDir, `${song.id}.${song.suffix}`);
+}
 
 /* ------------------------------------------------------------------ */
 /*  Initialisation                                                     */
 /* ------------------------------------------------------------------ */
 
 /**
- * Create the music-cache directory under Paths.document and register
- * the AppState listener for resume-from-background recovery.
- * Safe to call multiple times (no-ops if already initialised).
- *
- * Expensive scanning (populateTrackMaps, stalled-download recovery)
- * is NOT performed here — call {@link deferredMusicCacheInit} after
- * the first React frame to avoid blocking the native splash screen.
+ * Create the music-cache directory and register the AppState listener.
+ * Safe to call multiple times. Expensive scanning lives in
+ * {@link deferredMusicCacheInit}.
  */
 export function initMusicCache(): void {
   if (cacheDir) return;
-  // Wrap in try/catch because this is invoked at module-scope from
-  // _layout.tsx, before any React error boundary is mounted. On stripped
-  // OEM ROMs the synchronous Directory.create() can throw with restricted
-  // storage permissions, and an unhandled throw here would crash the JS
-  // bundle before the user can even reach the login screen. If init fails
-  // here, cacheDir stays null and downstream callers will hit a controlled
-  // null deref inside React, where an error boundary CAN catch it.
   try {
     const dir = new Directory(Paths.document, CACHE_DIR_NAME);
     if (!dir.exists) {
@@ -161,70 +190,329 @@ export function initMusicCache(): void {
     }
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.warn('[musicCacheService] initMusicCache failed:', e instanceof Error ? e.message : String(e));
+    console.warn(
+      '[musicCacheService] initMusicCache failed:',
+      e instanceof Error ? e.message : String(e),
+    );
   }
 }
 
 /**
- * Run the expensive filesystem scanning that was split out of
- * {@link initMusicCache} to avoid blocking app startup.
- * Should be called once after the first React frame renders.
- *
- * All scanning runs on native background threads via expo-async-fs,
- * so the JS thread remains free for UI updates throughout.
+ * Deferred post-splash init: populate the in-memory maps from SQL state,
+ * reconcile any drift between SQL and the filesystem, then recover any
+ * stalled downloads.
  */
 export async function deferredMusicCacheInit(): Promise<void> {
   await populateTrackMapsAsync();
 
   // Force all musicCacheStore subscribers (e.g. useDownloadStatus) to
-  // re-evaluate now that trackUriMap is populated.  Song download status
-  // depends on the in-memory map, which isn't part of Zustand state, so
-  // without this touch the hooks would stay stale until the next real
-  // state change (recalculate, which runs after another async fs scan).
+  // re-evaluate now that trackUriMap is populated. The hooks' results depend
+  // on the in-memory map, which isn't part of Zustand state.
   musicCacheStore.setState({});
+
+  // Reconciliation is a best-effort consistency check; never block boot if
+  // it fails. Logs a summary when drift was healed.
+  try {
+    await reconcileMusicCacheAsync();
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      '[musicCacheService] reconciliation failed:',
+      e instanceof Error ? e.message : String(e),
+    );
+  }
+
+  // Capture filesystem ground-truth byte/file totals. Store aggregates are
+  // derived from cachedSongs on hydrate (dedup-correct), but a filesystem
+  // recalculate belts-and-braces against any Task-14 migration drift.
+  scheduleRecalculate();
 
   await recoverStalledDownloadsAsync();
 }
 
 /**
- * Delete incomplete .tmp files from an item's cache directory while
- * preserving fully-downloaded tracks. Used by both stalled-download
- * recovery and manual retry to clean up partial transfers.
+ * Rebuild `trackUriMap` and `trackToItems` from the hydrated SQL mirror in
+ * the store. No filesystem scan required — `cachedSongs` already has
+ * everything needed to derive each file's URI.
  */
-async function cleanupTmpFiles(itemId: string): Promise<void> {
-  const itemDir = new Directory(ensureCacheDir(), itemId);
-  if (!itemDir.exists) return;
-  try {
-    const entries = await listDirectoryAsync(itemDir.uri);
-    for (const name of entries) {
-      if (name.endsWith('.tmp')) {
-        try { new File(itemDir, name).delete(); } catch { /* best-effort */ }
+async function populateTrackMapsAsync(): Promise<void> {
+  trackUriMap.clear();
+  trackToItems.clear();
+
+  const { cachedSongs, cachedItems } = musicCacheStore.getState();
+
+  for (const song of Object.values(cachedSongs)) {
+    const file = resolveSongFile(song);
+    trackUriMap.set(song.id, file.uri);
+  }
+
+  for (const item of Object.values(cachedItems)) {
+    for (const songId of item.songIds) {
+      let bucket = trackToItems.get(songId);
+      if (!bucket) {
+        bucket = new Set<string>();
+        trackToItems.set(songId, bucket);
       }
+      bucket.add(item.itemId);
     }
-  } catch { /* best-effort */ }
+  }
+
+  trackMapsReady = true;
+
+  // Run any starred-songs sync that was deferred because the favoritesStore
+  // subscription fired before the maps were ready.
+  syncStarredSongsDownload();
 }
 
 /**
- * On startup, any items stuck in 'downloading' status are from a
- * previous session that was interrupted.
+ * Reconcile drift between the SQL mirror and the on-disk album cache.
  *
- * 1. Delete incomplete (.tmp) files – these were mid-transfer when
- *    the app died and cannot be trusted.
- * 2. Preserve fully-downloaded tracks – files with their final
- *    extension remain on disk and are registered in trackUriMap
- *    by populateTrackMaps().
- * 3. Reset the item to 'queued' so processQueue() picks it up.
+ * Runs three defensive sweeps at startup (best-effort — every step
+ * swallows errors so a single bad file never blocks boot):
  *
- * When downloadItem() runs the resumed item, it checks each track
- * against trackUriMap: completed tracks are skipped, and tracks
- * whose .tmp files were cleaned up are re-downloaded.
+ *   1. **FS -> SQL sweep.** Walk `albums/{albumId}/*` and delete any file
+ *      that has no matching `cached_songs` row (or whose row points at a
+ *      different album). Also deletes stale `.tmp` remnants left over from
+ *      crashed transfers, and empty album directories with no SQL songs
+ *      referencing them.
  *
- * Directory listing runs on a native background thread via
- * expo-async-fs, keeping the JS thread free for UI rendering.
+ *   2. **SQL -> FS sweep.** For every `cached_songs` row, verify the
+ *      underlying file still exists. If not, unwind every edge that
+ *      references the missing song via the store's `removeCachedItemSong`
+ *      path — this decrements positions correctly, deletes the orphaned
+ *      song row, and updates the in-memory mirrors.
  *
- * When `includeErrors` is true, items in 'error' status are also
- * cleaned up and requeued. This is used by the manual recover button
- * so a single tap retries everything that isn't done.
+ *   3. **Orphan item sweep.** Remove `cached_items` rows whose `songIds`
+ *      list is empty after the earlier passes (items that no longer hold
+ *      any songs are dead rows with nothing to render).
+ *
+ * Logs a one-line summary when any drift was healed.
+ */
+export async function reconcileMusicCacheAsync(): Promise<void> {
+  const dir = ensureCacheDir();
+  if (!dir.exists) return;
+
+  let orphanFilesDeleted = 0;
+  let staleTmpDeleted = 0;
+  let missingSongIds = 0;
+  let orphanItemIds = 0;
+
+  /* -------- Pass 1: FS -> SQL --------
+   * Walk each top-level album directory (every cached song lives at
+   * {music-cache}/{albumId}/{songId}.{ext} in v2). Top-level entries
+   * whose name isn't a valid album_id from SQL are swept at the end —
+   * anything here that isn't an albumId is stale v1 playlist/starred
+   * directory leftovers from a partial migration. */
+  let topLevelNames: string[];
+  try {
+    const result = await listDirectoryAsync(dir.uri);
+    topLevelNames = Array.isArray(result) ? result : [];
+  } catch {
+    topLevelNames = [];
+  }
+
+  // Set of album_ids the SQL store knows about. Anything else at top level
+  // is stale (v1 playlist/__starred__/partially-migrated stragglers).
+  const validAlbumIds = new Set<string>();
+  const { cachedSongs: allCachedSongs } = musicCacheStore.getState();
+  for (const s of Object.values(allCachedSongs)) {
+    validAlbumIds.add(s.albumId || UNKNOWN_ALBUM_ID);
+  }
+
+  for (const albumId of topLevelNames) {
+    // Stale non-album top-level entry — delete it wholesale in the sweep.
+    if (!validAlbumIds.has(albumId)) continue;
+    const albumDir = new Directory(dir, albumId);
+    if (!albumDir.exists) continue;
+
+    let fileNames: string[];
+    try {
+      const result = await listDirectoryAsync(albumDir.uri);
+      fileNames = Array.isArray(result) ? result : [];
+    } catch {
+      continue;
+    }
+
+    for (const fileName of fileNames) {
+      const file = new File(albumDir, fileName);
+      if (!file.exists) continue;
+
+      // Stale .tmp remnants from a crashed transfer. Deleted unconditionally
+      // at startup — no in-flight downloads have been scheduled yet, so any
+      // .tmp on disk is abandoned state.
+      if (fileName.endsWith('.tmp')) {
+        try { file.delete(); staleTmpDeleted++; } catch { /* best-effort */ }
+        continue;
+      }
+
+      // Derive songId from filename (stem before the last dot).
+      const dotIdx = fileName.lastIndexOf('.');
+      const songId = dotIdx >= 0 ? fileName.slice(0, dotIdx) : fileName;
+
+      // Orphan check: no SQL row, or the row exists under a different album.
+      const sqlRow = musicCacheStore.getState().cachedSongs[songId];
+      if (!sqlRow || sqlRow.albumId !== albumId) {
+        try { file.delete(); orphanFilesDeleted++; } catch { /* best-effort */ }
+      }
+    }
+
+    // If no SQL song references this album directory, remove it. Only delete
+    // when the directory is also empty on disk so partial-album downloads
+    // whose first song is mid-transfer aren't lost.
+    const stillReferenced = Object.values(
+      musicCacheStore.getState().cachedSongs,
+    ).some((s) => (s.albumId || UNKNOWN_ALBUM_ID) === albumId);
+    if (!stillReferenced) {
+      try {
+        const remaining = await listDirectoryAsync(albumDir.uri);
+        if (Array.isArray(remaining) && remaining.length === 0) {
+          albumDir.delete();
+        }
+      } catch { /* best-effort */ }
+    }
+  }
+
+  /* -------- Pass 2: SQL -> FS -------- */
+  // Snapshot cachedSongs before mutation — iterating while removing edges
+  // is unsafe.
+  const songsSnapshot = Object.values(musicCacheStore.getState().cachedSongs);
+  const missingSongs: typeof songsSnapshot = [];
+  for (const song of songsSnapshot) {
+    const file = resolveSongFile(song);
+    if (!file.exists) missingSongs.push(song);
+  }
+
+  for (const song of missingSongs) {
+    missingSongIds++;
+
+    // Find every item that currently references this missing song and unwind
+    // the edges one at a time. We re-read cachedItems inside the loop so
+    // position shifts from `removeCachedItemSong` stay consistent.
+    const itemIdsReferencing: string[] = [];
+    for (const item of Object.values(musicCacheStore.getState().cachedItems)) {
+      if (item.songIds.includes(song.id)) itemIdsReferencing.push(item.itemId);
+    }
+
+    for (const itemId of itemIdsReferencing) {
+      // Safety cap: an item can in principle reference the same songId at
+      // multiple positions (e.g. a playlist containing the same song twice).
+      // Loop until the song no longer appears in the item's songIds.
+      // Bounded by songIds.length to avoid infinite loops on unexpected state.
+      const item = musicCacheStore.getState().cachedItems[itemId];
+      if (!item) continue;
+      let safety = item.songIds.length + 1;
+      while (safety-- > 0) {
+        const current = musicCacheStore.getState().cachedItems[itemId];
+        if (!current) break;
+        const idx = current.songIds.indexOf(song.id);
+        if (idx < 0) break;
+        musicCacheStore.getState().removeCachedItemSong(itemId, idx + 1);
+      }
+    }
+
+    // In-memory map cleanup — the store already purges orphaned song rows
+    // from cachedSongs via refcount, but trackUriMap / trackToItems are
+    // owned by the service.
+    trackUriMap.delete(song.id);
+    trackToItems.delete(song.id);
+  }
+
+  /* -------- Pass 3: orphan item rows -------- */
+  const orphanItems: string[] = [];
+  for (const item of Object.values(musicCacheStore.getState().cachedItems)) {
+    if (item.songIds.length === 0) orphanItems.push(item.itemId);
+  }
+  for (const itemId of orphanItems) {
+    musicCacheStore.getState().removeCachedItem(itemId);
+    orphanItemIds++;
+  }
+
+  /* -------- Pass 4: sweep non-album top-level directories --------
+   * Anything under {music-cache}/ whose name isn't a known album_id is
+   * stale — leftover v1 playlist/__starred__ directories from a partial
+   * Task-14 migration, or other junk. Delete it.
+   *
+   * CRITICAL SAFETY GATE: skip this pass entirely if we have no valid
+   * album_ids. `cached_songs` is empty in two scenarios, neither of which
+   * should trigger a sweep:
+   *   (a) Fresh install — there's nothing on disk to sweep, so skipping
+   *       is a cheap no-op.
+   *   (b) Migration task #14 hasn't completed yet (an earlier task
+   *       threw and runMigrations halted) — the v1 cache directories are
+   *       still on disk in their original shape waiting to be migrated.
+   *       Sweeping them here would be catastrophic data loss.
+   * Without this gate, scenario (b) would wipe every cached file the
+   * user has before task #14 ever gets a chance to run on the next
+   * launch. */
+  let staleDirsDeleted = 0;
+  if (validAlbumIds.size > 0) {
+    for (const name of topLevelNames) {
+      if (validAlbumIds.has(name)) continue;
+      try {
+        const sub = new Directory(dir, name);
+        if (sub.exists) {
+          sub.delete();
+          staleDirsDeleted++;
+        }
+      } catch { /* best-effort */ }
+    }
+  }
+
+  if (
+    orphanFilesDeleted > 0 ||
+    staleTmpDeleted > 0 ||
+    missingSongIds > 0 ||
+    orphanItemIds > 0 ||
+    staleDirsDeleted > 0
+  ) {
+    // eslint-disable-next-line no-console
+    console.warn('[musicCacheService] reconciliation healed drift:', {
+      orphanFilesDeleted,
+      staleTmpDeleted,
+      missingSongIds,
+      orphanItemIds,
+      staleDirsDeleted,
+    });
+  }
+}
+
+/**
+ * Delete incomplete .tmp files for a given item from the album dirs its
+ * songs live in. Used by both stalled-download recovery and manual retry to
+ * clean up partial transfers without touching fully-downloaded files.
+ */
+async function cleanupTmpFilesForQueueItem(item: DownloadQueueItem): Promise<void> {
+  let songs: Child[] = [];
+  try {
+    songs = JSON.parse(item.songsJson) as Child[];
+  } catch {
+    return;
+  }
+
+  // Deduplicate the album directories we need to sweep.
+  const albumIds = new Set<string>();
+  for (const s of songs) {
+    albumIds.add(s.albumId || UNKNOWN_ALBUM_ID);
+  }
+
+  for (const albumId of albumIds) {
+    const albumDir = new Directory(ensureCacheDir(), albumId);
+    if (!albumDir.exists) continue;
+    try {
+      const entries = await listDirectoryAsync(albumDir.uri);
+      for (const name of entries) {
+        if (name.endsWith('.tmp')) {
+          try { new File(albumDir, name).delete(); } catch { /* best-effort */ }
+        }
+      }
+    } catch { /* best-effort */ }
+  }
+}
+
+/**
+ * Recover any items stuck in 'downloading' status from a previous session.
+ * Fully-downloaded songs are preserved (they're already in `cached_songs`
+ * and `trackUriMap`); only `.tmp` remnants are deleted.
  */
 export async function recoverStalledDownloadsAsync(
   includeErrors = false,
@@ -236,7 +524,7 @@ export async function recoverStalledDownloadsAsync(
 
   for (const item of downloadQueue) {
     if (item.status === 'downloading' || (includeErrors && item.status === 'error')) {
-      await cleanupTmpFiles(item.itemId);
+      await cleanupTmpFilesForQueueItem(item);
 
       musicCacheStore.getState().updateQueueItem(item.queueId, {
         status: 'queued',
@@ -252,11 +540,8 @@ export async function recoverStalledDownloadsAsync(
 }
 
 /**
- * Force-recover the download queue regardless of current processing
- * state. Bumps the generation counter so active workers exit at their
- * next check, then recovers stalled and failed items.
- *
- * Used by the manual "Recover" button on the download queue screen.
+ * Force-recover the queue regardless of current processing state. Bumps the
+ * generation counter so active workers exit at their next check.
  */
 export async function forceRecoverDownloadsAsync(): Promise<void> {
   processingId++;
@@ -264,86 +549,36 @@ export async function forceRecoverDownloadsAsync(): Promise<void> {
   await recoverStalledDownloadsAsync(true);
 }
 
-function ensureCacheDir(): Directory {
-  if (!cacheDir) initMusicCache();
-  return cacheDir!;
-}
-
-/**
- * Scan the music-cache directory to populate trackUriMap and
- * trackToItems from files already on disk.
- *
- * Directory listing runs on native background threads via
- * expo-async-fs, keeping the JS thread free for UI rendering.
- */
-async function populateTrackMapsAsync(): Promise<void> {
-  trackUriMap.clear();
-  trackToItems.clear();
-  const dir = ensureCacheDir();
-
-  let subDirNames: string[];
-  try {
-    subDirNames = await listDirectoryAsync(dir.uri);
-  } catch {
-    return;
-  }
-
-  for (const itemId of subDirNames) {
-    if (!itemId) continue;
-
-    const subDir = new Directory(dir, itemId);
-    if (!subDir.exists) continue;
-
-    try {
-      const fileNames = await listDirectoryAsync(subDir.uri);
-      for (const fileName of fileNames) {
-        if (!fileName || fileName.endsWith('.tmp')) continue;
-        const trackId = fileName.replace(/\.[^.]+$/, '') || fileName;
-        const fileUri = new File(subDir, fileName).uri;
-        trackUriMap.set(trackId, fileUri);
-
-        if (!trackToItems.has(trackId)) trackToItems.set(trackId, new Set());
-        trackToItems.get(trackId)!.add(itemId);
-      }
-    } catch {
-      /* best-effort */
-    }
-  }
-
-  trackMapsReady = true;
-
-  // Run any starred-songs sync that was deferred because the
-  // favoritesStore subscription fired before maps were populated.
-  syncStarredSongsDownload();
-}
-
 /* ------------------------------------------------------------------ */
 /*  Cache lookup (synchronous)                                         */
 /* ------------------------------------------------------------------ */
 
 /**
- * Returns the local file:// URI for a cached track, or null if the
- * track is not downloaded. O(1) via the in-memory map.
+ * Returns the local file:// URI for a cached song, or null if it's not
+ * downloaded. O(1) via the in-memory map.
  */
 export function getLocalTrackUri(trackId: string): string | null {
   if (!trackId) return null;
   return trackUriMap.get(trackId) ?? null;
 }
 
-/** Check if an album or playlist is fully downloaded. */
+/** Check whether an album / playlist / favorites / song item is cached. */
 export function isItemCached(itemId: string): boolean {
   return itemId in musicCacheStore.getState().cachedItems;
 }
 
-/**
- * Check if a track belongs to any item currently in the download queue.
- * Returns the queue item status or null.
- */
+/** Check if a track is in any queued / downloading queue item. */
 export function getTrackQueueStatus(trackId: string): 'queued' | 'downloading' | null {
   const queue = musicCacheStore.getState().downloadQueue;
   for (const item of queue) {
     if (item.status !== 'queued' && item.status !== 'downloading') continue;
-    if (item.tracks.some((t) => t.id === trackId)) {
+    let songs: Child[];
+    try {
+      songs = JSON.parse(item.songsJson) as Child[];
+    } catch {
+      continue;
+    }
+    if (songs.some((t) => t.id === trackId)) {
       return item.status;
     }
   }
@@ -358,21 +593,12 @@ function cacheTrackCoverArt(tracks: Child[]): void {
   cacheEntityCoverArt(tracks);
 }
 
-/**
- * Fetch album metadata, cache its cover art, and add it to the
- * download queue. Triggers queue processing immediately.
- */
+/** Enqueue an album download. */
 export async function enqueueAlbumDownload(albumId: string): Promise<void> {
   const state = musicCacheStore.getState();
   if (albumId in state.cachedItems) return;
   if (state.downloadQueue.some((q) => q.itemId === albumId)) return;
 
-  // If the album isn't in the cached library, refresh it in the background.
-  // Without this, an album downloaded via search/artist detail can be
-  // invisible in offline mode (the album list view filters this store).
-  // Delegated to `dataSyncService.onAlbumReferenced` via the hook
-  // registered at module load so we don't take a hard dependency on the
-  // orchestration graph from this cache service.
   onAlbumReferencedHook?.(albumId);
 
   await ensureCoverArtAuth();
@@ -390,17 +616,14 @@ export async function enqueueAlbumDownload(albumId: string): Promise<void> {
     name: album.name,
     artist: album.artist ?? album.displayArtist,
     coverArtId: album.coverArt,
-    totalTracks: album.song.length,
-    tracks: album.song,
+    totalSongs: album.song.length,
+    songsJson: JSON.stringify(album.song),
   });
 
   processQueue();
 }
 
-/**
- * Fetch playlist metadata, cache its cover art, and add it to the
- * download queue. Triggers queue processing immediately.
- */
+/** Enqueue a playlist download. */
 export async function enqueuePlaylistDownload(playlistId: string): Promise<void> {
   const state = musicCacheStore.getState();
   if (playlistId in state.cachedItems) return;
@@ -420,8 +643,62 @@ export async function enqueuePlaylistDownload(playlistId: string): Promise<void>
     type: 'playlist',
     name: playlist.name,
     coverArtId: playlist.coverArt,
-    totalTracks: playlist.entry.length,
-    tracks: playlist.entry,
+    totalSongs: playlist.entry.length,
+    songsJson: JSON.stringify(playlist.entry),
+  });
+
+  processQueue();
+}
+
+/**
+ * Enqueue a single-song download. Introduced in v2.
+ *
+ * The itemId is `song:{songId}` — a deterministic synthetic id so the same
+ * song can't be double-enqueued. The song's underlying file still lands
+ * under its parent album directory, allowing later album downloads to
+ * dedupe against it.
+ */
+export async function enqueueSongDownload(song: Child): Promise<void> {
+  if (!song?.id) return;
+  const itemId = `song:${song.id}`;
+  const state = musicCacheStore.getState();
+  if (itemId in state.cachedItems) return;
+  if (state.downloadQueue.some((q) => q.itemId === itemId)) return;
+
+  // If the underlying song is already fully cached, don't transfer bytes —
+  // just create the `song:` item + edge so it shows up in the browser.
+  if (song.id in state.cachedSongs) {
+    const existing = state.cachedSongs[song.id];
+    musicCacheStore.getState().upsertCachedItem(
+      {
+        itemId,
+        type: 'song',
+        name: song.title ?? existing.title,
+        artist: song.artist ?? existing.artist,
+        coverArtId: song.coverArt ?? existing.coverArt,
+        expectedSongCount: 1,
+        parentAlbumId: song.albumId ?? existing.albumId,
+        lastSyncAt: Date.now(),
+        downloadedAt: Date.now(),
+      },
+      [song.id],
+    );
+    insertCachedItemSong(itemId, 1, song.id);
+    registerTrackToItem(song.id, itemId);
+    return;
+  }
+
+  await ensureCoverArtAuth();
+  cacheTrackCoverArt([song]);
+
+  musicCacheStore.getState().enqueue({
+    itemId,
+    type: 'song',
+    name: song.title ?? 'Unknown',
+    artist: song.artist,
+    coverArtId: song.coverArt,
+    totalSongs: 1,
+    songsJson: JSON.stringify([song]),
   });
 
   processQueue();
@@ -431,11 +708,6 @@ export async function enqueuePlaylistDownload(playlistId: string): Promise<void>
 /*  Queue processing                                                   */
 /* ------------------------------------------------------------------ */
 
-/**
- * Process the download queue. Items are processed sequentially (one
- * album/playlist at a time). Within each item, up to
- * maxConcurrentDownloads tracks are downloaded in parallel.
- */
 async function processQueue(): Promise<void> {
   if (isProcessing) return;
   isProcessing = true;
@@ -460,59 +732,152 @@ async function processQueue(): Promise<void> {
   }
 }
 
+function registerTrackToItem(songId: string, itemId: string): void {
+  let bucket = trackToItems.get(songId);
+  if (!bucket) {
+    bucket = new Set<string>();
+    trackToItems.set(songId, bucket);
+  }
+  bucket.add(itemId);
+}
+
 /**
- * Download all tracks for a single queue item using a concurrency pool.
+ * Ensure a partial-album `cached_items` row + edge exist for songs
+ * downloaded from a non-album item. No-op when the triggering item IS the
+ * album itself.
  */
-async function downloadItem(queueItem: DownloadQueueItemSnapshot, myId: number): Promise<void> {
+function ensurePartialAlbumEdge(
+  triggerItemId: string,
+  triggerItemType: DownloadQueueItem['type'],
+  song: Child,
+): void {
+  if (!song.albumId) return;
+  if (triggerItemType === 'album' && triggerItemId === song.albumId) return;
+
+  const state = musicCacheStore.getState();
+  const existing = state.cachedItems[song.albumId];
+
+  if (existing) {
+    // Append this song as a new edge if not already present.
+    if (existing.songIds.includes(song.id)) return;
+    const nextPosition = existing.songIds.length + 1;
+    insertCachedItemSong(song.albumId, nextPosition, song.id);
+    registerTrackToItem(song.id, song.albumId);
+    musicCacheStore.setState((prev) => {
+      const prevItem = prev.cachedItems[song.albumId!];
+      if (!prevItem) return prev;
+      if (prevItem.songIds.includes(song.id)) return prev;
+      return {
+        cachedItems: {
+          ...prev.cachedItems,
+          [song.albumId!]: {
+            ...prevItem,
+            songIds: [...prevItem.songIds, song.id],
+          },
+        },
+      };
+    });
+    return;
+  }
+
+  // Otherwise create a fresh partial-album row.
+  const cachedAlbum = albumDetailStore.getState().albums[song.albumId];
+  const expectedSongCount = cachedAlbum?.album?.song?.length ?? 1;
+  const now = Date.now();
+
+  musicCacheStore.getState().upsertCachedItem(
+    {
+      itemId: song.albumId,
+      type: 'album',
+      name: song.album ?? cachedAlbum?.album?.name ?? 'Unknown',
+      artist: song.artist ?? cachedAlbum?.album?.artist,
+      coverArtId: song.coverArt ?? cachedAlbum?.album?.coverArt,
+      expectedSongCount,
+      parentAlbumId: undefined,
+      lastSyncAt: now,
+      downloadedAt: now,
+    },
+    [song.id],
+  );
+  insertCachedItemSong(song.albumId, 1, song.id);
+  registerTrackToItem(song.id, song.albumId);
+}
+
+/**
+ * Download all songs for a single queue item using a concurrency pool.
+ *
+ * v2 flow:
+ *   - Pre-scan: skip songs that are already in `cached_songs` (deduplication
+ *     across items — e.g. a playlist whose song is already in a cached
+ *     album). For each such song, still record an edge to the current item.
+ *   - Download: for each remaining song, transfer to
+ *     `{music-cache}/{albumId}/{songId}.{ext}.tmp`, move to final,
+ *     upsert the song row, and register an edge for this item.
+ *   - Partial-album bookkeeping: for every newly downloaded song, ensure
+ *     there's also an edge from the song's parent album (so the file is
+ *     reachable as a partial album in the browser when the triggering item
+ *     is a playlist / favorites / song).
+ */
+async function downloadItem(queueItem: DownloadQueueItem, myId: number): Promise<void> {
   const { maxConcurrentDownloads } = musicCacheStore.getState();
-  const itemDir = new Directory(ensureCacheDir(), queueItem.itemId);
-  if (!itemDir.exists) itemDir.create();
 
-  const completedTracks: CachedTrack[] = [];
-  const downloadedIds = new Set<string>();
-  const preScannedIds = new Set<string>();
-  let totalBytes = 0;
+  let songs: Child[];
+  try {
+    songs = JSON.parse(queueItem.songsJson) as Child[];
+  } catch {
+    musicCacheStore.getState().updateQueueItem(queueItem.queueId, {
+      status: 'error',
+      error: 'Failed to parse songs',
+    });
+    return;
+  }
+
+  // Edges created during this run — tracked so cancel() can reverse them.
+  const runEdges: Array<{ itemId: string; position: number; songId: string }> = [];
+  // Songs fully landed during this run — for cancel() refcount adjustments.
+  const runDownloadedSongs = new Set<string>();
+  // Ordered list of (position, songId) pairs to commit at markItemComplete.
+  const itemEdges: Array<{ position: number; songId: string }> = [];
+  // Accumulated song metadata to upsert at markItemComplete.
+  const itemSongsForCommit = new Map<string, CachedSongMeta>();
+
+  const seen = new Set<string>();
   let trackIndex = 0;
+  let completedCount = 0;
 
-  // Pre-count tracks that already exist on disk so the progress counter
-  // never drops below the real completed count (avoids UI flicker on resume).
-  for (const track of queueItem.tracks) {
-    if (downloadedIds.has(track.id)) {
-      const existing = completedTracks.find((t) => t.id === track.id);
-      if (existing) completedTracks.push(existing);
+  // Pre-scan: for every song, check the pool + what's been downloaded in
+  // this run. Songs already in `cached_songs` are counted immediately.
+  // (This pre-scan is authoritative — the worker loop skips these.)
+  const preScannedSongs = new Set<string>();
+  const state0 = musicCacheStore.getState();
+  for (let i = 0; i < songs.length; i++) {
+    const song = songs[i];
+    const position = i + 1;
+    if (seen.has(song.id)) {
+      // Duplicate entry in same item. Still allocate an edge position.
+      itemEdges.push({ position, songId: song.id });
+      preScannedSongs.add(`${i}`);
+      completedCount++;
       continue;
     }
-    const existingUri = trackUriMap.get(track.id);
-    if (existingUri) {
-      const existingFileName = existingUri.split('/').pop() ?? track.id;
-      const existingFile = new File(itemDir, existingFileName);
-      if (existingFile.exists) {
-        const bytes = existingFile.size ?? 0;
-        completedTracks.push({
-          id: track.id,
-          title: track.title ?? 'Unknown',
-          artist: track.artist ?? i18n.t('unknownArtist'),
-          fileName: existingFileName,
-          bytes,
-          duration: track.duration ?? 0,
-        });
-        totalBytes += bytes;
-        downloadedIds.add(track.id);
-        preScannedIds.add(track.id);
-        if (!trackToItems.has(track.id)) trackToItems.set(track.id, new Set());
-        trackToItems.get(track.id)!.add(queueItem.itemId);
-      }
+    seen.add(song.id);
+    const existing = state0.cachedSongs[song.id];
+    if (existing) {
+      preScannedSongs.add(`${i}`);
+      itemEdges.push({ position, songId: song.id });
+      itemSongsForCommit.set(song.id, existing);
+      completedCount++;
     }
   }
 
-  if (completedTracks.length > 0) {
+  if (completedCount > 0) {
     musicCacheStore.getState().updateQueueItem(queueItem.queueId, {
-      completedTracks: completedTracks.length,
+      completedSongs: completedCount,
     });
   }
 
   const downloadNext = async (): Promise<void> => {
-    while (trackIndex < queueItem.tracks.length) {
+    while (trackIndex < songs.length) {
       if (myId !== processingId) return;
 
       const current = musicCacheStore.getState().downloadQueue.find(
@@ -521,54 +886,47 @@ async function downloadItem(queueItem: DownloadQueueItemSnapshot, myId: number):
       if (!current || current.status !== 'downloading') return;
 
       if (checkStorageLimit()) {
-        musicCacheStore.getState().updateQueueItem(queueItem.queueId, { status: 'queued' });
+        musicCacheStore.getState().updateQueueItem(queueItem.queueId, {
+          status: 'queued',
+        });
         return;
       }
 
       const idx = trackIndex++;
-      const track = queueItem.tracks[idx];
+      const song = songs[idx];
+      const position = idx + 1;
 
-      // Pre-scanned tracks (and their playlist duplicates) are already
-      // counted — skip without updating the store.
-      if (preScannedIds.has(track.id)) continue;
-
-      // Playlists can contain the same track more than once.
-      // Only download it once; reuse the result for duplicates.
-      if (downloadedIds.has(track.id)) {
-        const existing = completedTracks.find((t) => t.id === track.id);
-        if (existing) completedTracks.push(existing);
-        musicCacheStore.getState().updateQueueItem(queueItem.queueId, {
-          completedTracks: completedTracks.length,
-        });
-        continue;
-      }
-      downloadedIds.add(track.id);
+      // Pre-scanned (existing or duplicate) — nothing to transfer.
+      if (preScannedSongs.has(`${idx}`)) continue;
 
       try {
-        let result = await downloadTrack(track, itemDir);
-        if (!result) result = await downloadTrack(track, itemDir);
+        let result = await downloadSong(song);
+        if (!result) result = await downloadSong(song);
         if (result) {
-          completedTracks.push(result);
-          totalBytes += result.bytes;
-          trackUriMap.set(track.id, new File(itemDir, result.fileName).uri);
-          if (!trackToItems.has(track.id)) trackToItems.set(track.id, new Set());
-          trackToItems.get(track.id)!.add(queueItem.itemId);
+          itemSongsForCommit.set(song.id, result);
+          itemEdges.push({ position, songId: song.id });
+          runDownloadedSongs.add(song.id);
+          trackUriMap.set(song.id, resolveSongFile(result).uri);
+
+          // Also ensure the partial-album edge (for non-album items).
+          ensurePartialAlbumEdge(queueItem.itemId, queueItem.type, song);
 
           musicCacheStore.getState().addBytes(result.bytes);
           musicCacheStore.getState().addFiles(1);
+          completedCount++;
         }
       } catch {
-        /* individual track failure -- continue with the rest */
+        /* individual song failure — continue with the rest */
       }
 
       musicCacheStore.getState().updateQueueItem(queueItem.queueId, {
-        completedTracks: completedTracks.length,
+        completedSongs: completedCount,
       });
     }
   };
 
   const workers = Array.from(
-    { length: Math.min(maxConcurrentDownloads, queueItem.tracks.length) },
+    { length: Math.min(maxConcurrentDownloads, Math.max(songs.length, 1)) },
     () => downloadNext(),
   );
   await Promise.all(workers);
@@ -576,68 +934,88 @@ async function downloadItem(queueItem: DownloadQueueItemSnapshot, myId: number):
   const finalState = musicCacheStore.getState().downloadQueue.find(
     (q) => q.queueId === queueItem.queueId,
   );
-  if (!finalState) return;
+  if (!finalState) {
+    return; // queue item was cancelled or finalised elsewhere
+  }
 
-  if (completedTracks.length === queueItem.tracks.length) {
-    const cached: CachedMusicItem = {
+  const uniqueSongIds = new Set(itemEdges.map((e) => e.songId));
+
+  if (uniqueSongIds.size === new Set(songs.map((s) => s.id)).size) {
+    // All unique songs covered — finalise the item.
+    const cachedItem: Omit<CachedItemMeta, 'songIds'> = {
       itemId: queueItem.itemId,
       type: queueItem.type,
       name: queueItem.name,
       artist: queueItem.artist,
       coverArtId: queueItem.coverArtId,
-      tracks: completedTracks,
-      totalBytes,
+      expectedSongCount: songs.length,
+      parentAlbumId: queueItem.type === 'song' ? songs[0]?.albumId : undefined,
+      lastSyncAt: Date.now(),
       downloadedAt: Date.now(),
     };
-    musicCacheStore.getState().markItemComplete(queueItem.queueId, cached);
+    const songsToCommit = Array.from(itemSongsForCommit.values());
+    const edgesForCommit = itemEdges.map((e) => ({
+      songId: e.songId,
+      position: e.position,
+    }));
+    musicCacheStore.getState().markItemComplete(
+      queueItem.queueId,
+      cachedItem,
+      songsToCommit,
+      edgesForCommit,
+    );
+
+    for (const e of edgesForCommit) {
+      registerTrackToItem(e.songId, queueItem.itemId);
+      runEdges.push({ itemId: queueItem.itemId, position: e.position, songId: e.songId });
+    }
+    // runEdges is used only for cancellation; on successful finalise we
+    // don't need to reverse anything. Leaving the array here for clarity.
+    void runEdges;
+    void runDownloadedSongs;
   } else {
     musicCacheStore.getState().updateQueueItem(queueItem.queueId, {
       status: 'error',
-      error: `Downloaded ${completedTracks.length} of ${queueItem.tracks.length} tracks`,
-      completedTracks: completedTracks.length,
+      error: `Downloaded ${uniqueSongIds.size} of ${new Set(songs.map((s) => s.id)).size} songs`,
+      completedSongs: completedCount,
     });
   }
 }
 
-type DownloadQueueItemSnapshot = Readonly<{
-  queueId: string;
-  itemId: string;
-  type: 'album' | 'playlist';
-  name: string;
-  artist?: string;
-  coverArtId?: string;
-  tracks: Child[];
-}>;
-
 /**
- * Download a single track using the native download with progress events.
+ * Download a single song to disk. v2 path: dedup check before transfer.
  *
- * Downloads to a `.tmp` file first and renames on success, so that
- * incomplete downloads from a killed app can be identified and
- * cleaned up on restart.
+ *   1. If already in `cached_songs`, return the existing metadata — caller
+ *      will still record a new edge for its item.
+ *   2. Otherwise, download to tmp, move to final, compose metadata.
+ *
+ * Retry-once (for the transient "null from getDownloadStreamUrl") happens
+ * in the caller.
  */
-async function downloadTrack(
-  track: Child,
-  itemDir: Directory,
-): Promise<CachedTrack | null> {
+async function downloadSong(track: Child): Promise<CachedSongMeta | null> {
+  const existing = musicCacheStore.getState().cachedSongs[track.id];
+  if (existing) return existing;
+
   await ensureCoverArtAuth();
 
   const url = getDownloadStreamUrl(track.id);
   if (!url) return null;
 
-  // Capture download settings BEFORE the transfer starts.
   const { downloadFormat, downloadMaxBitRate } = playbackSettingsStore.getState();
 
   const ext = getTrackFileExtension(track);
+  const albumId = track.albumId || UNKNOWN_ALBUM_ID;
+  const albumDir = ensureAlbumDir(albumId);
+
   const fileName = `${track.id}.${ext}`;
   const tmpName = `${fileName}.tmp`;
 
   try {
     beginDownload(track.id);
-    const tmpDest = new File(itemDir, tmpName);
+    const tmpDest = new File(albumDir, tmpName);
     await downloadFileAsyncWithProgress(url, tmpDest.uri, track.id);
 
-    const dest = new File(itemDir, fileName);
+    const dest = new File(albumDir, fileName);
     if (dest.exists) {
       try { dest.delete(); } catch { /* best-effort */ }
     }
@@ -647,7 +1025,8 @@ async function downloadTrack(
 
     clearDownload(track.id);
 
-    // Record the effective format for this download.
+    // Capture effective format so consumers (effectiveFormat.ts) can read
+    // transcoded bitrate / post-transcode suffix from the song row.
     const effectiveFmt = resolveEffectiveFormat({
       sourceSuffix: track.suffix,
       sourceBitRate: track.bitRate,
@@ -656,20 +1035,33 @@ async function downloadTrack(
       formatSetting: downloadFormat,
       bitRateSetting: downloadMaxBitRate,
     });
-    musicCacheStore.getState().setDownloadedFormat(track.id, effectiveFmt);
 
-    return {
+    const now = Date.now();
+    const meta: CachedSongMeta = {
       id: track.id,
       title: track.title ?? 'Unknown',
       artist: track.artist ?? i18n.t('unknownArtist'),
+      album: track.album,
+      albumId,
       coverArt: track.coverArt,
-      fileName,
       bytes,
       duration: track.duration ?? 0,
+      suffix: ext,
+      bitRate: effectiveFmt.bitRate,
+      bitDepth: effectiveFmt.bitDepth,
+      samplingRate: effectiveFmt.samplingRate,
+      formatCapturedAt: effectiveFmt.capturedAt,
+      downloadedAt: now,
     };
+
+    // Upsert to the pool immediately so subsequent dedup checks within this
+    // same item (e.g. playlist with the song twice) short-circuit cleanly.
+    musicCacheStore.getState().upsertCachedSong(meta);
+
+    return meta;
   } catch {
     clearDownload(track.id);
-    const tmpFile = new File(itemDir, tmpName);
+    const tmpFile = new File(albumDir, tmpName);
     if (tmpFile.exists) {
       try { tmpFile.delete(); } catch { /* best-effort */ }
     }
@@ -677,27 +1069,24 @@ async function downloadTrack(
   }
 }
 
-/**
- * Retry a failed download queue item. Cleans up incomplete .tmp files
- * while preserving already-downloaded tracks, then resets the item to
- * 'queued' so processQueue() picks it up. downloadItem() will skip
- * tracks that already exist in trackUriMap.
- */
+/* ------------------------------------------------------------------ */
+/*  Retry / redownload                                                 */
+/* ------------------------------------------------------------------ */
+
+/** Retry a failed queue item. */
 export async function retryDownload(queueId: string): Promise<void> {
   const item = musicCacheStore.getState().downloadQueue.find(
     (q) => q.queueId === queueId,
   );
   if (!item || item.status !== 'error') return;
 
-  await cleanupTmpFiles(item.itemId);
+  await cleanupTmpFilesForQueueItem(item);
 
   musicCacheStore.getState().updateQueueItem(queueId, {
     status: 'queued',
     error: undefined,
   });
 
-  // Move the retried item to just after the last queued/downloading item
-  // so it doesn't jump ahead of items already waiting.
   const queue = musicCacheStore.getState().downloadQueue;
   const fromIdx = queue.findIndex((q) => q.queueId === queueId);
   const lastNonErrorIdx = queue.reduce(
@@ -711,10 +1100,7 @@ export async function retryDownload(queueId: string): Promise<void> {
   processQueue();
 }
 
-/**
- * Re-download an entire cached item. Deletes its files and
- * re-enqueues it for a fresh download with current settings.
- */
+/** Re-download an entire cached item with current settings. */
 export async function redownloadItem(itemId: string): Promise<void> {
   const cached = musicCacheStore.getState().cachedItems[itemId];
   if (!cached) return;
@@ -723,15 +1109,24 @@ export async function redownloadItem(itemId: string): Promise<void> {
 
   if (cached.type === 'album') {
     await enqueueAlbumDownload(itemId);
-  } else {
-    await enqueuePlaylistDownload(itemId);
+  } else if (cached.type === 'playlist' || cached.type === 'favorites') {
+    if (itemId === STARRED_SONGS_ITEM_ID) {
+      await enqueueStarredSongsDownload();
+    } else {
+      await enqueuePlaylistDownload(itemId);
+    }
   }
+  // Single-song items aren't re-downloaded via this entry point — the UI
+  // should use enqueueSongDownload(song) directly.
 }
 
 /**
- * Re-download a single track within a cached item.
- * Deletes the old file, downloads a fresh copy with current quality
- * settings, and updates the store entry.
+ * Re-download a single track within a cached item. Preserved from v1 for
+ * backwards compatibility with the music-cache-browser swipe action.
+ *
+ * v2 semantics: deletes the file, re-downloads, updates the `cached_songs`
+ * row (and therefore every item referencing the song). The item itself is
+ * unchanged structurally.
  */
 export async function redownloadTrack(
   itemId: string,
@@ -740,14 +1135,14 @@ export async function redownloadTrack(
   const cached = musicCacheStore.getState().cachedItems[itemId];
   if (!cached) return false;
 
-  const trackIndex = cached.tracks.findIndex((t) => t.id === trackId);
+  const trackIndex = cached.songIds.indexOf(trackId);
   if (trackIndex === -1) return false;
 
-  const oldTrack = cached.tracks[trackIndex];
-  const itemDir = new Directory(ensureCacheDir(), itemId);
-  if (!itemDir.exists) itemDir.create();
+  const existingSong = musicCacheStore.getState().cachedSongs[trackId];
+  if (!existingSong) return false;
 
-  const oldFile = new File(itemDir, oldTrack.fileName);
+  // Delete the old file from disk.
+  const oldFile = resolveSongFile(existingSong);
   if (oldFile.exists) {
     try { oldFile.delete(); } catch { /* best-effort */ }
   }
@@ -758,36 +1153,36 @@ export async function redownloadTrack(
   if (!url) return false;
 
   const { downloadFormat, downloadMaxBitRate } = playbackSettingsStore.getState();
-  const ext = downloadFormat !== 'raw'
-    ? downloadFormat
-    : oldTrack.fileName.replace(/^.*\./, '') || 'dat';
+  const ext = downloadFormat !== 'raw' ? downloadFormat : existingSong.suffix;
   const fileName = `${trackId}.${ext}`;
+  const albumDir = ensureAlbumDir(existingSong.albumId);
 
   try {
-    const dest = new File(itemDir, fileName);
+    const dest = new File(albumDir, fileName);
     await File.downloadFileAsync(url, dest);
     const bytes = dest.exists ? dest.size ?? 0 : 0;
 
-    const updatedTrack: CachedTrack = {
-      ...oldTrack,
-      fileName,
-      bytes,
-    };
-
-    trackUriMap.set(trackId, dest.uri);
-    musicCacheStore.getState().updateCachedTrack(
-      itemId, trackIndex, updatedTrack, oldTrack.bytes,
-    );
-
-    // Stamp the effective format for this re-download.
-    // Source Child data isn't available here — use what we can derive.
     const effectiveFmt = resolveEffectiveFormat({
-      sourceSuffix: oldTrack.fileName.replace(/^.*\./, '') || undefined,
+      sourceSuffix: existingSong.suffix,
       sourceBitRate: null,
       formatSetting: downloadFormat,
       bitRateSetting: downloadMaxBitRate,
     });
-    musicCacheStore.getState().setDownloadedFormat(trackId, effectiveFmt);
+
+    const now = Date.now();
+    const updated: CachedSongMeta = {
+      ...existingSong,
+      suffix: ext,
+      bytes,
+      bitRate: effectiveFmt.bitRate,
+      bitDepth: effectiveFmt.bitDepth,
+      samplingRate: effectiveFmt.samplingRate,
+      formatCapturedAt: effectiveFmt.capturedAt,
+      downloadedAt: now,
+    };
+
+    trackUriMap.set(trackId, dest.uri);
+    musicCacheStore.getState().upsertCachedSong(updated);
 
     return true;
   } catch {
@@ -799,166 +1194,225 @@ export async function redownloadTrack(
 /*  Cache management                                                   */
 /* ------------------------------------------------------------------ */
 
-/** Delete all cached files for a single album or playlist. */
+/** Delete a cached item + any songs whose refcount drops to zero. */
 export function deleteCachedItem(itemId: string): void {
   if (!itemId) return;
 
-  const cached = musicCacheStore.getState().cachedItems[itemId];
-  if (cached) {
-    for (const track of cached.tracks) {
-      trackUriMap.delete(track.id);
-      trackToItems.get(track.id)?.delete(itemId);
-      musicCacheStore.getState().clearDownloadedFormat(track.id);
+  const state = musicCacheStore.getState();
+  const cached = state.cachedItems[itemId];
+  if (!cached) {
+    // Might be a queue-only item; no-op here, cancelDownload handles that.
+    return;
+  }
+
+  // Snapshot metadata BEFORE the store removes the song rows.
+  const affectedSongs: CachedSongMeta[] = [];
+  for (const sid of cached.songIds) {
+    const s = state.cachedSongs[sid];
+    if (s) affectedSongs.push(s);
+  }
+
+  // Store action deletes edges (via FK cascade) + orphaned song rows.
+  const orphanedIds = musicCacheStore.getState().removeCachedItem(itemId);
+  const orphanSet = new Set(orphanedIds);
+
+  // Clean up trackToItems for every song that was referenced by this item.
+  for (const sid of cached.songIds) {
+    trackToItems.get(sid)?.delete(itemId);
+    if (orphanSet.has(sid)) {
+      trackToItems.delete(sid);
+      trackUriMap.delete(sid);
     }
   }
 
-  const subDir = new Directory(ensureCacheDir(), itemId);
-  if (subDir.exists) {
-    try { subDir.delete(); } catch { /* best-effort */ }
+  // Delete files for orphaned songs. Use the snapshotted metadata to
+  // resolve paths since the store has already removed them.
+  for (const song of affectedSongs) {
+    if (!orphanSet.has(song.id)) continue;
+    const file = resolveSongFile(song);
+    if (file.exists) {
+      try { file.delete(); } catch { /* best-effort */ }
+    }
   }
 
-  musicCacheStore.getState().removeCachedItem(itemId);
+  // Best-effort cleanup of empty album directories. Only attempt for album
+  // dirs that contained at least one orphaned song.
+  const affectedAlbumDirs = new Set<string>();
+  for (const song of affectedSongs) {
+    if (orphanSet.has(song.id)) {
+      affectedAlbumDirs.add(song.albumId || UNKNOWN_ALBUM_ID);
+    }
+  }
+  const albumsRoot = ensureCacheDir();
+  for (const albumId of affectedAlbumDirs) {
+    // Only remove if no remaining song references this album_id.
+    const postState = musicCacheStore.getState();
+    const anyReference = Object.values(postState.cachedSongs).some(
+      (s) => (s.albumId || UNKNOWN_ALBUM_ID) === albumId,
+    );
+    if (anyReference) continue;
+    const albumDir = new Directory(albumsRoot, albumId);
+    if (albumDir.exists) {
+      try { albumDir.delete(); } catch { /* best-effort */ }
+    }
+  }
+
   resumeIfSpaceAvailable();
 }
 
 /**
- * Remove a single track from a cached playlist and delete the file
- * from disk if no other cached item references the same trackId.
+ * Remove a single song from a cached playlist/favorites/song item. Deletes
+ * the underlying file iff the song's refcount hits zero.
  */
 export function removeCachedPlaylistTrack(itemId: string, trackIndex: number): void {
   const cached = musicCacheStore.getState().cachedItems[itemId];
-  if (!cached || cached.type !== 'playlist') return;
-  if (trackIndex < 0 || trackIndex >= cached.tracks.length) return;
+  if (!cached) return;
+  // Preserve v1 guard: only operate on playlist-ish items.
+  if (cached.type !== 'playlist' && cached.type !== 'favorites') return;
+  if (trackIndex < 0 || trackIndex >= cached.songIds.length) return;
 
-  const track = cached.tracks[trackIndex];
+  const songId = cached.songIds[trackIndex];
+  const song = musicCacheStore.getState().cachedSongs[songId];
 
-  trackToItems.get(track.id)?.delete(itemId);
-  const remainingRefs = trackToItems.get(track.id);
-  const isOrphan = !remainingRefs || remainingRefs.size === 0;
+  const { orphanedSongId } = musicCacheStore.getState().removeCachedItemSong(
+    itemId,
+    trackIndex + 1, // SQL positions are 1-indexed
+  );
 
-  if (isOrphan) {
-    trackUriMap.delete(track.id);
-    musicCacheStore.getState().clearDownloadedFormat(track.id);
-    const itemDir = new Directory(ensureCacheDir(), itemId);
-    if (itemDir.exists) {
-      const file = new File(itemDir, track.fileName);
-      if (file.exists) {
-        try { file.delete(); } catch { /* best-effort */ }
-      }
+  trackToItems.get(songId)?.delete(itemId);
+
+  if (orphanedSongId && song) {
+    trackToItems.delete(orphanedSongId);
+    trackUriMap.delete(orphanedSongId);
+    const file = resolveSongFile(song);
+    if (file.exists) {
+      try { file.delete(); } catch { /* best-effort */ }
     }
   }
-
-  musicCacheStore.getState().removeCachedTrack(itemId, trackIndex);
 }
 
-/**
- * Reorder a track within a cached playlist. No file changes needed.
- */
+/** Reorder songs within a cached item. No file changes. */
 export function reorderCachedPlaylistTracks(
   itemId: string,
   fromIndex: number,
   toIndex: number,
 ): void {
-  musicCacheStore.getState().reorderCachedTracks(itemId, fromIndex, toIndex);
+  musicCacheStore.getState().reorderCachedItemSongs(
+    itemId,
+    fromIndex + 1,
+    toIndex + 1,
+  );
 }
 
 /**
- * Sync a cached playlist's track list to match a new ordered set of
- * track IDs (after server-side reorder/removal). Removes orphan files
- * for tracks that are no longer in any cached item.
+ * Sync a cached playlist's song set to a new ordered list of track ids.
+ * Removes songs that are no longer present; reorders remaining songs to
+ * match `newTrackIds` order. Orphan files are deleted.
  */
 export function syncCachedPlaylistTracks(
   playlistId: string,
   newTrackIds: string[],
 ): void {
   const cached = musicCacheStore.getState().cachedItems[playlistId];
-  if (!cached || cached.type !== 'playlist') return;
+  if (!cached) return;
+  if (cached.type !== 'playlist' && cached.type !== 'favorites') return;
 
   const keepSet = new Set(newTrackIds);
 
-  for (const track of cached.tracks) {
-    if (keepSet.has(track.id)) continue;
-    trackToItems.get(track.id)?.delete(playlistId);
-    const remaining = trackToItems.get(track.id);
-    if (!remaining || remaining.size === 0) {
-      trackUriMap.delete(track.id);
-      const itemDir = new Directory(ensureCacheDir(), playlistId);
-      if (itemDir.exists) {
-        const file = new File(itemDir, track.fileName);
-        if (file.exists) {
-          try { file.delete(); } catch { /* best-effort */ }
-        }
+  // Remove songs not in the new list. removeCachedItemSong shifts
+  // positions inside the store & SQL, so we must iterate positions
+  // from highest to lowest.
+  const originalSongIds = [...cached.songIds];
+  for (let idx = originalSongIds.length - 1; idx >= 0; idx--) {
+    const sid = originalSongIds[idx];
+    if (keepSet.has(sid)) continue;
+    const song = musicCacheStore.getState().cachedSongs[sid];
+    const { orphanedSongId } = musicCacheStore.getState().removeCachedItemSong(
+      playlistId,
+      idx + 1,
+    );
+    trackToItems.get(sid)?.delete(playlistId);
+    if (orphanedSongId && song) {
+      trackToItems.delete(orphanedSongId);
+      trackUriMap.delete(orphanedSongId);
+      const file = resolveSongFile(song);
+      if (file.exists) {
+        try { file.delete(); } catch { /* best-effort */ }
       }
     }
   }
 
-  const trackMap = new Map(cached.tracks.map((t) => [t.id, t]));
-  const newTracks = newTrackIds
-    .map((tid) => trackMap.get(tid))
-    .filter((t): t is CachedTrack => t != null);
+  // After removals, reorder what remains to match the new order.
+  const after = musicCacheStore.getState().cachedItems[playlistId];
+  if (!after) return;
 
-  const newTotalBytes = newTracks.reduce((sum, t) => sum + t.bytes, 0);
-  const removedBytes = cached.totalBytes - newTotalBytes;
-  const removedFiles = cached.tracks.length - newTracks.length;
+  // Build target: only ids that still exist in the item.
+  const currentIds = [...after.songIds];
+  const currentSet = new Set(currentIds);
+  const targetIds = newTrackIds.filter((id) => currentSet.has(id));
 
-  const state = musicCacheStore.getState();
-  musicCacheStore.setState({
-    cachedItems: {
-      ...state.cachedItems,
-      [playlistId]: { ...cached, tracks: newTracks, totalBytes: newTotalBytes },
-    },
-    totalBytes: Math.max(0, state.totalBytes - removedBytes),
-    totalFiles: Math.max(0, state.totalFiles - removedFiles),
-  });
+  // Compute reorder operations — simple bubble via single-move reorder.
+  for (let targetPos = 0; targetPos < targetIds.length; targetPos++) {
+    const latest = musicCacheStore.getState().cachedItems[playlistId];
+    if (!latest) break;
+    const currentPos = latest.songIds.indexOf(targetIds[targetPos]);
+    if (currentPos < 0 || currentPos === targetPos) continue;
+    musicCacheStore.getState().reorderCachedItemSongs(
+      playlistId,
+      currentPos + 1,
+      targetPos + 1,
+    );
+  }
 }
 
 /**
  * Full sync for a cached item: removes tracks no longer present and
  * re-enqueues through the download queue when new tracks are detected.
- * Going through the queue lets the DownloadBanner show progress and
- * reuses the standard downloadItem() pipeline (which skips tracks
- * already on disk via trackUriMap).
  *
- * Byte accounting: removals are handled by syncCachedPlaylistTracks
- * (decrements totalBytes). For additions we splice the item out of
- * cachedItems *without* adjusting totalBytes (the bytes are still on
- * disk) and enqueue it -- downloadItem() only calls addBytes() for
- * genuinely new tracks, keeping the running total correct.
+ * v2 behaviour: addition path no longer manually spliced out of
+ * `cachedItems` — the new tracks go through the normal download pipeline,
+ * which knows how to add edges to an existing item (via the same itemId,
+ * songs are transferred, then `markItemComplete` upserts the item row and
+ * fresh edges). This is equivalent to v1 semantics for users but cleaner
+ * at the model level.
  */
 export function syncCachedItemTracks(
   itemId: string,
-  newTracks: Child[],
+  newSongs: Child[],
 ): void {
   const state = musicCacheStore.getState();
   const cached = state.cachedItems[itemId];
   if (!cached) return;
   if (state.downloadQueue.some((q) => q.itemId === itemId)) return;
 
-  const newTrackIds = newTracks.map((t) => t.id);
-  const cachedTrackIds = new Set(cached.tracks.map((t) => t.id));
+  const newTrackIds = newSongs.map((t) => t.id);
+  const cachedIdSet = new Set(cached.songIds);
 
+  // Removes + reorders via the playlist sync.
   syncCachedPlaylistTracks(itemId, newTrackIds);
 
-  const hasNewTracks = newTracks.some((t) => !cachedTrackIds.has(t.id));
+  const hasNewTracks = newSongs.some((t) => !cachedIdSet.has(t.id));
   if (!hasNewTracks) return;
 
-  // Re-read state after removals
-  const updated = musicCacheStore.getState();
-  const updatedCached = updated.cachedItems[itemId];
-  if (!updatedCached) return;
+  const updated = musicCacheStore.getState().cachedItems[itemId];
+  if (!updated) return;
 
-  // Move from cachedItems to queue without adjusting byte/file totals
-  const { [itemId]: _, ...restCachedItems } = updated.cachedItems;
-  musicCacheStore.setState({ cachedItems: restCachedItems });
+  // Remove the item's in-memory record so enqueue() sees a fresh slot.
+  // This mirrors the v1 behaviour (move item from cachedItems to queue
+  // without touching totalBytes/totalFiles).
+  musicCacheStore.setState((prev) => {
+    const { [itemId]: _gone, ...rest } = prev.cachedItems;
+    return { cachedItems: rest };
+  });
 
   musicCacheStore.getState().enqueue({
     itemId,
-    type: updatedCached.type,
-    name: updatedCached.name,
-    artist: updatedCached.artist,
-    coverArtId: updatedCached.coverArtId,
-    totalTracks: newTracks.length,
-    tracks: newTracks,
+    type: updated.type,
+    name: updated.name,
+    artist: updated.artist,
+    coverArtId: updated.coverArtId,
+    totalSongs: newSongs.length,
+    songsJson: JSON.stringify(newSongs),
   });
 
   processQueue();
@@ -967,11 +1421,13 @@ export function syncCachedItemTracks(
 /**
  * Cancel a queued or in-progress download and remove its partial files.
  *
- * After deleting files, schedules a background recalculate from the
- * filesystem to correct totalBytes/totalFiles — removeFromQueue does
- * not subtract the bytes that addBytes() accumulated during the
- * partial download, so without recalculation those "phantom" bytes
- * would inflate the displayed cache size.
+ * v2 semantics: if songs completed during this queue item's run exist only
+ * because of this item (no other refs), we leave them in the song pool as
+ * a partial album — the file is legitimately downloaded, just no user-
+ * visible item now references it. The next startup reconciliation or
+ * cache-clear will reap them. This is a deliberate softening vs. v1 (which
+ * wiped the item dir entirely) — it avoids throwing away work the user's
+ * bandwidth paid for, and the partial-album row keeps it reachable.
  */
 export function cancelDownload(queueId: string): void {
   const item = musicCacheStore.getState().downloadQueue.find(
@@ -981,14 +1437,42 @@ export function cancelDownload(queueId: string): void {
 
   musicCacheStore.getState().removeFromQueue(queueId);
 
-  const subDir = new Directory(ensureCacheDir(), item.itemId);
-  if (subDir.exists) {
-    try { subDir.delete(); } catch { /* best-effort */ }
+  // Delete any .tmp remnants for songs in this queue item (best-effort).
+  let songs: Child[] = [];
+  try {
+    songs = JSON.parse(item.songsJson) as Child[];
+  } catch {
+    songs = [];
+  }
+  const albumsVisited = new Set<string>();
+  for (const s of songs) {
+    const albumId = s.albumId || UNKNOWN_ALBUM_ID;
+    if (albumsVisited.has(albumId)) continue;
+    albumsVisited.add(albumId);
+    const albumDir = new Directory(ensureCacheDir(), albumId);
+    if (!albumDir.exists) continue;
+    // Sweep tmp files for songs in this cancelled set.
+    for (const song of songs) {
+      if ((song.albumId || UNKNOWN_ALBUM_ID) !== albumId) continue;
+      // Try a few extensions — we don't know which was in flight.
+      const candidates = [
+        song.suffix,
+        playbackSettingsStore.getState().downloadFormat,
+      ].filter((e): e is string => typeof e === 'string' && e.length > 0);
+      for (const ext of candidates) {
+        const tmp = new File(albumDir, `${song.id}.${ext}.tmp`);
+        if (tmp.exists) {
+          try { tmp.delete(); } catch { /* best-effort */ }
+        }
+      }
+    }
   }
 
-  for (const track of item.tracks) {
-    trackUriMap.delete(track.id);
-    trackToItems.get(track.id)?.delete(item.itemId);
+  // Only clear trackToItems bookkeeping for this cancelled itemId — the
+  // song pool stays intact (files either never landed, or are legitimate
+  // completed downloads that other items / the partial album still reference).
+  for (const s of songs) {
+    trackToItems.get(s.id)?.delete(item.itemId);
   }
 
   scheduleRecalculate();
@@ -1001,28 +1485,14 @@ export function cancelDownload(queueId: string): void {
 export function clearDownloadQueue(): void {
   const queue = [...musicCacheStore.getState().downloadQueue];
   for (const item of queue) {
-    musicCacheStore.getState().removeFromQueue(item.queueId);
-
-    if (!(item.itemId in musicCacheStore.getState().cachedItems)) {
-      const subDir = new Directory(ensureCacheDir(), item.itemId);
-      if (subDir.exists) {
-        try { subDir.delete(); } catch { /* best-effort */ }
-      }
-    }
-
-    for (const track of item.tracks) {
-      trackUriMap.delete(track.id);
-      trackToItems.get(track.id)?.delete(item.itemId);
-    }
+    cancelDownload(item.queueId);
   }
-  scheduleRecalculate();
   resumeIfSpaceAvailable();
 }
 
 /**
- * Delete all cached music and recreate the cache directory.
- * Returns the number of bytes freed. Directory size runs on a native
- * background thread via expo-async-fs.
+ * Delete all cached music and recreate the cache directory. Returns the
+ * number of bytes freed.
  */
 export async function clearMusicCache(): Promise<number> {
   const dir = ensureCacheDir();
@@ -1050,19 +1520,22 @@ export interface MusicCacheStats {
 }
 
 /**
- * Calculate cache statistics. Directory size and listing run on
- * native background threads via expo-async-fs, keeping the JS
- * thread free for UI rendering.
+ * Calculate cache statistics. Walks each top-level album directory
+ * ({music-cache}/{albumId}/) using native background threads via
+ * expo-async-fs. itemCount here is the number of album directories on
+ * disk, NOT the number of cached_items rows (those can include
+ * partial/playlist/favorites/song items that all share album dirs).
  */
 export async function getMusicCacheStats(): Promise<MusicCacheStats> {
   const dir = ensureCacheDir();
+  if (!dir.exists) return { totalBytes: 0, itemCount: 0, totalFiles: 0 };
   const totalBytes = await getDirectorySizeAsync(dir.uri);
 
   let itemCount = 0;
   let totalFiles = 0;
   try {
-    const entryNames = await listDirectoryAsync(dir.uri);
-    for (const name of entryNames) {
+    const albumDirNames = await listDirectoryAsync(dir.uri);
+    for (const name of albumDirNames) {
       const subDir = new Directory(dir, name);
       if (!subDir.exists) continue;
       itemCount++;
@@ -1082,12 +1555,16 @@ export async function getMusicCacheStats(): Promise<MusicCacheStats> {
 /**
  * Fire-and-forget filesystem recalculate. Used after cancel/clear
  * operations to correct totalBytes/totalFiles that drifted due to
- * addBytes() calls during partial downloads whose files were then
- * deleted.
+ * addBytes() calls during partial downloads whose files were then deleted.
  */
 function scheduleRecalculate(): void {
   getMusicCacheStats()
-    .then((stats) => musicCacheStore.getState().recalculate(stats))
+    .then((stats) =>
+      musicCacheStore.getState().recalculate({
+        totalBytes: stats.totalBytes,
+        totalFiles: stats.totalFiles,
+      }),
+    )
     .catch(() => { /* non-critical: next app start will reconcile */ });
 }
 
@@ -1095,11 +1572,7 @@ function scheduleRecalculate(): void {
 /*  Storage limit resume                                               */
 /* ------------------------------------------------------------------ */
 
-/**
- * Re-evaluate the storage limit and resume the download queue if
- * space has become available (e.g. after a cache clear or settings
- * change).
- */
+/** Re-evaluate storage limit and resume the queue if space is available. */
 export function resumeIfSpaceAvailable(): void {
   if (!checkStorageLimit()) {
     processQueue();
@@ -1110,11 +1583,7 @@ export function resumeIfSpaceAvailable(): void {
 /*  Starred songs (virtual playlist)                                   */
 /* ------------------------------------------------------------------ */
 
-/**
- * Download all currently starred songs as a virtual playlist.
- * Follows the enqueuePlaylistDownload pattern but sources tracks
- * from favoritesStore instead of fetching a Subsonic playlist.
- */
+/** Enqueue all currently starred songs as a virtual playlist. */
 export async function enqueueStarredSongsDownload(): Promise<void> {
   const state = musicCacheStore.getState();
   if (STARRED_SONGS_ITEM_ID in state.cachedItems) return;
@@ -1128,11 +1597,11 @@ export async function enqueueStarredSongsDownload(): Promise<void> {
 
   musicCacheStore.getState().enqueue({
     itemId: STARRED_SONGS_ITEM_ID,
-    type: 'playlist',
+    type: 'favorites',
     name: 'Favorite Songs',
     coverArtId: STARRED_COVER_ART_ID,
-    totalTracks: songs.length,
-    tracks: songs,
+    totalSongs: songs.length,
+    songsJson: JSON.stringify(songs),
   });
 
   processQueue();
@@ -1145,8 +1614,8 @@ export function deleteStarredSongsDownload(): void {
 
 /**
  * Keep the starred-songs cache in sync with the current favorites.
- * Removes tracks that were unstarred and enqueues downloads for
- * newly starred tracks via the generic syncCachedItemTracks.
+ * Removes tracks that were unstarred and enqueues downloads for newly
+ * starred tracks via the generic syncCachedItemTracks.
  */
 function syncStarredSongsDownload(): void {
   const { songs } = favoritesStore.getState();
@@ -1159,15 +1628,13 @@ function syncStarredSongsDownload(): void {
     return;
   }
 
-  syncCachedItemTracks(STARRED_SONGS_ITEM_ID, songs);
+  if (STARRED_SONGS_ITEM_ID in state.cachedItems) {
+    syncCachedItemTracks(STARRED_SONGS_ITEM_ID, songs);
+  }
 }
 
 // Auto-sync starred songs whenever the favorites song list changes.
-// Guard: skip if track maps haven't been populated yet — running the
-// sync with empty trackUriMap/trackToItems causes incorrect reference
-// counting (files deleted despite belonging to other cached items) and
-// premature removal of __starred__ from cachedItems.  The deferred
-// sync runs at the end of populateTrackMapsAsync() instead.
+// Guard: skip if track maps haven't been populated yet.
 favoritesStore.subscribe((state, prev) => {
   if (state.songs === prev.songs) return;
   if (!trackMapsReady) return;
