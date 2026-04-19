@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 interface RatingOverride {
   rating: number;
@@ -52,7 +52,7 @@ export const ratingStore = create<RatingState>()(
     }),
     {
       name: PERSIST_KEY,
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({ overrides: state.overrides }),
     }
   )

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 import { type Child } from '../services/subsonicService';
 
@@ -46,7 +46,7 @@ export const pendingScrobbleStore = create<PendingScrobbleState>()(
     }),
     {
       name: PERSIST_KEY,
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({
         pendingScrobbles: state.pendingScrobbles,
       }),

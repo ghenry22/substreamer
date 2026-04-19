@@ -1,4 +1,4 @@
-jest.mock('../sqliteStorage', () => require('../__mocks__/sqliteStorage'));
+jest.mock('../persistence/kvStorage', () => require('../persistence/__mocks__/kvStorage'));
 
 import { migrationStore } from '../migrationStore';
 

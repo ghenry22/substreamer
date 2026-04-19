@@ -58,7 +58,7 @@ jest.mock('expo-gzip', () => ({
   decompressFromFile: (...args: any[]) => mockDecompressFromFile(...args),
 }));
 
-jest.mock('../../store/sqliteStorage', () => require('../../store/__mocks__/sqliteStorage'));
+jest.mock('../../store/persistence/kvStorage', () => require('../../store/persistence/__mocks__/kvStorage'));
 
 // Mock the per-row scrobble table so we can assert SQL-layer wiring without
 // needing a real SQLite handle in the test.

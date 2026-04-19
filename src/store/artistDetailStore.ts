@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
 import { getOverride, mbidOverrideStore } from './mbidOverrideStore';
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 import { cacheEntityCoverArt } from '../services/imageCacheService';
 import {
@@ -170,7 +170,7 @@ export const artistDetailStore = create<ArtistDetailState>()(
     }),
     {
       name: PERSIST_KEY,
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({
         artists: state.artists,
       }),

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 interface OpenSubsonicExtension {
   name: string;
@@ -52,7 +52,7 @@ export const serverInfoStore = create<ServerInfoState>()(
     }),
     {
       name: PERSIST_KEY,
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({
         serverType: state.serverType,
         serverVersion: state.serverVersion,

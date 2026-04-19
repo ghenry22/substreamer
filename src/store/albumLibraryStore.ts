@@ -3,7 +3,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 import i18n from '../i18n/i18n';
 
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 import {
   ensureCoverArtAuth,
@@ -179,7 +179,7 @@ export const albumLibraryStore = create<AlbumLibraryState>()(
     }),
     {
       name: PERSIST_KEY,
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({
         albums: state.albums,
         lastFetchedAt: state.lastFetchedAt,

@@ -1,26 +1,32 @@
-// Tests the module-init failure path (openDatabaseSync throws). Isolated to
-// its own file because module init runs once per jest module-registry load
-// and detailTables.test.ts exercises the success path.
+// detailTables-specific null-handle safety. The `dbHealthy` / `dbInitError`
+// mechanics of the init-failure path itself live in `db.test.ts`; this file
+// just proves that every detailTables public function gracefully falls
+// through to its null-db default when `getDb()` returns null.
 jest.mock('expo-sqlite', () => ({
-  openDatabaseSync: () => {
-    throw new Error('synthetic init failure');
-  },
+  openDatabaseSync: () => ({
+    getFirstSync: () => undefined,
+    getAllSync: () => [],
+    runSync: () => {},
+    execSync: () => {},
+    withTransactionSync: (fn: () => void) => fn(),
+  }),
 }));
 
+import { __setDbForTests } from '../db';
 import {
   countAlbumDetails,
   countSongIndex,
-  detailTablesHealthy,
-  detailTablesInitError,
   hydrateAlbumDetails,
   upsertAlbumDetail,
 } from '../detailTables';
 
-describe('detailTables — init failure', () => {
-  it('marks detailTablesHealthy false and captures the error', () => {
-    expect(detailTablesHealthy).toBe(false);
-    expect(detailTablesInitError).toBeInstanceOf(Error);
-    expect(detailTablesInitError?.message).toContain('synthetic init failure');
+describe('detailTables — null-handle safety', () => {
+  beforeAll(() => {
+    __setDbForTests(null);
+  });
+
+  afterAll(() => {
+    __setDbForTests(null);
   });
 
   it('every public function gracefully falls through to null-db defaults', () => {

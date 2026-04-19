@@ -7,7 +7,7 @@
  *   - `cachedSongs`, `cachedItems`, and `downloadQueue` are persisted per-row
  *     via `./persistence/musicCacheTables`.
  *   - `maxConcurrentDownloads` is persisted as a tiny JSON blob under
- *     `substreamer-music-cache-settings` in `sqliteStorage`.
+ *     `substreamer-music-cache-settings` in `kvStorage`.
  *   - `totalBytes` / `totalFiles` are derived aggregates, recomputed from the
  *     filesystem on startup via `recalculate(...)` (the service layer owns
  *     the walk).
@@ -41,7 +41,7 @@ import {
   type CachedSongRow,
   type DownloadQueueRow,
 } from './persistence/musicCacheTables';
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -76,10 +76,10 @@ const DEFAULT_MAX_CONCURRENT: MaxConcurrentDownloads = 3;
 /* ------------------------------------------------------------------ */
 
 function readSettingsBlob(): MusicCacheSettings {
-  // sqliteStorage.getItem is synchronous in our backing implementation, but
+  // kvStorage.getItem is synchronous in our backing implementation, but
   // its Zustand StateStorage type signature permits async returns. Narrow
   // to string | null for the sync path we actually use.
-  const raw = sqliteStorage.getItem(SETTINGS_KEY) as string | null;
+  const raw = kvStorage.getItem(SETTINGS_KEY) as string | null;
   if (raw === null) {
     return { maxConcurrentDownloads: DEFAULT_MAX_CONCURRENT };
   }
@@ -97,7 +97,7 @@ function readSettingsBlob(): MusicCacheSettings {
 
 function writeSettingsBlob(settings: MusicCacheSettings): void {
   try {
-    sqliteStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    kvStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   } catch {
     /* dropped — next launch falls back to defaults */
   }
@@ -422,7 +422,7 @@ export const musicCacheStore = create<MusicCacheState>()((set, get) => ({
   reset: () => {
     clearAllMusicCacheRows();
     try {
-      sqliteStorage.removeItem(SETTINGS_KEY);
+      kvStorage.removeItem(SETTINGS_KEY);
     } catch {
       /* dropped */
     }

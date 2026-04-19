@@ -1,3 +1,15 @@
+// `persistence/db.ts` imports `expo-sqlite` at module load; stub it so the
+// import doesn't hit the native bridge during tests.
+jest.mock('expo-sqlite', () => ({
+  openDatabaseSync: () => ({
+    getFirstSync: () => undefined,
+    getAllSync: () => [],
+    runSync: () => {},
+    execSync: () => {},
+    withTransactionSync: (fn: () => void) => fn(),
+  }),
+}));
+
 jest.mock('react-native-track-player', () => ({
   __esModule: true,
   default: {
@@ -55,7 +67,7 @@ jest.mock('react-native', () => ({
   Platform: { OS: 'android' },
 }));
 
-jest.mock('../../store/sqliteStorage', () => require('../../store/__mocks__/sqliteStorage'));
+jest.mock('../../store/persistence/kvStorage', () => require('../../store/persistence/__mocks__/kvStorage'));
 
 const mockSetCurrentTrack = jest.fn();
 const mockSetPlaybackState = jest.fn();

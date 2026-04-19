@@ -1,7 +1,7 @@
-jest.mock('../sqliteStorage', () => require('../__mocks__/sqliteStorage'));
+jest.mock('../persistence/kvStorage', () => require('../persistence/__mocks__/kvStorage'));
 
 import { backupStore, migrateBackupState } from '../backupStore';
-import { sqliteStorage } from '../sqliteStorage';
+import { kvStorage } from '../persistence';
 
 const PERSIST_KEY = 'substreamer-backup-settings';
 
@@ -94,7 +94,7 @@ describe('backupStore', () => {
   });
 
   it('rehydrates v1 persisted data correctly', async () => {
-    sqliteStorage.setItem(
+    kvStorage.setItem(
       PERSIST_KEY,
       JSON.stringify({
         version: 1,
@@ -113,7 +113,7 @@ describe('backupStore', () => {
     backupStore.getState().setLastBackupTime('key-a', 1000);
     backupStore.getState().setAutoBackupEnabled(false);
 
-    const persisted = sqliteStorage.getItem(PERSIST_KEY) as string | null;
+    const persisted = kvStorage.getItem(PERSIST_KEY) as string | null;
     expect(persisted).not.toBeNull();
     const parsed = JSON.parse(persisted!);
     expect(parsed.state).toEqual({

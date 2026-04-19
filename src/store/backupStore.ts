@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 interface BackupState {
   autoBackupEnabled: boolean;
@@ -44,7 +44,7 @@ export const backupStore = create<BackupState>()(
     {
       name: PERSIST_KEY,
       version: 1,
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({
         autoBackupEnabled: state.autoBackupEnabled,
         lastBackupTimes: state.lastBackupTimes,

@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
 import { authStore } from './authStore';
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 interface ShareSettingsState {
   shareBaseUrl: string | null;
@@ -17,7 +17,7 @@ export const shareSettingsStore = create<ShareSettingsState>()(
     }),
     {
       name: 'substreamer-share-settings',
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({ shareBaseUrl: state.shareBaseUrl }),
     },
   ),

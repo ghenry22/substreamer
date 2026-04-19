@@ -1,6 +1,6 @@
 import { ratingStore } from '../ratingStore';
 
-jest.mock('../sqliteStorage', () => require('../__mocks__/sqliteStorage'));
+jest.mock('../persistence/kvStorage', () => require('../persistence/__mocks__/kvStorage'));
 
 beforeEach(() => {
   ratingStore.getState().clearOverrides();

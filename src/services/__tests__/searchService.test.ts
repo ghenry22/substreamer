@@ -1,5 +1,5 @@
 jest.mock('../subsonicService');
-jest.mock('../../store/sqliteStorage', () => require('../../store/__mocks__/sqliteStorage'));
+jest.mock('../../store/persistence/kvStorage', () => require('../../store/persistence/__mocks__/kvStorage'));
 jest.mock('../imageCacheService', () => ({
   cacheAllSizes: jest.fn().mockResolvedValue(undefined),
   cacheEntityCoverArt: jest.fn(),

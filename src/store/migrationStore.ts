@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 export interface MigrationState {
   /** Highest migration task ID that has completed. 0 = none. */
@@ -17,7 +17,7 @@ export const migrationStore = create<MigrationState>()(
     }),
     {
       name: 'substreamer-migration',
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({ completedVersion: state.completedVersion }),
     },
   ),

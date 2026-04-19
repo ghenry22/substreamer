@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 import { getLyricsForTrack, type LyricsData } from '../services/subsonicService';
 import { withTimeout } from '../utils/withTimeout';
@@ -86,7 +86,7 @@ export const lyricsStore = create<LyricsState>()(
     }),
     {
       name: PERSIST_KEY,
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({ entries: state.entries }),
     },
   ),

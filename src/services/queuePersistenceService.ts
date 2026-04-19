@@ -1,4 +1,4 @@
-import { sqliteStorage } from '../store/sqliteStorage';
+import { kvStorage } from '../store/persistence';
 import { type Child } from './subsonicService';
 
 const QUEUE_KEY = 'substreamer-persisted-queue';
@@ -22,7 +22,7 @@ export function persistQueue(
   currentTrackIndex: number,
 ): void {
   const data: PersistedQueue = { queue, currentTrackIndex };
-  sqliteStorage.setItem(QUEUE_KEY, JSON.stringify(data));
+  kvStorage.setItem(QUEUE_KEY, JSON.stringify(data));
 }
 
 export function persistPositionIfDue(
@@ -32,7 +32,7 @@ export function persistPositionIfDue(
   const now = Date.now();
   if (now - lastPositionPersistTime < PERSIST_INTERVAL_MS) return false;
   lastPositionPersistTime = now;
-  sqliteStorage.setItem(
+  kvStorage.setItem(
     POSITION_KEY,
     JSON.stringify({ position, trackId } as PersistedPosition),
   );
@@ -41,20 +41,20 @@ export function persistPositionIfDue(
 
 export function flushPosition(position: number, trackId: string): void {
   lastPositionPersistTime = Date.now();
-  sqliteStorage.setItem(
+  kvStorage.setItem(
     POSITION_KEY,
     JSON.stringify({ position, trackId } as PersistedPosition),
   );
 }
 
 export function clearPersistedQueue(): void {
-  sqliteStorage.removeItem(QUEUE_KEY);
-  sqliteStorage.removeItem(POSITION_KEY);
+  kvStorage.removeItem(QUEUE_KEY);
+  kvStorage.removeItem(POSITION_KEY);
   lastPositionPersistTime = 0;
 }
 
 export function getPersistedQueue(): PersistedQueue | null {
-  const raw = sqliteStorage.getItem(QUEUE_KEY) as string | null;
+  const raw = kvStorage.getItem(QUEUE_KEY) as string | null;
   if (!raw) return null;
   try {
     const data = JSON.parse(raw) as PersistedQueue;
@@ -66,7 +66,7 @@ export function getPersistedQueue(): PersistedQueue | null {
 }
 
 export function getPersistedPosition(): PersistedPosition | null {
-  const raw = sqliteStorage.getItem(POSITION_KEY) as string | null;
+  const raw = kvStorage.getItem(POSITION_KEY) as string | null;
   if (!raw) return null;
   try {
     return JSON.parse(raw) as PersistedPosition;

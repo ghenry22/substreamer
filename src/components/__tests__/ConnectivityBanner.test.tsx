@@ -1,4 +1,4 @@
-jest.mock('../../store/sqliteStorage', () => require('../../store/__mocks__/sqliteStorage'));
+jest.mock('../../store/persistence/kvStorage', () => require('../../store/persistence/__mocks__/kvStorage'));
 
 import React from 'react';
 import { act, render } from '@testing-library/react-native';

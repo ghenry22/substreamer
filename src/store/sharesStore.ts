@@ -6,7 +6,7 @@ import {
   getShares,
   type Share,
 } from '../services/subsonicService';
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 interface SharesState {
   shares: Share[];
@@ -52,7 +52,7 @@ export const sharesStore = create<SharesState>()(
     }),
     {
       name: 'substreamer-shares',
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({ shares: state.shares }),
       merge: (persisted, current) => ({
         ...current,

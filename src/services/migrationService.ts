@@ -38,7 +38,7 @@ import {
   type DownloadQueueRow,
 } from '../store/persistence/musicCacheTables';
 import { replaceAllScrobbles } from '../store/persistence/scrobbleTable';
-import { sqliteStorage } from '../store/sqliteStorage';
+import { kvStorage } from '../store/persistence';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -82,7 +82,7 @@ interface MigrationTask {
 async function migrateMusicCacheFromBlob(
   log: (message: string) => void,
 ): Promise<boolean> {
-  const raw = await sqliteStorage.getItem('substreamer-music-cache');
+  const raw = await kvStorage.getItem('substreamer-music-cache');
   if (!raw) {
     log('No persisted music-cache blob — nothing to migrate.');
     return false;
@@ -91,13 +91,13 @@ async function migrateMusicCacheFromBlob(
   try {
     parsed = JSON.parse(raw);
   } catch {
-    await sqliteStorage.removeItem('substreamer-music-cache');
+    await kvStorage.removeItem('substreamer-music-cache');
     log('Failed to parse music-cache blob — removed.');
     return false;
   }
   const state = parsed?.state;
   if (!state || typeof state !== 'object') {
-    await sqliteStorage.removeItem('substreamer-music-cache');
+    await kvStorage.removeItem('substreamer-music-cache');
     log('Music-cache blob had no state — removed.');
     return false;
   }
@@ -178,7 +178,7 @@ async function migrateMusicCacheFromBlob(
 
   // Source 3: substreamer-playlist-details blob.
   try {
-    const rawPlaylists = await sqliteStorage.getItem('substreamer-playlist-details');
+    const rawPlaylists = await kvStorage.getItem('substreamer-playlist-details');
     if (rawPlaylists) {
       const parsedPlaylists = JSON.parse(rawPlaylists);
       const playlists = parsedPlaylists?.state?.playlists ?? {};
@@ -199,7 +199,7 @@ async function migrateMusicCacheFromBlob(
 
   // Source 4: substreamer-favorites blob.
   try {
-    const rawFavs = await sqliteStorage.getItem('substreamer-favorites');
+    const rawFavs = await kvStorage.getItem('substreamer-favorites');
     if (rawFavs) {
       const parsedFavs = JSON.parse(rawFavs);
       const songs = Array.isArray(parsedFavs?.state?.songs)
@@ -398,7 +398,7 @@ async function migrateMusicCacheFromBlob(
     v1MaxConcurrent === 3 ||
     v1MaxConcurrent === 5
   ) {
-    await sqliteStorage.setItem(
+    await kvStorage.setItem(
       'substreamer-music-cache-settings',
       JSON.stringify({ maxConcurrentDownloads: v1MaxConcurrent }),
     );
@@ -506,7 +506,7 @@ async function migrateMusicCacheFromBlob(
 async function stampV3BackupsFromStoredAuth(
   log: (message: string) => void,
 ): Promise<void> {
-  const raw = await sqliteStorage.getItem('substreamer-auth');
+  const raw = await kvStorage.getItem('substreamer-auth');
   if (!raw) {
     log('No persisted auth — skipping backup identity stamping.');
     return;
@@ -651,7 +651,7 @@ const MIGRATION_TASKS: MigrationTask[] = [
     id: 4,
     name: 'Fix corrupted shares data',
     run: async (log) => {
-      const raw = await sqliteStorage.getItem('substreamer-shares');
+      const raw = await kvStorage.getItem('substreamer-shares');
       if (!raw) {
         log('No persisted shares data — skipping.');
         return;
@@ -661,14 +661,14 @@ const MIGRATION_TASKS: MigrationTask[] = [
         const state = parsed?.state;
         if (state && !Array.isArray(state.shares)) {
           state.shares = [];
-          sqliteStorage.setItem('substreamer-shares', JSON.stringify(parsed));
+          kvStorage.setItem('substreamer-shares', JSON.stringify(parsed));
           log(`Fixed corrupted shares field (was ${typeof state.shares}).`);
         } else {
           log('Shares data is valid — no fix needed.');
         }
       } catch {
         /* Corrupted JSON — remove it entirely so the store starts fresh */
-        sqliteStorage.removeItem('substreamer-shares');
+        kvStorage.removeItem('substreamer-shares');
         log('Removed unparseable shares data.');
       }
     },
@@ -682,7 +682,7 @@ const MIGRATION_TASKS: MigrationTask[] = [
       // to avoid a race with Zustand rehydration: the store can still hold
       // its default empty state at the moment this migration runs, which
       // would cause the migration to silently skip and mark itself complete.
-      const raw = await sqliteStorage.getItem('substreamer-mbid-overrides');
+      const raw = await kvStorage.getItem('substreamer-mbid-overrides');
       if (!raw) {
         log('No persisted MBID overrides — skipping.');
         return;
@@ -730,7 +730,7 @@ const MIGRATION_TASKS: MigrationTask[] = [
       }
 
       parsed.state.overrides = migrated;
-      await sqliteStorage.setItem('substreamer-mbid-overrides', JSON.stringify(parsed));
+      await kvStorage.setItem('substreamer-mbid-overrides', JSON.stringify(parsed));
       mbidOverrideStore.setState({ overrides: migrated });
       log(`Migrated ${keys.length} MBID override(s) to new format.`);
     },
@@ -741,7 +741,7 @@ const MIGRATION_TASKS: MigrationTask[] = [
     name: 'Set platform default for estimate content length',
     run: async (log) => {
       const desired = Platform.OS === 'android';
-      const raw = await sqliteStorage.getItem('substreamer-playback-settings');
+      const raw = await kvStorage.getItem('substreamer-playback-settings');
       if (!raw) {
         playbackSettingsStore.setState({ estimateContentLength: desired });
         log('No persisted playback settings — set default on in-memory store.');
@@ -755,7 +755,7 @@ const MIGRATION_TASKS: MigrationTask[] = [
           return;
         }
         state.estimateContentLength = desired;
-        await sqliteStorage.setItem('substreamer-playback-settings', JSON.stringify(parsed));
+        await kvStorage.setItem('substreamer-playback-settings', JSON.stringify(parsed));
         // Also update the in-memory store so the current session reflects
         // the new value without waiting for an app restart.
         playbackSettingsStore.setState({ estimateContentLength: desired });
@@ -784,7 +784,7 @@ const MIGRATION_TASKS: MigrationTask[] = [
       // mbidOverrideStore.getState() before rehydration completed).
       // Runs unconditionally for every user — a no-op on fresh installs
       // and correctly-migrated users.
-      const raw = await sqliteStorage.getItem('substreamer-mbid-overrides');
+      const raw = await kvStorage.getItem('substreamer-mbid-overrides');
       if (!raw) {
         log('No persisted MBID overrides — nothing to repair.');
         return;
@@ -847,7 +847,7 @@ const MIGRATION_TASKS: MigrationTask[] = [
       }
 
       parsed.state.overrides = repaired;
-      await sqliteStorage.setItem('substreamer-mbid-overrides', JSON.stringify(parsed));
+      await kvStorage.setItem('substreamer-mbid-overrides', JSON.stringify(parsed));
       mbidOverrideStore.setState({ overrides: repaired });
       log(
         `Repaired ${repairCount} entries, skipped ${skippedCount} malformed, ` +
@@ -893,7 +893,7 @@ const MIGRATION_TASKS: MigrationTask[] = [
       // split had locale === 'zh'. That code is no longer in the supported
       // list, so left unchanged it would fall back to English on next launch.
       // Remap to 'zh-Hans' to preserve their previous (Simplified) experience.
-      const raw = await sqliteStorage.getItem('substreamer-locale');
+      const raw = await kvStorage.getItem('substreamer-locale');
       if (!raw) {
         log('No persisted locale — skipping.');
         return;
@@ -915,7 +915,7 @@ const MIGRATION_TASKS: MigrationTask[] = [
         return;
       }
       state.locale = 'zh-Hans';
-      await sqliteStorage.setItem('substreamer-locale', JSON.stringify(parsed));
+      await kvStorage.setItem('substreamer-locale', JSON.stringify(parsed));
       localeStore.setState({ locale: 'zh-Hans' });
       log('Remapped legacy "zh" locale preference to "zh-Hans".');
     },
@@ -931,7 +931,7 @@ const MIGRATION_TASKS: MigrationTask[] = [
       // blob once, upserts each album into the new tables, and deletes the
       // old blob key. Idempotent: if the blob is missing or already been
       // migrated, it's a no-op.
-      const raw = await sqliteStorage.getItem('substreamer-album-details');
+      const raw = await kvStorage.getItem('substreamer-album-details');
       if (!raw) {
         log('No persisted album-details blob — nothing to migrate.');
         return;
@@ -941,7 +941,7 @@ const MIGRATION_TASKS: MigrationTask[] = [
         parsed = JSON.parse(raw);
       } catch {
         // Corrupt blob — drop it so the new tables start clean.
-        await sqliteStorage.removeItem('substreamer-album-details');
+        await kvStorage.removeItem('substreamer-album-details');
         log('Failed to parse album-details blob — removed.');
         return;
       }
@@ -949,7 +949,7 @@ const MIGRATION_TASKS: MigrationTask[] = [
         parsed?.state?.albums ?? {};
       const ids = Object.keys(albums);
       if (ids.length === 0) {
-        await sqliteStorage.removeItem('substreamer-album-details');
+        await kvStorage.removeItem('substreamer-album-details');
         log('Album-details blob was empty — removed.');
         return;
       }
@@ -966,7 +966,7 @@ const MIGRATION_TASKS: MigrationTask[] = [
         albumCount++;
         songCount += songs.length;
       }
-      await sqliteStorage.removeItem('substreamer-album-details');
+      await kvStorage.removeItem('substreamer-album-details');
       log(`Migrated ${albumCount} album detail(s) and ${songCount} song(s) to per-row tables.`);
     },
   },
@@ -981,7 +981,7 @@ const MIGRATION_TASKS: MigrationTask[] = [
       // once, bulk-inserts valid scrobbles into the new table via a
       // transaction, then deletes the blob key. Idempotent: if the blob is
       // missing or already been migrated, it's a no-op.
-      const raw = await sqliteStorage.getItem('substreamer-completed-scrobbles');
+      const raw = await kvStorage.getItem('substreamer-completed-scrobbles');
       if (!raw) {
         log('No persisted scrobble blob — nothing to migrate.');
         return;
@@ -991,7 +991,7 @@ const MIGRATION_TASKS: MigrationTask[] = [
         parsed = JSON.parse(raw);
       } catch {
         // Corrupt blob — drop it so the new table starts clean.
-        await sqliteStorage.removeItem('substreamer-completed-scrobbles');
+        await kvStorage.removeItem('substreamer-completed-scrobbles');
         log('Failed to parse scrobble blob — removed.');
         return;
       }
@@ -999,7 +999,7 @@ const MIGRATION_TASKS: MigrationTask[] = [
         ? parsed.state.completedScrobbles
         : [];
       if (raws.length === 0) {
-        await sqliteStorage.removeItem('substreamer-completed-scrobbles');
+        await kvStorage.removeItem('substreamer-completed-scrobbles');
         log('Scrobble blob was empty — removed.');
         return;
       }
@@ -1015,7 +1015,7 @@ const MIGRATION_TASKS: MigrationTask[] = [
       // commits, so a mid-migration crash preserves the original blob for the
       // next launch to retry.
       replaceAllScrobbles(valid);
-      await sqliteStorage.removeItem('substreamer-completed-scrobbles');
+      await kvStorage.removeItem('substreamer-completed-scrobbles');
       const dropped = raws.length - valid.length;
       log(
         `Migrated ${valid.length} scrobble(s) to per-row table` +
@@ -1047,7 +1047,7 @@ const MIGRATION_TASKS: MigrationTask[] = [
       // Remove the v1 blob so a later migration can't resurrect stale
       // data after a `Clear All` / logout, and so the `storage` table
       // isn't carrying dead weight.
-      await sqliteStorage.removeItem('substreamer-music-cache');
+      await kvStorage.removeItem('substreamer-music-cache');
       log('v1 blob removed — per-row tables are the sole source of truth.');
     },
   },

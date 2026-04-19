@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 interface BatteryOptimizationState {
   /** Whether battery optimization is active (app IS restricted). null = not yet checked. */
@@ -19,7 +19,7 @@ export const batteryOptimizationStore = create<BatteryOptimizationState>()(
     }),
     {
       name: 'substreamer-battery-optimization',
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({ restricted: state.restricted }),
     }
   )

@@ -5,7 +5,7 @@
  * Backup files on disk are intentionally preserved.
  */
 
-import { sqliteStorage, clearAllStorage } from './sqliteStorage';
+import { kvStorage, clearKvStorage } from './persistence';
 import { clearDetailTables } from './persistence/detailTables';
 import { clearScrobbles } from './persistence/scrobbleTable';
 import { clearMusicCacheTables } from './musicCacheStore';
@@ -116,10 +116,10 @@ const allStores = [
 ];
 
 export function resetAllStores(): void {
-  clearAllStorage();
+  clearKvStorage();
   // Clear the per-row SQLite tables used by albumDetailStore + songIndexStore.
   // These live in a separate connection (`detailTables.ts`) from the generic
-  // `storage` key-value table that `clearAllStorage()` wipes, so they would
+  // `storage` key-value table that `clearKvStorage()` wipes, so they would
   // otherwise persist stale rows across logout.
   clearDetailTables();
   // completedScrobbleStore also persists to a per-row table (`scrobble_events`)
@@ -129,7 +129,7 @@ export function resetAllStores(): void {
   // cached_item_songs, download_queue) in yet another connection; truncate
   // them here and drop the settings blob too.
   clearMusicCacheTables();
-  sqliteStorage.removeItem('substreamer-music-cache-settings');
+  kvStorage.removeItem('substreamer-music-cache-settings');
   for (const store of allStores) {
     (store.setState as (state: unknown, replace: boolean) => void)(
       store.getInitialState(),

@@ -5,7 +5,7 @@ import {
   shareSettingsStore,
 } from '../shareSettingsStore';
 
-jest.mock('../sqliteStorage', () => require('../__mocks__/sqliteStorage'));
+jest.mock('../persistence/kvStorage', () => require('../persistence/__mocks__/kvStorage'));
 
 beforeEach(() => {
   shareSettingsStore.setState({ shareBaseUrl: null });

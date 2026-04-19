@@ -49,7 +49,7 @@ jest.mock('expo-gzip', () => ({
   decompressFromFile: jest.fn(),
 }));
 
-jest.mock('../../store/sqliteStorage', () => require('../../store/__mocks__/sqliteStorage'));
+jest.mock('../../store/persistence/kvStorage', () => require('../../store/persistence/__mocks__/kvStorage'));
 
 describe('backupService module init resilience', () => {
   it('imports cleanly when Directory.create throws at module-init time', () => {

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 type AutoOfflineMode = 'home-wifi' | 'wifi-only';
 
@@ -45,7 +45,7 @@ export const autoOfflineStore = create<AutoOfflineState>()(
     }),
     {
       name: 'substreamer-auto-offline',
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({
         enabled: state.enabled,
         mode: state.mode,

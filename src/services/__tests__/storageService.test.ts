@@ -5,7 +5,7 @@ import {
   getStorageBreakdown,
 } from '../storageService';
 
-jest.mock('../../store/sqliteStorage', () => require('../../store/__mocks__/sqliteStorage'));
+jest.mock('../../store/persistence/kvStorage', () => require('../../store/persistence/__mocks__/kvStorage'));
 jest.mock('expo-file-system', () => ({
   Paths: {
     availableDiskSpace: 10 * 1024 ** 3,

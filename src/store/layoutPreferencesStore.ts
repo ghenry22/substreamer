@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 export type ItemLayout = 'list' | 'grid';
 export type AlbumSortOrder = 'artist' | 'title';
@@ -63,7 +63,7 @@ export const layoutPreferencesStore = create<LayoutPreferencesState>()(
     }),
     {
       name: PERSIST_KEY,
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({
         albumLayout: state.albumLayout,
         artistLayout: state.artistLayout,

@@ -3,7 +3,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 import i18n from '../i18n/i18n';
 
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 import { cacheAllSizes, cacheEntityCoverArt } from '../services/imageCacheService';
 import {
@@ -114,7 +114,7 @@ export const favoritesStore = create<FavoritesState>()(
     }),
     {
       name: PERSIST_KEY,
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({
         songs: state.songs,
         albums: state.albums,

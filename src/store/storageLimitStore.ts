@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 export type StorageLimitMode = 'none' | 'fixed';
 
@@ -30,7 +30,7 @@ export const storageLimitStore = create<StorageLimitState>()(
     }),
     {
       name: PERSIST_KEY,
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({
         limitMode: state.limitMode,
         maxCacheSizeGB: state.maxCacheSizeGB,

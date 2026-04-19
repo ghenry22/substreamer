@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 export interface LocaleState {
   /** User's explicit locale choice, or null to follow the device setting. */
@@ -19,7 +19,7 @@ export const localeStore = create<LocaleState>()(
     }),
     {
       name: PERSIST_KEY,
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({ locale: state.locale }),
     }
   )

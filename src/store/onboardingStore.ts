@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 interface OnboardingState {
   /** Whether the user has completed (or skipped) the onboarding guide. Persisted. */
@@ -27,7 +27,7 @@ export const onboardingStore = create<OnboardingState>()(
     }),
     {
       name: 'substreamer-onboarding',
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({ hasCompleted: state.hasCompleted }),
     }
   )

@@ -69,7 +69,7 @@ import { runAutoBackupIfNeeded } from '../services/backupService';
 import { startAutoOffline, stopAutoOffline } from '../services/autoOfflineService';
 import { excludeFromBackup } from 'expo-backup-exclusions';
 import { moveToBack } from 'expo-move-to-back';
-import { hydratePerRowStores } from '../store/hydratePerRowStores';
+import { rehydrateAllStores } from '../store/persistence/rehydrate';
 import { imageCacheStore } from '../store/imageCacheStore';
 import { musicCacheStore } from '../store/musicCacheStore';
 import { authStore } from '../store/authStore';
@@ -77,7 +77,7 @@ import { autoOfflineStore } from '../store/autoOfflineStore';
 import { certPromptStore } from '../store/certPromptStore';
 import { offlineModeStore } from '../store/offlineModeStore';
 import { playerStore } from '../store/playerStore';
-import { sqliteStorage } from '../store/sqliteStorage';
+import { kvStorage } from '../store/persistence';
 import { tabletLayoutStore } from '../store/tabletLayoutStore';
 import i18n from '../i18n/i18n';
 
@@ -137,7 +137,7 @@ try {
 // which triggers a configuration change event mid-commit and crashes.
 (() => {
   try {
-    const raw = sqliteStorage.getItem('substreamer-theme') as string | null;
+    const raw = kvStorage.getItem('substreamer-theme') as string | null;
     if (raw) {
       const { state } = JSON.parse(raw);
       const pref = state?.themePreference;
@@ -330,7 +330,7 @@ export default function RootLayout() {
     // whose splash animation runs longer than that deferred start.
     // Symptom of getting this order wrong: a "full library resync" banner
     // showing `missing = library.length` on every launch.
-    hydratePerRowStores();
+    rehydrateAllStores();
     initPlayer();
     initScrobbleService();
 

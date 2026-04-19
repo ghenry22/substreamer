@@ -10,7 +10,7 @@ const mockDirCreate = jest.fn();
 let mockFileExistsForUri: ((uri: string) => boolean) | null = null;
 let mockDirExistsForUri: ((uri: string) => boolean) | null = null;
 
-jest.mock('../../store/sqliteStorage', () => require('../../store/__mocks__/sqliteStorage'));
+jest.mock('../../store/persistence/kvStorage', () => require('../../store/persistence/__mocks__/kvStorage'));
 
 // detailTables imports expo-sqlite directly; stub it so the migration test
 // doesn't drag the real native handle through expo-asset + expo-constants.
@@ -47,8 +47,6 @@ jest.mock('../../store/persistence/musicCacheTables', () => ({
   readPragma: jest.fn(() => '1'),
   insertCachedItemSong: jest.fn(),
   upsertCachedItem: jest.fn(),
-  musicCacheTablesHealthy: true,
-  musicCacheTablesInitError: null,
 }));
 
 // Task #14 consults albumDetailStore for albumId resolution when a playlist
@@ -121,17 +119,17 @@ import { musicCacheStore } from '../../store/musicCacheStore';
 import { playbackSettingsStore } from '../../store/playbackSettingsStore';
 import { bulkReplace } from '../../store/persistence/musicCacheTables';
 import { replaceAllScrobbles } from '../../store/persistence/scrobbleTable';
-import { sqliteStorage } from '../../store/sqliteStorage';
+import { kvStorage } from '../../store/persistence';
 
 const mockReplaceAllScrobbles = replaceAllScrobbles as jest.Mock;
 const mockBulkReplace = bulkReplace as jest.Mock;
 
 function seedAuthInSqlite(serverUrl: string | null, username: string | null) {
   if (!serverUrl || !username) {
-    sqliteStorage.removeItem('substreamer-auth');
+    kvStorage.removeItem('substreamer-auth');
     return;
   }
-  sqliteStorage.setItem(
+  kvStorage.setItem(
     'substreamer-auth',
     JSON.stringify({ state: { serverUrl, username } }),
   );
@@ -152,15 +150,15 @@ beforeEach(() => {
   mockFileExistsForUri = null;
   mockDirExistsForUri = null;
   (Platform as any).OS = 'ios';
-  sqliteStorage.removeItem('substreamer-auth');
-  sqliteStorage.removeItem('substreamer-mbid-overrides');
-  sqliteStorage.removeItem('substreamer-playback-settings');
-  sqliteStorage.removeItem('substreamer-shares');
-  sqliteStorage.removeItem('substreamer-music-cache');
-  sqliteStorage.removeItem('substreamer-music-cache-settings');
-  sqliteStorage.removeItem('substreamer-completed-scrobbles');
-  sqliteStorage.removeItem('substreamer-playlist-details');
-  sqliteStorage.removeItem('substreamer-favorites');
+  kvStorage.removeItem('substreamer-auth');
+  kvStorage.removeItem('substreamer-mbid-overrides');
+  kvStorage.removeItem('substreamer-playback-settings');
+  kvStorage.removeItem('substreamer-shares');
+  kvStorage.removeItem('substreamer-music-cache');
+  kvStorage.removeItem('substreamer-music-cache-settings');
+  kvStorage.removeItem('substreamer-completed-scrobbles');
+  kvStorage.removeItem('substreamer-playlist-details');
+  kvStorage.removeItem('substreamer-favorites');
   mbidOverrideStore.setState({ overrides: {} } as any);
   musicCacheStore.setState({ cachedSongs: {}, cachedItems: {} } as any);
   mockReplaceAllScrobbles.mockClear();
@@ -322,59 +320,59 @@ describe('runMigrations', () => {
   });
 
   it('Task 4 skips when no persisted shares data', async () => {
-    sqliteStorage.removeItem('substreamer-shares');
+    kvStorage.removeItem('substreamer-shares');
     await runMigrations(3);
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('No persisted shares data');
   });
 
   it('Task 4 skips when shares data is valid', async () => {
-    sqliteStorage.setItem('substreamer-shares', JSON.stringify({ state: { shares: [] } }));
+    kvStorage.setItem('substreamer-shares', JSON.stringify({ state: { shares: [] } }));
     await runMigrations(3);
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('Shares data is valid');
   });
 
   it('Task 4 fixes corrupted shares field', async () => {
-    sqliteStorage.setItem('substreamer-shares', JSON.stringify({ state: { shares: null } }));
+    kvStorage.setItem('substreamer-shares', JSON.stringify({ state: { shares: null } }));
     await runMigrations(3);
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('Fixed corrupted shares field');
-    const restored = JSON.parse(sqliteStorage.getItem('substreamer-shares') as string);
+    const restored = JSON.parse(kvStorage.getItem('substreamer-shares') as string);
     expect(restored.state.shares).toEqual([]);
   });
 
   it('Task 4 removes unparseable JSON', async () => {
-    sqliteStorage.setItem('substreamer-shares', '{bad json');
+    kvStorage.setItem('substreamer-shares', '{bad json');
     await runMigrations(3);
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('Removed unparseable shares data');
-    expect(sqliteStorage.getItem('substreamer-shares')).toBeNull();
+    expect(kvStorage.getItem('substreamer-shares')).toBeNull();
   });
 
   it('Task 5 skips when no persisted MBID overrides', async () => {
-    sqliteStorage.removeItem('substreamer-mbid-overrides');
+    kvStorage.removeItem('substreamer-mbid-overrides');
     await runMigrations(4);
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('No persisted MBID overrides');
   });
 
   it('Task 5 skips when persisted MBID overrides are unparseable', async () => {
-    sqliteStorage.setItem('substreamer-mbid-overrides', '{bad json');
+    kvStorage.setItem('substreamer-mbid-overrides', '{bad json');
     await runMigrations(4);
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('Failed to parse MBID overrides');
   });
 
   it('Task 5 skips when persisted data has no overrides object', async () => {
-    sqliteStorage.setItem('substreamer-mbid-overrides', JSON.stringify({ state: {} }));
+    kvStorage.setItem('substreamer-mbid-overrides', JSON.stringify({ state: {} }));
     await runMigrations(4);
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('No overrides object');
   });
 
   it('Task 5 skips when overrides object is empty', async () => {
-    sqliteStorage.setItem(
+    kvStorage.setItem(
       'substreamer-mbid-overrides',
       JSON.stringify({ state: { overrides: {} } }),
     );
@@ -384,7 +382,7 @@ describe('runMigrations', () => {
   });
 
   it('Task 5 skips when overrides already migrated', async () => {
-    sqliteStorage.setItem(
+    kvStorage.setItem(
       'substreamer-mbid-overrides',
       JSON.stringify({
         state: {
@@ -400,7 +398,7 @@ describe('runMigrations', () => {
   });
 
   it('Task 5 migrates old-format overrides to new format', async () => {
-    sqliteStorage.setItem(
+    kvStorage.setItem(
       'substreamer-mbid-overrides',
       JSON.stringify({
         state: {
@@ -414,7 +412,7 @@ describe('runMigrations', () => {
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('Migrated 1 MBID override(s)');
 
-    const persisted = JSON.parse(sqliteStorage.getItem('substreamer-mbid-overrides') as string);
+    const persisted = JSON.parse(kvStorage.getItem('substreamer-mbid-overrides') as string);
     expect(persisted.state.overrides['artist:123']).toEqual({
       type: 'artist',
       entityId: '123',
@@ -430,7 +428,7 @@ describe('runMigrations', () => {
   });
 
   it('Task 5 skips entries without mbid when migrating', async () => {
-    sqliteStorage.setItem(
+    kvStorage.setItem(
       'substreamer-mbid-overrides',
       JSON.stringify({
         state: {
@@ -442,7 +440,7 @@ describe('runMigrations', () => {
       }),
     );
     await runMigrations(4);
-    const persisted = JSON.parse(sqliteStorage.getItem('substreamer-mbid-overrides') as string);
+    const persisted = JSON.parse(kvStorage.getItem('substreamer-mbid-overrides') as string);
     expect(Object.keys(persisted.state.overrides)).toEqual(['artist:123']);
   });
 
@@ -450,7 +448,7 @@ describe('runMigrations', () => {
     (Platform as any).OS = 'android';
     playbackSettingsStore.setState({ estimateContentLength: false });
     // Remove AFTER setState — Zustand persist writes through to SQLite on setState.
-    sqliteStorage.removeItem('substreamer-playback-settings');
+    kvStorage.removeItem('substreamer-playback-settings');
     await runMigrations(5);
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('No persisted playback settings');
@@ -459,7 +457,7 @@ describe('runMigrations', () => {
 
   it('Task 6 updates in-memory store after persisting', async () => {
     (Platform as any).OS = 'android';
-    sqliteStorage.setItem(
+    kvStorage.setItem(
       'substreamer-playback-settings',
       JSON.stringify({ state: { estimateContentLength: false } }),
     );
@@ -470,39 +468,39 @@ describe('runMigrations', () => {
 
   it('Task 6 sets estimateContentLength to false on iOS', async () => {
     (Platform as any).OS = 'ios';
-    sqliteStorage.setItem(
+    kvStorage.setItem(
       'substreamer-playback-settings',
       JSON.stringify({ state: { estimateContentLength: true } }),
     );
     await runMigrations(5);
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('Set estimateContentLength to false (ios)');
-    const restored = JSON.parse(sqliteStorage.getItem('substreamer-playback-settings') as string);
+    const restored = JSON.parse(kvStorage.getItem('substreamer-playback-settings') as string);
     expect(restored.state.estimateContentLength).toBe(false);
   });
 
   it('Task 6 sets estimateContentLength to true on Android', async () => {
     (Platform as any).OS = 'android';
-    sqliteStorage.setItem(
+    kvStorage.setItem(
       'substreamer-playback-settings',
       JSON.stringify({ state: { estimateContentLength: false } }),
     );
     await runMigrations(5);
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('Set estimateContentLength to true (android)');
-    const restored = JSON.parse(sqliteStorage.getItem('substreamer-playback-settings') as string);
+    const restored = JSON.parse(kvStorage.getItem('substreamer-playback-settings') as string);
     expect(restored.state.estimateContentLength).toBe(true);
   });
 
   it('Task 6 skips when persisted data has no state', async () => {
-    sqliteStorage.setItem('substreamer-playback-settings', JSON.stringify({}));
+    kvStorage.setItem('substreamer-playback-settings', JSON.stringify({}));
     await runMigrations(5);
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('No state in persisted data');
   });
 
   it('Task 6 handles corrupted JSON gracefully', async () => {
-    sqliteStorage.setItem('substreamer-playback-settings', '{bad json');
+    kvStorage.setItem('substreamer-playback-settings', '{bad json');
     await runMigrations(5);
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('Failed to parse playback settings');
@@ -516,14 +514,14 @@ describe('runMigrations', () => {
   });
 
   it('Task 7 skips when persisted auth is unparseable', async () => {
-    sqliteStorage.setItem('substreamer-auth', '{bad json');
+    kvStorage.setItem('substreamer-auth', '{bad json');
     await runMigrations(6);
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('Failed to parse persisted auth');
   });
 
   it('Task 7 skips when persisted auth has no serverUrl/username', async () => {
-    sqliteStorage.setItem('substreamer-auth', JSON.stringify({ state: {} }));
+    kvStorage.setItem('substreamer-auth', JSON.stringify({ state: {} }));
     await runMigrations(6);
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('No active session');
@@ -546,28 +544,28 @@ describe('runMigrations', () => {
   });
 
   it('Task 8 skips when no persisted overrides', async () => {
-    sqliteStorage.removeItem('substreamer-mbid-overrides');
+    kvStorage.removeItem('substreamer-mbid-overrides');
     await runMigrations(7);
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('No persisted MBID overrides — nothing to repair');
   });
 
   it('Task 8 skips when overrides payload is unparseable', async () => {
-    sqliteStorage.setItem('substreamer-mbid-overrides', '{bad json');
+    kvStorage.setItem('substreamer-mbid-overrides', '{bad json');
     await runMigrations(7);
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('Failed to parse MBID overrides — skipping repair');
   });
 
   it('Task 8 skips when overrides object is missing', async () => {
-    sqliteStorage.setItem('substreamer-mbid-overrides', JSON.stringify({ state: {} }));
+    kvStorage.setItem('substreamer-mbid-overrides', JSON.stringify({ state: {} }));
     await runMigrations(7);
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('No overrides object');
   });
 
   it('Task 8 reports when all entries are already in correct shape', async () => {
-    sqliteStorage.setItem(
+    kvStorage.setItem(
       'substreamer-mbid-overrides',
       JSON.stringify({
         state: {
@@ -583,7 +581,7 @@ describe('runMigrations', () => {
   });
 
   it('Task 8 synthesizes normalized entry from old-shape key without prefix', async () => {
-    sqliteStorage.setItem(
+    kvStorage.setItem(
       'substreamer-mbid-overrides',
       JSON.stringify({
         state: {
@@ -594,7 +592,7 @@ describe('runMigrations', () => {
       }),
     );
     await runMigrations(7);
-    const persisted = JSON.parse(sqliteStorage.getItem('substreamer-mbid-overrides') as string);
+    const persisted = JSON.parse(kvStorage.getItem('substreamer-mbid-overrides') as string);
     expect(persisted.state.overrides['artist:123']).toEqual({
       type: 'artist',
       entityId: '123',
@@ -605,7 +603,7 @@ describe('runMigrations', () => {
   });
 
   it('Task 8 synthesizes album entry when key has album: prefix', async () => {
-    sqliteStorage.setItem(
+    kvStorage.setItem(
       'substreamer-mbid-overrides',
       JSON.stringify({
         state: {
@@ -616,7 +614,7 @@ describe('runMigrations', () => {
       }),
     );
     await runMigrations(7);
-    const persisted = JSON.parse(sqliteStorage.getItem('substreamer-mbid-overrides') as string);
+    const persisted = JSON.parse(kvStorage.getItem('substreamer-mbid-overrides') as string);
     expect(persisted.state.overrides['album:999']).toEqual({
       type: 'album',
       entityId: '999',
@@ -626,7 +624,7 @@ describe('runMigrations', () => {
   });
 
   it('Task 8 skips entries without mbid', async () => {
-    sqliteStorage.setItem(
+    kvStorage.setItem(
       'substreamer-mbid-overrides',
       JSON.stringify({
         state: {
@@ -640,7 +638,7 @@ describe('runMigrations', () => {
     await runMigrations(7);
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('skipped 1 malformed');
-    const persisted = JSON.parse(sqliteStorage.getItem('substreamer-mbid-overrides') as string);
+    const persisted = JSON.parse(kvStorage.getItem('substreamer-mbid-overrides') as string);
     expect(Object.keys(persisted.state.overrides)).toEqual(['artist:456']);
   });
 
@@ -670,7 +668,7 @@ describe('Task 10 – Backfill downloaded track formats (deprecated in v2)', () 
   it('logs the deprecated-task notice and makes no store or blob writes', async () => {
     // Seed a v1 blob that would previously have exercised the backfill path
     // to prove that the no-op implementation ignores it.
-    sqliteStorage.setItem(
+    kvStorage.setItem(
       'substreamer-music-cache',
       JSON.stringify({
         state: {
@@ -695,7 +693,7 @@ describe('Task 10 – Backfill downloaded track formats (deprecated in v2)', () 
   });
 
   it('is a no-op when no music-cache blob exists', async () => {
-    sqliteStorage.removeItem('substreamer-music-cache');
+    kvStorage.removeItem('substreamer-music-cache');
     await runMigrations(9);
 
     const logContent = mockFileWrite.mock.calls[0][0] as string;
@@ -705,7 +703,7 @@ describe('Task 10 – Backfill downloaded track formats (deprecated in v2)', () 
 
 describe('Task 11 – Migrate legacy zh locale to zh-Hans', () => {
   function seedLocale(locale: string | null) {
-    sqliteStorage.setItem('substreamer-locale', JSON.stringify({
+    kvStorage.setItem('substreamer-locale', JSON.stringify({
       state: { locale },
     }));
   }
@@ -714,7 +712,7 @@ describe('Task 11 – Migrate legacy zh locale to zh-Hans', () => {
     seedLocale('zh');
     await runMigrations(10);
 
-    const raw = sqliteStorage.getItem('substreamer-locale') as string;
+    const raw = kvStorage.getItem('substreamer-locale') as string;
     expect(JSON.parse(raw).state.locale).toBe('zh-Hans');
 
     const logContent = mockFileWrite.mock.calls[0][0] as string;
@@ -725,7 +723,7 @@ describe('Task 11 – Migrate legacy zh locale to zh-Hans', () => {
     seedLocale('ru');
     await runMigrations(10);
 
-    const raw = sqliteStorage.getItem('substreamer-locale') as string;
+    const raw = kvStorage.getItem('substreamer-locale') as string;
     expect(JSON.parse(raw).state.locale).toBe('ru');
 
     const logContent = mockFileWrite.mock.calls[0][0] as string;
@@ -736,7 +734,7 @@ describe('Task 11 – Migrate legacy zh locale to zh-Hans', () => {
     seedLocale(null);
     await runMigrations(10);
 
-    const raw = sqliteStorage.getItem('substreamer-locale') as string;
+    const raw = kvStorage.getItem('substreamer-locale') as string;
     expect(JSON.parse(raw).state.locale).toBeNull();
 
     const logContent = mockFileWrite.mock.calls[0][0] as string;
@@ -744,7 +742,7 @@ describe('Task 11 – Migrate legacy zh locale to zh-Hans', () => {
   });
 
   it('skips when no persisted locale exists', async () => {
-    sqliteStorage.removeItem('substreamer-locale');
+    kvStorage.removeItem('substreamer-locale');
     await runMigrations(10);
 
     const logContent = mockFileWrite.mock.calls[0][0] as string;
@@ -752,7 +750,7 @@ describe('Task 11 – Migrate legacy zh locale to zh-Hans', () => {
   });
 
   it('skips when persisted locale is unparseable', async () => {
-    sqliteStorage.setItem('substreamer-locale', '{bad json');
+    kvStorage.setItem('substreamer-locale', '{bad json');
     await runMigrations(10);
 
     const logContent = mockFileWrite.mock.calls[0][0] as string;
@@ -762,14 +760,14 @@ describe('Task 11 – Migrate legacy zh locale to zh-Hans', () => {
 
 describe('Task 13 – Move completed scrobbles to per-row SQLite table', () => {
   function seedBlob(scrobbles: any[]) {
-    sqliteStorage.setItem(
+    kvStorage.setItem(
       'substreamer-completed-scrobbles',
       JSON.stringify({ state: { completedScrobbles: scrobbles } }),
     );
   }
 
   it('skips when no persisted blob exists', async () => {
-    sqliteStorage.removeItem('substreamer-completed-scrobbles');
+    kvStorage.removeItem('substreamer-completed-scrobbles');
     await runMigrations(12);
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('No persisted scrobble blob');
@@ -777,11 +775,11 @@ describe('Task 13 – Move completed scrobbles to per-row SQLite table', () => {
   });
 
   it('removes corrupt blob and skips', async () => {
-    sqliteStorage.setItem('substreamer-completed-scrobbles', '{bad json');
+    kvStorage.setItem('substreamer-completed-scrobbles', '{bad json');
     await runMigrations(12);
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('Failed to parse scrobble blob');
-    expect(sqliteStorage.getItem('substreamer-completed-scrobbles')).toBeNull();
+    expect(kvStorage.getItem('substreamer-completed-scrobbles')).toBeNull();
     expect(mockReplaceAllScrobbles).not.toHaveBeenCalled();
   });
 
@@ -790,19 +788,19 @@ describe('Task 13 – Move completed scrobbles to per-row SQLite table', () => {
     await runMigrations(12);
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('Scrobble blob was empty');
-    expect(sqliteStorage.getItem('substreamer-completed-scrobbles')).toBeNull();
+    expect(kvStorage.getItem('substreamer-completed-scrobbles')).toBeNull();
     expect(mockReplaceAllScrobbles).not.toHaveBeenCalled();
   });
 
   it('removes blob and skips when scrobble field is missing/non-array', async () => {
-    sqliteStorage.setItem(
+    kvStorage.setItem(
       'substreamer-completed-scrobbles',
       JSON.stringify({ state: { completedScrobbles: 'not-an-array' } }),
     );
     await runMigrations(12);
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('Scrobble blob was empty');
-    expect(sqliteStorage.getItem('substreamer-completed-scrobbles')).toBeNull();
+    expect(kvStorage.getItem('substreamer-completed-scrobbles')).toBeNull();
     expect(mockReplaceAllScrobbles).not.toHaveBeenCalled();
   });
 
@@ -819,7 +817,7 @@ describe('Task 13 – Move completed scrobbles to per-row SQLite table', () => {
     const [passed] = mockReplaceAllScrobbles.mock.calls[0];
     expect(passed).toHaveLength(2);
     expect(passed.map((s: any) => s.id)).toEqual(['a', 'b']);
-    expect(sqliteStorage.getItem('substreamer-completed-scrobbles')).toBeNull();
+    expect(kvStorage.getItem('substreamer-completed-scrobbles')).toBeNull();
 
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('Migrated 2 scrobble(s) to per-row table');
@@ -855,7 +853,7 @@ describe('Task 13 – Move completed scrobbles to per-row SQLite table', () => {
 
     await runMigrations(12);
     expect(mockReplaceAllScrobbles).toHaveBeenCalledTimes(1);
-    expect(sqliteStorage.getItem('substreamer-completed-scrobbles')).toBeNull();
+    expect(kvStorage.getItem('substreamer-completed-scrobbles')).toBeNull();
 
     mockReplaceAllScrobbles.mockClear();
     await runMigrations(12);
@@ -865,14 +863,14 @@ describe('Task 13 – Move completed scrobbles to per-row SQLite table', () => {
 
 describe('Task 14 – Move music cache to per-row SQLite tables and album-rooted directory layout', () => {
   function seedBlob(state: any) {
-    sqliteStorage.setItem(
+    kvStorage.setItem(
       'substreamer-music-cache',
       JSON.stringify({ state }),
     );
   }
 
   it('skips when no persisted blob exists', async () => {
-    sqliteStorage.removeItem('substreamer-music-cache');
+    kvStorage.removeItem('substreamer-music-cache');
     await runMigrations(13);
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('No persisted music-cache blob');
@@ -880,23 +878,23 @@ describe('Task 14 – Move music cache to per-row SQLite tables and album-rooted
   });
 
   it('removes corrupt blob and skips', async () => {
-    sqliteStorage.setItem('substreamer-music-cache', '{bad json');
+    kvStorage.setItem('substreamer-music-cache', '{bad json');
     await runMigrations(13);
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('Failed to parse music-cache blob — removed.');
-    expect(sqliteStorage.getItem('substreamer-music-cache')).toBeNull();
+    expect(kvStorage.getItem('substreamer-music-cache')).toBeNull();
     expect(mockBulkReplace).not.toHaveBeenCalled();
   });
 
   it('removes blob and skips when state is missing', async () => {
-    sqliteStorage.setItem(
+    kvStorage.setItem(
       'substreamer-music-cache',
       JSON.stringify({ state: null }),
     );
     await runMigrations(13);
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('Music-cache blob had no state — removed.');
-    expect(sqliteStorage.getItem('substreamer-music-cache')).toBeNull();
+    expect(kvStorage.getItem('substreamer-music-cache')).toBeNull();
     expect(mockBulkReplace).not.toHaveBeenCalled();
   });
 
@@ -950,12 +948,12 @@ describe('Task 14 – Move music cache to per-row SQLite tables and album-rooted
     });
 
     // Settings blob picks up maxConcurrentDownloads.
-    const settings = sqliteStorage.getItem('substreamer-music-cache-settings');
+    const settings = kvStorage.getItem('substreamer-music-cache-settings');
     expect(settings).not.toBeNull();
     expect(JSON.parse(settings as string)).toEqual({ maxConcurrentDownloads: 3 });
 
     // Task 14 removes the v1 blob once per-row tables hold canonical state.
-    expect(sqliteStorage.getItem('substreamer-music-cache')).toBeNull();
+    expect(kvStorage.getItem('substreamer-music-cache')).toBeNull();
 
     const logContent = mockFileWrite.mock.calls[0][0] as string;
     expect(logContent).toContain('Migrated 1 item(s), 2 song(s), 2 edge(s), 0 queue item(s)');
@@ -1003,7 +1001,7 @@ describe('Task 14 – Move music cache to per-row SQLite tables and album-rooted
     // Playlist blob carries full Child entries (each with albumId). This
     // covers tracks from playlist downloads whose parent album was never
     // cached as its own item.
-    sqliteStorage.setItem(
+    kvStorage.setItem(
       'substreamer-playlist-details',
       JSON.stringify({
         state: {
@@ -1046,7 +1044,7 @@ describe('Task 14 – Move music cache to per-row SQLite tables and album-rooted
     // Favorites blob carries full Child entries (each with albumId). This
     // covers __starred__ virtual-playlist tracks whose parent album
     // wasn't cached as its own item.
-    sqliteStorage.setItem(
+    kvStorage.setItem(
       'substreamer-favorites',
       JSON.stringify({
         state: {
@@ -1253,7 +1251,7 @@ describe('Task 14 – Move music cache to per-row SQLite tables and album-rooted
       maxConcurrentDownloads: 99,
     });
     await runMigrations(13);
-    expect(sqliteStorage.getItem('substreamer-music-cache-settings')).toBeNull();
+    expect(kvStorage.getItem('substreamer-music-cache-settings')).toBeNull();
   });
 
   it('persists maxConcurrentDownloads = 5 into the settings blob', async () => {
@@ -1263,7 +1261,7 @@ describe('Task 14 – Move music cache to per-row SQLite tables and album-rooted
       maxConcurrentDownloads: 5,
     });
     await runMigrations(13);
-    const settings = sqliteStorage.getItem('substreamer-music-cache-settings');
+    const settings = kvStorage.getItem('substreamer-music-cache-settings');
     expect(JSON.parse(settings as string)).toEqual({ maxConcurrentDownloads: 5 });
   });
 
@@ -1284,7 +1282,7 @@ describe('Task 14 – Move music cache to per-row SQLite tables and album-rooted
     await runMigrations(13);
     expect(mockBulkReplace).toHaveBeenCalledTimes(1);
     // Task 14 removes the v1 blob once per-row tables hold canonical state.
-    expect(sqliteStorage.getItem('substreamer-music-cache')).toBeNull();
+    expect(kvStorage.getItem('substreamer-music-cache')).toBeNull();
 
     mockBulkReplace.mockClear();
     mockFileWrite.mockClear();
@@ -1346,7 +1344,7 @@ describe('Task 14 – Move music cache to per-row SQLite tables and album-rooted
     it('playlist-cached song moves into its parent album dir', async () => {
       // Playlist P contains song s1 with albumId album-A. v1 had the file
       // at {music-cache}/P/s1.mp3; v2 wants it at {music-cache}/album-A/s1.mp3.
-      sqliteStorage.setItem(
+      kvStorage.setItem(
         'substreamer-playlist-details',
         JSON.stringify({
           state: {
@@ -1529,7 +1527,7 @@ describe('Task 14 – Move music cache to per-row SQLite tables and album-rooted
       expect(logContent).toContain('0 moved, 0 duplicate(s) deleted, 1 missing');
       expect(mockBulkReplace).toHaveBeenCalledTimes(1);
       // Task 14 removes the v1 blob once per-row tables hold canonical state.
-      expect(sqliteStorage.getItem('substreamer-music-cache')).toBeNull();
+      expect(kvStorage.getItem('substreamer-music-cache')).toBeNull();
     });
 
     it('no filesystem work when the cache directory does not exist', async () => {
@@ -1558,7 +1556,7 @@ describe('Task 14 – Move music cache to per-row SQLite tables and album-rooted
       // SQL side of the migration still ran.
       expect(mockBulkReplace).toHaveBeenCalledTimes(1);
       // Task 14 removes the v1 blob once per-row tables hold canonical state.
-      expect(sqliteStorage.getItem('substreamer-music-cache')).toBeNull();
+      expect(kvStorage.getItem('substreamer-music-cache')).toBeNull();
       const logContent = mockFileWrite.mock.calls[0][0] as string;
       // The filesystem-migration log line is absent when the branch is skipped.
       expect(logContent).not.toContain('Filesystem migration:');

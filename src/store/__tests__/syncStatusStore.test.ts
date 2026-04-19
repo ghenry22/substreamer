@@ -1,6 +1,6 @@
 import { syncStatusStore } from '../syncStatusStore';
 
-jest.mock('../sqliteStorage', () => require('../__mocks__/sqliteStorage'));
+jest.mock('../persistence/kvStorage', () => require('../persistence/__mocks__/kvStorage'));
 
 function resetStore() {
   syncStatusStore.setState({

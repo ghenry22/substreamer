@@ -26,7 +26,7 @@ jest.mock('@formatjs/intl-datetimeformat/locale-data/es.js', () => {});
 jest.mock('@formatjs/intl-datetimeformat/locale-data/it.js', () => {});
 jest.mock('@formatjs/intl-datetimeformat/locale-data/ru.js', () => {});
 jest.mock('@formatjs/intl-datetimeformat/locale-data/zh.js', () => {});
-jest.mock('../../store/sqliteStorage', () => require('../../store/__mocks__/sqliteStorage'));
+jest.mock('../../store/persistence/kvStorage', () => require('../../store/persistence/__mocks__/kvStorage'));
 
 // Default mock — overridden per test via jest.doMock + resetModules
 jest.mock('expo-localization', () => ({

@@ -184,7 +184,7 @@ jest.mock('../subsonicService');
 
 // Stub setTimeout's 1500ms delay in the startup flow by running it immediately
 // for tests. We only need to verify the immediate-chain calls fire.
-jest.mock('../../store/sqliteStorage', () => require('../../store/__mocks__/sqliteStorage'));
+jest.mock('../../store/persistence/kvStorage', () => require('../../store/persistence/__mocks__/kvStorage'));
 
 import {
   cancelAllSyncs,

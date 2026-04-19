@@ -1,3 +1,15 @@
+// `persistence/db.ts` imports `expo-sqlite` at module load; stub it so the
+// import doesn't hit the native bridge during tests.
+jest.mock('expo-sqlite', () => ({
+  openDatabaseSync: () => ({
+    getFirstSync: () => undefined,
+    getAllSync: () => [],
+    runSync: () => {},
+    execSync: () => {},
+    withTransactionSync: (fn: () => void) => fn(),
+  }),
+}));
+
 let mockNetInfoCallback: ((state: any) => void) | null = null;
 
 jest.mock('@react-native-community/netinfo', () => ({
@@ -34,7 +46,7 @@ jest.mock('react-native', () => ({
   Platform: { OS: 'ios' },
 }));
 
-jest.mock('../../store/sqliteStorage', () => require('../../store/__mocks__/sqliteStorage'));
+jest.mock('../../store/persistence/kvStorage', () => require('../../store/persistence/__mocks__/kvStorage'));
 
 import NetInfo from '@react-native-community/netinfo';
 import * as Location from 'expo-location';

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 /** Scopes accepted by pull-to-refresh + a couple of internal orchestration scopes. */
 export type SyncScope =
@@ -130,7 +130,7 @@ export const syncStatusStore = create<SyncStatusState>()(
     }),
     {
       name: PERSIST_KEY,
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({
         detailSyncPhase: state.detailSyncPhase,
         detailSyncTotal: state.detailSyncTotal,

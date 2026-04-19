@@ -1,6 +1,6 @@
-jest.mock('../../store/sqliteStorage', () => require('../../store/__mocks__/sqliteStorage'));
+jest.mock('../../store/persistence/kvStorage', () => require('../../store/persistence/__mocks__/kvStorage'));
 
-import { sqliteStorage } from '../../store/sqliteStorage';
+import { kvStorage } from '../../store/persistence';
 import {
   persistQueue,
   persistPositionIfDue,
@@ -17,8 +17,8 @@ const makeChild = (id: string): Child =>
   ({ id, title: `Song ${id}`, artist: 'Artist', duration: 200 }) as Child;
 
 beforeEach(() => {
-  sqliteStorage.removeItem('substreamer-persisted-queue');
-  sqliteStorage.removeItem('substreamer-persisted-position');
+  kvStorage.removeItem('substreamer-persisted-queue');
+  kvStorage.removeItem('substreamer-persisted-position');
   resetPersistTimer();
 });
 
@@ -44,12 +44,12 @@ describe('persistQueue / getPersistedQueue', () => {
   });
 
   it('returns null for malformed JSON', () => {
-    sqliteStorage.setItem('substreamer-persisted-queue', '{bad json');
+    kvStorage.setItem('substreamer-persisted-queue', '{bad json');
     expect(getPersistedQueue()).toBeNull();
   });
 
   it('returns null when queue field is not an array', () => {
-    sqliteStorage.setItem(
+    kvStorage.setItem(
       'substreamer-persisted-queue',
       JSON.stringify({ queue: 'not-array', currentTrackIndex: 0 }),
     );
@@ -103,7 +103,7 @@ describe('persistPositionIfDue / getPersistedPosition', () => {
   });
 
   it('returns null for malformed position JSON', () => {
-    sqliteStorage.setItem('substreamer-persisted-position', 'not-json');
+    kvStorage.setItem('substreamer-persisted-position', 'not-json');
     expect(getPersistedPosition()).toBeNull();
   });
 });

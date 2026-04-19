@@ -26,8 +26,8 @@ jest.mock('expo-localization', () => ({
   getLocales: () => [{ languageCode: 'en' }],
 }));
 
-// Mock sqliteStorage for the localeStore persistence layer
-jest.mock('../../store/sqliteStorage', () => require('../../store/__mocks__/sqliteStorage'));
+// Mock kvStorage for the localeStore persistence layer
+jest.mock('../../store/persistence/kvStorage', () => require('../../store/persistence/__mocks__/kvStorage'));
 
 import i18n from '../i18n';
 

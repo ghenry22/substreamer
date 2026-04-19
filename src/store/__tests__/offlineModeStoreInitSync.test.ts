@@ -6,14 +6,26 @@
  * the mock storage before importing the store module.
  */
 
-jest.mock('../sqliteStorage', () => require('../__mocks__/sqliteStorage'));
+jest.mock('../persistence/kvStorage', () => require('../persistence/__mocks__/kvStorage'));
+
+// `persistence/db.ts` imports `expo-sqlite` at module load; stub it so the
+// import doesn't hit the native bridge during tests.
+jest.mock('expo-sqlite', () => ({
+  openDatabaseSync: () => ({
+    getFirstSync: () => undefined,
+    getAllSync: () => [],
+    runSync: () => {},
+    execSync: () => {},
+    withTransactionSync: (fn: () => void) => fn(),
+  }),
+}));
 
 it('syncs downloadedOnly on import when offlineMode is persisted as true', () => {
   // Get the mock storage that all stores will use (via the jest.mock above).
-  const { sqliteStorage } = require('../__mocks__/sqliteStorage');
+  const { kvStorage } = require('../persistence/__mocks__/kvStorage');
 
   // Pre-populate so offlineModeStore rehydrates with offlineMode=true.
-  sqliteStorage.setItem(
+  kvStorage.setItem(
     'substreamer-offline-mode',
     JSON.stringify({
       state: { offlineMode: true, showInFilterBar: true },

@@ -1,12 +1,12 @@
-jest.mock('../sqliteStorage', () => {
-  const mock = require('../__mocks__/sqliteStorage');
+jest.mock('../persistence/kvStorage', () => {
+  const mock = require('../persistence/__mocks__/kvStorage');
   return {
     ...mock,
-    sqliteStorage: {
-      ...mock.sqliteStorage,
+    kvStorage: {
+      ...mock.kvStorage,
       removeItem: jest.fn(),
     },
-    clearAllStorage: jest.fn(),
+    clearKvStorage: jest.fn(),
   };
 });
 jest.mock('../../services/subsonicService');
@@ -52,7 +52,7 @@ jest.mock('../persistence/musicCacheTables', () => ({
   upsertCachedSong: jest.fn(),
 }));
 
-import { sqliteStorage, clearAllStorage } from '../sqliteStorage';
+import { kvStorage, clearKvStorage } from '../persistence';
 import { clearDetailTables } from '../persistence/detailTables';
 import { clearScrobbles } from '../persistence/scrobbleTable';
 import { clearAllMusicCacheRows } from '../persistence/musicCacheTables';
@@ -66,17 +66,17 @@ import { searchStore } from '../searchStore';
 import { resetAllStores } from '../resetAllStores';
 
 beforeEach(() => {
-  (clearAllStorage as jest.Mock).mockClear();
+  (clearKvStorage as jest.Mock).mockClear();
   (clearDetailTables as jest.Mock).mockClear();
   (clearScrobbles as jest.Mock).mockClear();
   (clearAllMusicCacheRows as jest.Mock).mockClear();
-  (sqliteStorage.removeItem as jest.Mock).mockClear();
+  (kvStorage.removeItem as jest.Mock).mockClear();
 });
 
 describe('resetAllStores', () => {
   it('clears SQLite storage', () => {
     resetAllStores();
-    expect(clearAllStorage).toHaveBeenCalledTimes(1);
+    expect(clearKvStorage).toHaveBeenCalledTimes(1);
   });
 
   it('truncates the per-row detail tables (album_details + song_index)', () => {
@@ -96,7 +96,7 @@ describe('resetAllStores', () => {
 
   it('removes the music cache settings blob', () => {
     resetAllStores();
-    expect(sqliteStorage.removeItem).toHaveBeenCalledWith('substreamer-music-cache-settings');
+    expect(kvStorage.removeItem).toHaveBeenCalledWith('substreamer-music-cache-settings');
   });
 
   it('resets persisted stores to initial state', () => {

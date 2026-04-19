@@ -1,18 +1,19 @@
 /**
- * Per-row SQLite persistence for the v2 music-downloads stack.
+ * Per-row SQLite persistence for the v2 music-downloads stack — query
+ * helpers only. The shared handle, PRAGMAs, schema, health reporting, and
+ * test injection live in `./db.ts`.
  *
- * Owns four tables in the shared `substreamer7.db`:
+ * Owns four tables in `substreamer7.db`:
  *   - `cached_songs`       — canonical song pool (one row per unique song)
  *   - `cached_items`       — download intents (album/playlist/favorites/song)
  *   - `cached_item_songs`  — many-to-many edges (refcount-via-COUNT)
  *   - `download_queue`     — persisted download queue
  *
  * Error-swallowing: every read returns a safe default ({}, [], 0) and every
- * write is a silent no-op on failure, matching the pattern in
- * `scrobbleTable.ts` / `detailTables.ts`. Consumers never need to handle
+ * write is a silent no-op on failure. Consumers never need to handle
  * exceptions from this module.
  */
-import * as SQLite from 'expo-sqlite';
+import { getDb, type InternalDb } from './db';
 
 export interface CachedSongRow {
   id: string;
@@ -61,110 +62,6 @@ export interface DownloadQueueRow {
   /** JSON-serialized Child[] still needed at download time. */
   songsJson: string;
 }
-
-interface InternalDb {
-  getFirstSync<T>(sql: string, params?: readonly unknown[]): T | undefined;
-  getAllSync<T>(sql: string, params?: readonly unknown[]): T[];
-  runSync(sql: string, params?: readonly unknown[]): void;
-  execSync(sql: string): void;
-  withTransactionSync(fn: () => void): void;
-}
-
-let db: InternalDb | null = null;
-let initError: Error | null = null;
-
-try {
-  db = SQLite.openDatabaseSync('substreamer7.db') as unknown as InternalDb;
-  db.execSync('PRAGMA journal_mode = WAL;');
-  // NORMAL matches every other connection on this database and has persisted
-  // reliably since day one. FULL adds ~1–5 ms per commit for no observed
-  // benefit on mobile — the music-downloads-v2 data loss we chased was an
-  // INSERT OR REPLACE + ON DELETE CASCADE footgun, not a WAL durability gap.
-  db.execSync('PRAGMA synchronous = NORMAL;');
-  db.execSync('PRAGMA foreign_keys = ON;');
-  db.execSync(
-    `CREATE TABLE IF NOT EXISTS cached_songs (
-       song_id TEXT PRIMARY KEY NOT NULL,
-       title TEXT NOT NULL,
-       artist TEXT,
-       album TEXT,
-       album_id TEXT NOT NULL,
-       cover_art TEXT,
-       bytes INTEGER NOT NULL,
-       duration INTEGER NOT NULL,
-       suffix TEXT NOT NULL,
-       bit_rate INTEGER,
-       bit_depth INTEGER,
-       sampling_rate INTEGER,
-       format_captured_at INTEGER NOT NULL,
-       downloaded_at INTEGER NOT NULL
-     );`,
-  );
-  db.execSync(
-    'CREATE INDEX IF NOT EXISTS idx_cached_songs_album_id ON cached_songs(album_id);',
-  );
-  db.execSync(
-    `CREATE TABLE IF NOT EXISTS cached_items (
-       item_id TEXT PRIMARY KEY NOT NULL,
-       type TEXT NOT NULL,
-       name TEXT NOT NULL,
-       artist TEXT,
-       cover_art_id TEXT,
-       expected_song_count INTEGER NOT NULL,
-       parent_album_id TEXT,
-       last_sync_at INTEGER NOT NULL,
-       downloaded_at INTEGER NOT NULL
-     );`,
-  );
-  db.execSync(
-    `CREATE TABLE IF NOT EXISTS cached_item_songs (
-       item_id TEXT NOT NULL,
-       position INTEGER NOT NULL,
-       song_id TEXT NOT NULL,
-       PRIMARY KEY (item_id, position),
-       FOREIGN KEY (item_id) REFERENCES cached_items(item_id) ON DELETE CASCADE,
-       FOREIGN KEY (song_id) REFERENCES cached_songs(song_id)
-     );`,
-  );
-  db.execSync(
-    'CREATE INDEX IF NOT EXISTS idx_cached_item_songs_song_id ON cached_item_songs(song_id);',
-  );
-  db.execSync(
-    `CREATE TABLE IF NOT EXISTS download_queue (
-       queue_id TEXT PRIMARY KEY NOT NULL,
-       item_id TEXT NOT NULL,
-       type TEXT NOT NULL,
-       name TEXT NOT NULL,
-       artist TEXT,
-       cover_art_id TEXT,
-       status TEXT NOT NULL,
-       total_songs INTEGER NOT NULL,
-       completed_songs INTEGER NOT NULL,
-       error TEXT,
-       added_at INTEGER NOT NULL,
-       queue_position INTEGER NOT NULL,
-       songs_json TEXT NOT NULL
-     );`,
-  );
-  db.execSync(
-    'CREATE INDEX IF NOT EXISTS idx_download_queue_status ON download_queue(status);',
-  );
-  db.execSync(
-    'CREATE INDEX IF NOT EXISTS idx_download_queue_position ON download_queue(queue_position);',
-  );
-} catch (e) {
-  db = null;
-  initError = e instanceof Error ? e : new Error(String(e));
-  // eslint-disable-next-line no-console
-  console.warn(
-    '[musicCacheTables] init failed; per-row persistence unavailable:',
-    initError.message,
-  );
-}
-
-/** True when the music-cache tables are wired up and functioning. */
-export const musicCacheTablesHealthy: boolean = db !== null;
-export const musicCacheTablesInitError: Error | null = initError;
 
 /* ------------------------------------------------------------------ */
 /*  Row <-> object mapping helpers                                     */
@@ -279,6 +176,7 @@ function mapQueueRow(row: RawQueueRow): DownloadQueueRow {
  * launch to populate the store's in-memory mirror.
  */
 export function hydrateCachedSongs(): Record<string, CachedSongRow> {
+  const db = getDb();
   if (db === null) return {};
   try {
     const rows = db.getAllSync<RawSongRow>(
@@ -303,6 +201,7 @@ export function hydrateCachedSongs(): Record<string, CachedSongRow> {
  * Implemented as two queries + merge in JS (simpler than GROUP_CONCAT).
  */
 export function hydrateCachedItems(): Record<string, CachedItemRow> {
+  const db = getDb();
   if (db === null) return {};
   try {
     const items = db.getAllSync<RawItemRow>(
@@ -336,6 +235,7 @@ export function hydrateCachedItems(): Record<string, CachedItemRow> {
  * and whenever the queue needs a full refresh.
  */
 export function hydrateDownloadQueue(): DownloadQueueRow[] {
+  const db = getDb();
   if (db === null) return [];
   try {
     const rows = db.getAllSync<RawQueueRow>(
@@ -356,6 +256,7 @@ export function hydrateDownloadQueue(): DownloadQueueRow[] {
 /* ------------------------------------------------------------------ */
 
 export function countCachedSongs(): number {
+  const db = getDb();
   if (db === null) return 0;
   try {
     const row = db.getFirstSync<{ c: number }>('SELECT COUNT(*) AS c FROM cached_songs;');
@@ -366,6 +267,7 @@ export function countCachedSongs(): number {
 }
 
 export function countCachedItems(): number {
+  const db = getDb();
   if (db === null) return 0;
   try {
     const row = db.getFirstSync<{ c: number }>('SELECT COUNT(*) AS c FROM cached_items;');
@@ -381,6 +283,7 @@ export function countCachedItems(): number {
  * Returns `null` on error.
  */
 export function readPragma(name: string): string | null {
+  const db = getDb();
   if (db === null) return null;
   try {
     const row = db.getFirstSync<Record<string, unknown>>(`PRAGMA ${name};`);
@@ -395,6 +298,7 @@ export function readPragma(name: string): string | null {
 }
 
 export function countCachedItemSongs(): number {
+  const db = getDb();
   if (db === null) return 0;
   try {
     const row = db.getFirstSync<{ c: number }>('SELECT COUNT(*) AS c FROM cached_item_songs;');
@@ -405,6 +309,7 @@ export function countCachedItemSongs(): number {
 }
 
 export function countDownloadQueueItems(): number {
+  const db = getDb();
   if (db === null) return 0;
   try {
     const row = db.getFirstSync<{ c: number }>('SELECT COUNT(*) AS c FROM download_queue;');
@@ -419,6 +324,7 @@ export function countDownloadQueueItems(): number {
  * the song is an orphan and its file can be deleted.
  */
 export function countSongRefs(songId: string): number {
+  const db = getDb();
   if (db === null) return 0;
   try {
     const row = db.getFirstSync<{ c: number }>(
@@ -435,11 +341,14 @@ export function countSongRefs(songId: string): number {
 /*  cached_songs writes                                                */
 /* ------------------------------------------------------------------ */
 
-function upsertCachedSongInternal(song: CachedSongRow): void {
+// Internal helpers take an already-validated non-null `db` — they're only
+// called from public functions that have done the null check, or from
+// inside `withTransactionSync` callbacks.
+function upsertCachedSongInternal(db: InternalDb, song: CachedSongRow): void {
   // UPSERT rather than `INSERT OR REPLACE` — see `upsertCachedItemInternal`
   // for the rationale. Applies the same pattern here for consistency so
   // nobody can accidentally reintroduce the cascade-delete footgun.
-  db!.runSync(
+  db.runSync(
     `INSERT INTO cached_songs
        (song_id, title, artist, album, album_id, cover_art, bytes, duration,
         suffix, bit_rate, bit_depth, sampling_rate, format_captured_at,
@@ -479,16 +388,18 @@ function upsertCachedSongInternal(song: CachedSongRow): void {
 }
 
 export function upsertCachedSong(song: CachedSongRow): void {
+  const db = getDb();
   if (db === null) return;
   if (!song.id || !song.albumId) return;
   try {
-    upsertCachedSongInternal(song);
+    upsertCachedSongInternal(db, song);
   } catch {
     /* dropped */
   }
 }
 
 export function deleteCachedSong(songId: string): void {
+  const db = getDb();
   if (db === null) return;
   try {
     db.runSync('DELETE FROM cached_songs WHERE song_id = ?;', [songId]);
@@ -502,6 +413,7 @@ export function deleteCachedSong(songId: string): void {
  * files are on disk but no item references them any more.
  */
 export function findOrphanSongs(): string[] {
+  const db = getDb();
   if (db === null) return [];
   try {
     const rows = db.getAllSync<{ song_id: string }>(
@@ -518,7 +430,7 @@ export function findOrphanSongs(): string[] {
 /*  cached_items writes                                                */
 /* ------------------------------------------------------------------ */
 
-function upsertCachedItemInternal(item: Omit<CachedItemRow, 'songIds'>): void {
+function upsertCachedItemInternal(db: InternalDb, item: Omit<CachedItemRow, 'songIds'>): void {
   // UPSERT (not `INSERT OR REPLACE`): SQLite implements `OR REPLACE` as
   // DELETE-then-INSERT, which would fire `ON DELETE CASCADE` on the
   // `cached_item_songs` edges table and silently wipe every edge for this
@@ -526,7 +438,7 @@ function upsertCachedItemInternal(item: Omit<CachedItemRow, 'songIds'>): void {
   // children. This is the root-cause fix for the music-downloads-v2
   // durability bug where offline playlists evaporated after the first
   // downstream write touched the parent item.
-  db!.runSync(
+  db.runSync(
     `INSERT INTO cached_items
        (item_id, type, name, artist, cover_art_id, expected_song_count,
         parent_album_id, last_sync_at, downloaded_at)
@@ -555,10 +467,11 @@ function upsertCachedItemInternal(item: Omit<CachedItemRow, 'songIds'>): void {
 }
 
 export function upsertCachedItem(item: Omit<CachedItemRow, 'songIds'>): void {
+  const db = getDb();
   if (db === null) return;
   if (!item.itemId) return;
   try {
-    upsertCachedItemInternal(item);
+    upsertCachedItemInternal(db, item);
   } catch {
     /* dropped */
   }
@@ -569,6 +482,7 @@ export function upsertCachedItem(item: Omit<CachedItemRow, 'songIds'>): void {
  * cached_item_songs edges in the same SQLite statement.
  */
 export function deleteCachedItem(itemId: string): void {
+  const db = getDb();
   if (db === null) return;
   try {
     db.runSync('DELETE FROM cached_items WHERE item_id = ?;', [itemId]);
@@ -582,6 +496,7 @@ export function deleteCachedItem(itemId: string): void {
 /* ------------------------------------------------------------------ */
 
 export function insertCachedItemSong(itemId: string, position: number, songId: string): void {
+  const db = getDb();
   if (db === null) return;
   if (!itemId || !songId) return;
   try {
@@ -599,14 +514,15 @@ export function insertCachedItemSong(itemId: string, position: number, songId: s
  * so positions remain contiguous within the item.
  */
 export function removeCachedItemSong(itemId: string, position: number): void {
+  const db = getDb();
   if (db === null) return;
   try {
     db.withTransactionSync(() => {
-      db!.runSync(
+      db.runSync(
         'DELETE FROM cached_item_songs WHERE item_id = ? AND position = ?;',
         [itemId, position],
       );
-      db!.runSync(
+      db.runSync(
         'UPDATE cached_item_songs SET position = position - 1 WHERE item_id = ? AND position > ?;',
         [itemId, position],
       );
@@ -625,18 +541,19 @@ export function reorderCachedItemSongs(
   fromPosition: number,
   toPosition: number,
 ): void {
+  const db = getDb();
   if (db === null) return;
   if (fromPosition === toPosition) return;
   try {
     db.withTransactionSync(() => {
       // Stash the moving row at a sentinel position that can't collide.
-      db!.runSync(
+      db.runSync(
         'UPDATE cached_item_songs SET position = -1 WHERE item_id = ? AND position = ?;',
         [itemId, fromPosition],
       );
       if (fromPosition < toPosition) {
         // Shift (fromPosition, toPosition] down by 1.
-        db!.runSync(
+        db.runSync(
           `UPDATE cached_item_songs
              SET position = position - 1
              WHERE item_id = ? AND position > ? AND position <= ?;`,
@@ -644,7 +561,7 @@ export function reorderCachedItemSongs(
         );
       } else {
         // Shift [toPosition, fromPosition) up by 1.
-        db!.runSync(
+        db.runSync(
           `UPDATE cached_item_songs
              SET position = position + 1
              WHERE item_id = ? AND position >= ? AND position < ?;`,
@@ -652,7 +569,7 @@ export function reorderCachedItemSongs(
         );
       }
       // Drop the moving row into its final slot.
-      db!.runSync(
+      db.runSync(
         'UPDATE cached_item_songs SET position = ? WHERE item_id = ? AND position = -1;',
         [toPosition, itemId],
       );
@@ -664,6 +581,7 @@ export function reorderCachedItemSongs(
 
 /** Return song_ids for an item in position order. */
 export function getSongIdsForItem(itemId: string): string[] {
+  const db = getDb();
   if (db === null) return [];
   try {
     const rows = db.getAllSync<{ song_id: string }>(
@@ -678,6 +596,7 @@ export function getSongIdsForItem(itemId: string): string[] {
 
 /** Return the items that reference a given song. */
 export function getItemIdsForSong(songId: string): string[] {
+  const db = getDb();
   if (db === null) return [];
   try {
     const rows = db.getAllSync<{ item_id: string }>(
@@ -694,12 +613,12 @@ export function getItemIdsForSong(songId: string): string[] {
 /*  download_queue writes                                              */
 /* ------------------------------------------------------------------ */
 
-function insertDownloadQueueItemInternal(item: DownloadQueueRow): void {
+function insertDownloadQueueItemInternal(db: InternalDb, item: DownloadQueueRow): void {
   // `download_queue` has no FK children so `INSERT OR REPLACE` is safe here,
   // but we use UPSERT anyway for consistency with the other tables — one
   // pattern everywhere means nobody introduces a regression by copying the
   // wrong line later.
-  db!.runSync(
+  db.runSync(
     `INSERT INTO download_queue
        (queue_id, item_id, type, name, artist, cover_art_id, status,
         total_songs, completed_songs, error, added_at, queue_position,
@@ -737,16 +656,18 @@ function insertDownloadQueueItemInternal(item: DownloadQueueRow): void {
 }
 
 export function insertDownloadQueueItem(item: DownloadQueueRow): void {
+  const db = getDb();
   if (db === null) return;
   if (!item.queueId) return;
   try {
-    insertDownloadQueueItemInternal(item);
+    insertDownloadQueueItemInternal(db, item);
   } catch {
     /* dropped */
   }
 }
 
 export function removeDownloadQueueItem(queueId: string): void {
+  const db = getDb();
   if (db === null) return;
   try {
     db.runSync('DELETE FROM download_queue WHERE queue_id = ?;', [queueId]);
@@ -763,6 +684,7 @@ export function updateDownloadQueueItem(
   queueId: string,
   update: Partial<Pick<DownloadQueueRow, 'status' | 'completedSongs' | 'error'>>,
 ): void {
+  const db = getDb();
   if (db === null) return;
   const clauses: string[] = [];
   const params: unknown[] = [];
@@ -796,31 +718,32 @@ export function updateDownloadQueueItem(
  * preserved.
  */
 export function reorderDownloadQueue(fromPosition: number, toPosition: number): void {
+  const db = getDb();
   if (db === null) return;
   if (fromPosition === toPosition) return;
   try {
     db.withTransactionSync(() => {
       // Stash the moving row at a sentinel position.
-      db!.runSync(
+      db.runSync(
         'UPDATE download_queue SET queue_position = -1 WHERE queue_position = ?;',
         [fromPosition],
       );
       if (fromPosition < toPosition) {
-        db!.runSync(
+        db.runSync(
           `UPDATE download_queue
              SET queue_position = queue_position - 1
              WHERE queue_position > ? AND queue_position <= ?;`,
           [fromPosition, toPosition],
         );
       } else {
-        db!.runSync(
+        db.runSync(
           `UPDATE download_queue
              SET queue_position = queue_position + 1
              WHERE queue_position >= ? AND queue_position < ?;`,
           [toPosition, fromPosition],
         );
       }
-      db!.runSync(
+      db.runSync(
         'UPDATE download_queue SET queue_position = ? WHERE queue_position = -1;',
         [toPosition],
       );
@@ -845,18 +768,19 @@ export function markDownloadComplete(
   songs: CachedSongRow[],
   edges: Array<{ songId: string; position: number }>,
 ): void {
+  const db = getDb();
   if (db === null) return;
   try {
     db.withTransactionSync(() => {
-      db!.runSync('DELETE FROM download_queue WHERE queue_id = ?;', [queueId]);
-      upsertCachedItemInternal(item);
+      db.runSync('DELETE FROM download_queue WHERE queue_id = ?;', [queueId]);
+      upsertCachedItemInternal(db, item);
       for (const song of songs) {
         if (!song.id || !song.albumId) continue;
-        upsertCachedSongInternal(song);
+        upsertCachedSongInternal(db, song);
       }
       for (const edge of edges) {
         if (!edge.songId) continue;
-        db!.runSync(
+        db.runSync(
           'INSERT OR IGNORE INTO cached_item_songs (item_id, position, song_id) VALUES (?, ?, ?);',
           [item.itemId, edge.position, edge.songId],
         );
@@ -877,27 +801,28 @@ export function bulkReplace(params: {
   edges: Array<{ itemId: string; position: number; songId: string }>;
   queue: DownloadQueueRow[];
 }): void {
+  const db = getDb();
   if (db === null) return;
   try {
     db.withTransactionSync(() => {
-      db!.runSync('DELETE FROM cached_item_songs;');
-      db!.runSync('DELETE FROM download_queue;');
-      db!.runSync('DELETE FROM cached_items;');
-      db!.runSync('DELETE FROM cached_songs;');
+      db.runSync('DELETE FROM cached_item_songs;');
+      db.runSync('DELETE FROM download_queue;');
+      db.runSync('DELETE FROM cached_items;');
+      db.runSync('DELETE FROM cached_songs;');
 
       for (const song of params.songs) {
         if (!song.id || !song.albumId) continue;
-        upsertCachedSongInternal(song);
+        upsertCachedSongInternal(db, song);
       }
 
       for (const item of params.items) {
         if (!item.itemId) continue;
-        upsertCachedItemInternal(item);
+        upsertCachedItemInternal(db, item);
       }
 
       for (const edge of params.edges) {
         if (!edge.itemId || !edge.songId) continue;
-        db!.runSync(
+        db.runSync(
           'INSERT OR IGNORE INTO cached_item_songs (item_id, position, song_id) VALUES (?, ?, ?);',
           [edge.itemId, edge.position, edge.songId],
         );
@@ -905,7 +830,7 @@ export function bulkReplace(params: {
 
       for (const q of params.queue) {
         if (!q.queueId) continue;
-        insertDownloadQueueItemInternal(q);
+        insertDownloadQueueItemInternal(db, q);
       }
     });
   } catch {
@@ -919,27 +844,16 @@ export function bulkReplace(params: {
  * PRAGMA state.
  */
 export function clearAllMusicCacheRows(): void {
+  const db = getDb();
   if (db === null) return;
   try {
     db.withTransactionSync(() => {
-      db!.runSync('DELETE FROM cached_item_songs;');
-      db!.runSync('DELETE FROM download_queue;');
-      db!.runSync('DELETE FROM cached_items;');
-      db!.runSync('DELETE FROM cached_songs;');
+      db.runSync('DELETE FROM cached_item_songs;');
+      db.runSync('DELETE FROM download_queue;');
+      db.runSync('DELETE FROM cached_items;');
+      db.runSync('DELETE FROM cached_songs;');
     });
   } catch {
     /* dropped */
   }
-}
-
-/* ------------------------------------------------------------------ */
-/*  Test-only helpers (guarded)                                        */
-/* ------------------------------------------------------------------ */
-
-/**
- * Replace the module-private db handle. Used exclusively by the test mock so
- * tests can exercise the real SQL-building logic against an in-memory fake.
- */
-export function __setDbForTests(mockDb: InternalDb | null): void {
-  db = mockDb;
 }

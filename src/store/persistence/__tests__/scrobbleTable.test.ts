@@ -1,6 +1,6 @@
-// Mock expo-sqlite with a minimal no-op DB so module init succeeds and the
-// CREATE TABLE / CREATE INDEX / PRAGMA paths are exercised for coverage.
-// Individual tests override via `__setDbForTests` with a richer fake.
+// Mock expo-sqlite with a minimal no-op DB so `persistence/db.ts`'s
+// module-scope init succeeds on import. Individual tests override the
+// shared handle via `db.__setDbForTests` with a richer fake.
 jest.mock('expo-sqlite', () => ({
   openDatabaseSync: () => ({
     getFirstSync: () => undefined,
@@ -11,8 +11,8 @@ jest.mock('expo-sqlite', () => ({
   }),
 }));
 
+import { __setDbForTests } from '../db';
 import {
-  __setDbForTests,
   clearScrobbles,
   countScrobbles,
   hydrateScrobbles,

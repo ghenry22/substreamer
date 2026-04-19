@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 export interface TrustedCertEntry {
   /** SHA-256 fingerprint of the trusted certificate (colon-separated hex) */
@@ -74,7 +74,7 @@ export const sslCertStore = create<SslCertState>()(
     }),
     {
       name: PERSIST_KEY,
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       // installFailed is transient: a fresh launch should re-evaluate.
       partialize: (state) => ({
         trustedCerts: state.trustedCerts,

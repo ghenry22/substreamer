@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
 
@@ -26,7 +26,7 @@ export const themeStore = create<ThemeState>()(
     }),
     {
       name: PERSIST_KEY,
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({
         themePreference: state.themePreference,
         primaryColor: state.primaryColor,

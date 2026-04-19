@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 import { getGenres, type Genre } from '../services/subsonicService';
 
@@ -28,7 +28,7 @@ export const genreStore = create<GenreState>()(
     }),
     {
       name: PERSIST_KEY,
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({
         genres: state.genres,
         lastFetchedAt: state.lastFetchedAt,

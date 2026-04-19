@@ -1,4 +1,4 @@
-jest.mock('../../store/sqliteStorage', () => require('../../store/__mocks__/sqliteStorage'));
+jest.mock('../../store/persistence/kvStorage', () => require('../../store/persistence/__mocks__/kvStorage'));
 jest.mock('../../services/subsonicService');
 
 import { resolveEffectiveFormat, getEffectiveFormat } from '../effectiveFormat';

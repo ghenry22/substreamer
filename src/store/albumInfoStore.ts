@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
 import { getOverride, mbidOverrideStore } from './mbidOverrideStore';
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 import { getAlbumInfo2, type AlbumInfo } from '../services/subsonicService';
 import { getAlbumDescription } from '../services/musicbrainzService';
@@ -147,7 +147,7 @@ export const albumInfoStore = create<AlbumInfoState>()(
     }),
     {
       name: PERSIST_KEY,
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({
         entries: state.entries,
       }),

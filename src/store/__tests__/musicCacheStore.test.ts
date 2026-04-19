@@ -1,6 +1,6 @@
 // Phase 2 rewrite of the music-cache store. Mirrors the mocking + write-through
 // pattern used in `completedScrobbleStore.test.ts` -- every persistence call is
-// a jest.fn so we can assert wiring, and `sqliteStorage` is swapped for the
+// a jest.fn so we can assert wiring, and `kvStorage` is swapped for the
 // in-memory mock so the tiny settings blob round-trips.
 jest.mock('../persistence/musicCacheTables', () => ({
   hydrateCachedSongs: jest.fn(() => ({})),
@@ -21,7 +21,7 @@ jest.mock('../persistence/musicCacheTables', () => ({
   clearAllMusicCacheRows: jest.fn(),
 }));
 
-jest.mock('../sqliteStorage', () => require('../__mocks__/sqliteStorage'));
+jest.mock('../persistence/kvStorage', () => require('../persistence/__mocks__/kvStorage'));
 
 import {
   clearAllMusicCacheRows,
@@ -51,7 +51,7 @@ import {
   type CachedSongMeta,
   type DownloadQueueItem,
 } from '../musicCacheStore';
-import { sqliteStorage } from '../sqliteStorage';
+import { kvStorage } from '../persistence';
 
 // jest.Mock typed handles -- importing named functions from the mocked module
 // gives us the jest.fn spies.
@@ -154,8 +154,8 @@ beforeEach(() => {
   mockHydrateCachedItems.mockReturnValue({});
   mockHydrateDownloadQueue.mockReturnValue([]);
   mockCountSongRefs.mockReturnValue(0);
-  // Wipe the in-memory sqliteStorage mock between tests.
-  sqliteStorage.removeItem(SETTINGS_KEY);
+  // Wipe the in-memory kvStorage mock between tests.
+  kvStorage.removeItem(SETTINGS_KEY);
 });
 
 /* ------------------------------------------------------------------ */
@@ -614,7 +614,7 @@ describe('setMaxConcurrentDownloads', () => {
   it('writes the settings blob and updates state', () => {
     musicCacheStore.getState().setMaxConcurrentDownloads(5);
     expect(musicCacheStore.getState().maxConcurrentDownloads).toBe(5);
-    const raw = sqliteStorage.getItem(SETTINGS_KEY);
+    const raw = kvStorage.getItem(SETTINGS_KEY);
     expect(raw).not.toBeNull();
     expect(JSON.parse(raw as string)).toEqual({ maxConcurrentDownloads: 5 });
   });
@@ -622,7 +622,7 @@ describe('setMaxConcurrentDownloads', () => {
   it('persists the three valid values (1 | 3 | 5)', () => {
     for (const n of [1, 3, 5] as const) {
       musicCacheStore.getState().setMaxConcurrentDownloads(n);
-      expect(JSON.parse(sqliteStorage.getItem(SETTINGS_KEY) as string)).toEqual({
+      expect(JSON.parse(kvStorage.getItem(SETTINGS_KEY) as string)).toEqual({
         maxConcurrentDownloads: n,
       });
       expect(musicCacheStore.getState().maxConcurrentDownloads).toBe(n);
@@ -676,12 +676,12 @@ describe('reset', () => {
       maxConcurrentDownloads: 5,
       hasHydrated: true,
     });
-    sqliteStorage.setItem(SETTINGS_KEY, JSON.stringify({ maxConcurrentDownloads: 5 }));
+    kvStorage.setItem(SETTINGS_KEY, JSON.stringify({ maxConcurrentDownloads: 5 }));
 
     musicCacheStore.getState().reset();
 
     expect(mockClearAllMusicCacheRows).toHaveBeenCalledTimes(1);
-    expect(sqliteStorage.getItem(SETTINGS_KEY)).toBeNull();
+    expect(kvStorage.getItem(SETTINGS_KEY)).toBeNull();
     const s = musicCacheStore.getState();
     expect(s.cachedSongs).toEqual({});
     expect(s.cachedItems).toEqual({});
@@ -724,7 +724,7 @@ describe('hydrateFromDb', () => {
     mockHydrateCachedSongs.mockReturnValue(songs);
     mockHydrateCachedItems.mockReturnValue(items);
     mockHydrateDownloadQueue.mockReturnValue(queue);
-    sqliteStorage.setItem(SETTINGS_KEY, JSON.stringify({ maxConcurrentDownloads: 5 }));
+    kvStorage.setItem(SETTINGS_KEY, JSON.stringify({ maxConcurrentDownloads: 5 }));
 
     musicCacheStore.getState().hydrateFromDb();
 
@@ -745,7 +745,7 @@ describe('hydrateFromDb', () => {
     const first = musicCacheStore.getState();
     expect(first.hasHydrated).toBe(true);
     musicCacheStore.getState().hydrateFromDb();
-    // Hydrate is re-callable by design (see `hydratePerRowStores.ts`).
+    // Hydrate is re-callable by design (see `rehydrateAllStores.ts`).
     // Second call re-reads SQL and produces the same state.
     expect(mockHydrateCachedSongs).toHaveBeenCalledTimes(2);
     const second = musicCacheStore.getState();
@@ -754,19 +754,19 @@ describe('hydrateFromDb', () => {
 
   it('defaults maxConcurrentDownloads=3 when settings blob is absent', () => {
     // Ensure no settings row exists.
-    sqliteStorage.removeItem(SETTINGS_KEY);
+    kvStorage.removeItem(SETTINGS_KEY);
     musicCacheStore.getState().hydrateFromDb();
     expect(musicCacheStore.getState().maxConcurrentDownloads).toBe(3);
   });
 
   it('defaults maxConcurrentDownloads=3 when settings blob is malformed JSON', () => {
-    sqliteStorage.setItem(SETTINGS_KEY, 'not-json{');
+    kvStorage.setItem(SETTINGS_KEY, 'not-json{');
     musicCacheStore.getState().hydrateFromDb();
     expect(musicCacheStore.getState().maxConcurrentDownloads).toBe(3);
   });
 
   it('defaults maxConcurrentDownloads=3 when blob has an invalid value', () => {
-    sqliteStorage.setItem(SETTINGS_KEY, JSON.stringify({ maxConcurrentDownloads: 9 }));
+    kvStorage.setItem(SETTINGS_KEY, JSON.stringify({ maxConcurrentDownloads: 9 }));
     musicCacheStore.getState().hydrateFromDb();
     expect(musicCacheStore.getState().maxConcurrentDownloads).toBe(3);
   });

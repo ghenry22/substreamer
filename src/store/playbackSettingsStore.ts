@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 import { type StreamFormat, type MaxBitRate } from '../types/audio';
 
 export type { StreamFormat, MaxBitRate } from '../types/audio';
@@ -156,7 +156,7 @@ export const playbackSettingsStore = create<PlaybackSettingsState>()(
     }),
     {
       name: PERSIST_KEY,
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({
         maxBitRate: state.maxBitRate,
         streamFormat: state.streamFormat,

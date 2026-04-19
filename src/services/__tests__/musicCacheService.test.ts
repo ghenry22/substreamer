@@ -1,3 +1,15 @@
+// `persistence/db.ts` imports `expo-sqlite` at module load; stub it so the
+// import doesn't hit the native bridge during tests.
+jest.mock('expo-sqlite', () => ({
+  openDatabaseSync: () => ({
+    getFirstSync: () => undefined,
+    getAllSync: () => [],
+    runSync: () => {},
+    execSync: () => {},
+    withTransactionSync: (fn: () => void) => fn(),
+  }),
+}));
+
 /**
  * musicCacheService v2 tests. Mocks the SQL persistence layer so the real
  * store logic can exercise without a real DB.
@@ -147,7 +159,7 @@ jest.mock('../../store/playbackSettingsStore', () => {
   };
 });
 
-jest.mock('../../store/sqliteStorage', () => require('../../store/__mocks__/sqliteStorage'));
+jest.mock('../../store/persistence/kvStorage', () => require('../../store/persistence/__mocks__/kvStorage'));
 
 // Mock the SQL persistence layer with identity-style no-ops so the store
 // can mutate in-memory state without touching a real DB.
@@ -213,8 +225,6 @@ jest.mock('../../store/persistence/musicCacheTables', () => {
     __edges: edges,
     __resetEdges: () => { edges.length = 0; },
     __setDbForTests: jest.fn(),
-    musicCacheTablesHealthy: true,
-    musicCacheTablesInitError: null,
   };
 });
 

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 interface OfflineModeState {
   offlineMode: boolean;
@@ -26,7 +26,7 @@ export const offlineModeStore = create<OfflineModeState>()(
     }),
     {
       name: PERSIST_KEY,
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({
         offlineMode: state.offlineMode,
         showInFilterBar: state.showInFilterBar,
@@ -43,7 +43,7 @@ offlineModeStore.subscribe((state, prevState) => {
 });
 
 // Sync initial state -- rehydration completes synchronously during create()
-// (sqliteStorage is sync), so the subscription above misses it.
+// (kvStorage is sync), so the subscription above misses it.
 if (offlineModeStore.getState().offlineMode) {
   filterBarStore.getState().setDownloadedOnly(true);
 }

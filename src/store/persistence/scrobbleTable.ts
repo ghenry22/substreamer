@@ -1,63 +1,13 @@
 /**
- * Per-row SQLite persistence for `completedScrobbleStore`.
+ * Per-row SQLite persistence for `completedScrobbleStore` — query helpers
+ * only. The shared handle, PRAGMAs, schema, health reporting, and test
+ * injection live in `./db.ts`.
  *
- * The blob-based `persist(createJSONStorage(sqliteStorage))` model rewrites the
- * full scrobble array + derived stats + aggregates on every `addCompleted`,
- * which scales poorly over years of listening history. This module owns a
- * dedicated `scrobble_events` table in the same `substreamer7.db` and exposes
- * typed row-level helpers.
- *
- * The connection is separate from `sqliteStorage.ts` and `detailTables.ts`
- * but points at the same database file; WAL mode (enabled by those modules
- * and re-asserted here for safety) makes concurrent writes from multiple
- * handles safe.
- *
- * Table is authoritative on disk. `completedScrobbleStore.completedScrobbles`
- * is an in-memory mirror populated once at launch via `hydrateScrobbles` and
- * kept in sync by every write action.
+ * Writes become silent no-ops when `getDb()` returns null (DB init failed)
+ * — callers don't need to handle exceptions.
  */
-import * as SQLite from 'expo-sqlite';
-
+import { getDb } from './db';
 import { type CompletedScrobble } from '../completedScrobbleStore';
-
-interface InternalDb {
-  getFirstSync<T>(sql: string, params?: readonly unknown[]): T | undefined;
-  getAllSync<T>(sql: string, params?: readonly unknown[]): T[];
-  runSync(sql: string, params?: readonly unknown[]): void;
-  execSync(sql: string): void;
-  withTransactionSync(fn: () => void): void;
-}
-
-let db: InternalDb | null = null;
-let initError: Error | null = null;
-
-try {
-  db = SQLite.openDatabaseSync('substreamer7.db') as unknown as InternalDb;
-  db.execSync('PRAGMA journal_mode = WAL;');
-  db.execSync('PRAGMA synchronous = NORMAL;');
-  db.execSync(
-    `CREATE TABLE IF NOT EXISTS scrobble_events (
-       id TEXT PRIMARY KEY NOT NULL,
-       song_json TEXT NOT NULL,
-       time INTEGER NOT NULL
-     );`,
-  );
-  db.execSync(
-    'CREATE INDEX IF NOT EXISTS idx_scrobble_events_time ON scrobble_events (time);',
-  );
-} catch (e) {
-  db = null;
-  initError = e instanceof Error ? e : new Error(String(e));
-  // eslint-disable-next-line no-console
-  console.warn(
-    '[scrobbleTable] init failed; per-row persistence unavailable:',
-    initError.message,
-  );
-}
-
-/** True when the scrobble table is wired up and functioning. */
-export const scrobbleTableHealthy: boolean = db !== null;
-export const scrobbleTableInitError: Error | null = initError;
 
 /* ------------------------------------------------------------------ */
 /*  Reads                                                              */
@@ -71,6 +21,7 @@ export const scrobbleTableInitError: Error | null = initError;
  * against.
  */
 export function hydrateScrobbles(): CompletedScrobble[] {
+  const db = getDb();
   if (db === null) return [];
   try {
     const rows = db.getAllSync<{ id: string; song_json: string; time: number }>(
@@ -105,6 +56,7 @@ export function hydrateScrobbles(): CompletedScrobble[] {
 
 /** Return the total scrobble row count. Used by diagnostics. */
 export function countScrobbles(): number {
+  const db = getDb();
   if (db === null) return 0;
   try {
     const row = db.getFirstSync<{ c: number }>('SELECT COUNT(*) AS c FROM scrobble_events;');
@@ -124,6 +76,7 @@ export function countScrobbles(): number {
  * concurrent-call edge cases without throwing).
  */
 export function insertScrobble(scrobble: CompletedScrobble): void {
+  const db = getDb();
   if (db === null) return;
   if (!scrobble.id || !scrobble.song?.id || !scrobble.song.title) return;
   try {
@@ -142,16 +95,17 @@ export function insertScrobble(scrobble: CompletedScrobble): void {
  * Invalid/duplicate records are filtered before insertion.
  */
 export function replaceAllScrobbles(scrobbles: readonly CompletedScrobble[]): void {
+  const db = getDb();
   if (db === null) return;
   try {
     db.withTransactionSync(() => {
-      db!.runSync('DELETE FROM scrobble_events;');
+      db.runSync('DELETE FROM scrobble_events;');
       const seen = new Set<string>();
       for (const s of scrobbles) {
         if (!s?.id || !s.song?.id || !s.song.title) continue;
         if (seen.has(s.id)) continue;
         seen.add(s.id);
-        db!.runSync(
+        db.runSync(
           'INSERT OR IGNORE INTO scrobble_events (id, song_json, time) VALUES (?, ?, ?);',
           [s.id, JSON.stringify(s.song), s.time],
         );
@@ -164,22 +118,11 @@ export function replaceAllScrobbles(scrobbles: readonly CompletedScrobble[]): vo
 
 /** Remove every row. Used on logout / server switch via resetAllStores. */
 export function clearScrobbles(): void {
+  const db = getDb();
   if (db === null) return;
   try {
     db.runSync('DELETE FROM scrobble_events;');
   } catch {
     /* dropped */
   }
-}
-
-/* ------------------------------------------------------------------ */
-/*  Test-only helpers (guarded)                                        */
-/* ------------------------------------------------------------------ */
-
-/**
- * Replace the module-private db handle. Used exclusively by the test mock so
- * tests can exercise the real SQL-building logic against an in-memory fake.
- */
-export function __setDbForTests(mockDb: InternalDb | null): void {
-  db = mockDb;
 }

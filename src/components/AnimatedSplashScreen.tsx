@@ -23,9 +23,9 @@ import { useTranslation } from 'react-i18next';
 
 import AnimatedWaveformLogo from './AnimatedWaveformLogo';
 import { getPendingTasks, runMigrations } from '../services/migrationService';
-import { hydratePerRowStores } from '../store/hydratePerRowStores';
+import { rehydrateAllStores } from '../store/persistence/rehydrate';
 import { migrationStore } from '../store/migrationStore';
-import { sqliteStorage } from '../store/sqliteStorage';
+import { kvStorage } from '../store/persistence';
 
 /**
  * Max time (ms) before we force-finish, even if an animation or
@@ -133,7 +133,7 @@ export default function AnimatedSplashScreen({ onFinish }: Props) {
       runMigrations(completedVersion)
         .then((finalVersion) => {
           migrationStore.getState().setCompletedVersion(finalVersion);
-          hydratePerRowStores();
+          rehydrateAllStores();
           setMigrationPhase('done');
         })
         .catch((e) => {
@@ -193,7 +193,7 @@ export default function AnimatedSplashScreen({ onFinish }: Props) {
     // appear pending on every launch.
     let completedVersion = 0;
     try {
-      const raw = sqliteStorage.getItem('substreamer-migration') as string | null;
+      const raw = kvStorage.getItem('substreamer-migration') as string | null;
       if (raw) {
         const parsed = JSON.parse(raw);
         completedVersion = parsed?.state?.completedVersion ?? 0;
@@ -204,7 +204,7 @@ export default function AnimatedSplashScreen({ onFinish }: Props) {
     if (pending.length === 0) {
       // No migrations to run, but the per-row stores still need to be
       // hydrated from SQLite on every launch.
-      hydratePerRowStores();
+      rehydrateAllStores();
       fadeOut();
       return;
     }

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 /** Number of size tiers cached per image (50, 150, 300, 600). */
 const IMAGE_SIZES_COUNT = 4;
@@ -66,7 +66,7 @@ export const imageCacheStore = create<ImageCacheState>()(
     }),
     {
       name: PERSIST_KEY,
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({
         totalBytes: state.totalBytes,
         fileCount: state.fileCount,

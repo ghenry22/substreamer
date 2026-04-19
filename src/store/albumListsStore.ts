@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { sqliteStorage } from './sqliteStorage';
+import { kvStorage } from './persistence';
 
 import {
   ensureCoverArtAuth,
@@ -125,7 +125,7 @@ export const albumListsStore = create<AlbumListsState>()(
     }),
     {
       name: PERSIST_KEY,
-      storage: createJSONStorage(() => sqliteStorage),
+      storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({
         recentlyAdded: state.recentlyAdded,
         recentlyPlayed: state.recentlyPlayed,

@@ -100,8 +100,8 @@ jest.mock('../../store/migrationStore', () => ({
 
 let mockSqliteGetItem: () => string | null = () => null;
 
-jest.mock('../../store/sqliteStorage', () => ({
-  sqliteStorage: {
+jest.mock('../../store/persistence/kvStorage', () => ({
+  kvStorage: {
     getItem: () => mockSqliteGetItem(),
   },
 }));
