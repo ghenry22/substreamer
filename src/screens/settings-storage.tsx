@@ -15,7 +15,11 @@ import { StorageUsageBar } from '../components/StorageUsageBar';
 import { useTheme } from '../hooks/useTheme';
 import { useThemedAlert } from '../hooks/useThemedAlert';
 import { ThemedAlert } from '../components/ThemedAlert';
-import { clearImageCache } from '../services/imageCacheService';
+import {
+  clearImageCache,
+  reconcileImageCacheAsync,
+  repairIncompleteImagesAsync,
+} from '../services/imageCacheService';
 import { clearMusicCache } from '../services/musicCacheService';
 import { clearQueue } from '../services/playerService';
 import { checkStorageLimit, getFreeDiskSpace } from '../services/storageService';
@@ -29,6 +33,7 @@ import {
   musicCacheStore,
   type MaxConcurrentDownloads,
 } from '../store/musicCacheStore';
+import { offlineModeStore } from '../store/offlineModeStore';
 import { playlistDetailStore } from '../store/playlistDetailStore';
 import { storageLimitStore, type StorageLimitMode } from '../store/storageLimitStore';
 import { formatBytes } from '../utils/formatters';
@@ -78,6 +83,8 @@ export function SettingsStorageScreen() {
 
   const limitMode = storageLimitStore((s) => s.limitMode);
   const maxCacheSizeGB = storageLimitStore((s) => s.maxCacheSizeGB);
+
+  const offlineMode = offlineModeStore((s) => s.offlineMode);
 
   const BYTES_PER_GB = 1024 ** 3;
   const freeDisk = getFreeDiskSpace();
@@ -206,6 +213,16 @@ export function SettingsStorageScreen() {
     imageCacheStore.getState().setMaxConcurrentImageDownloads(value);
     setImageConcurrentSheetVisible(false);
   }, []);
+
+  const handleImageScan = useCallback(async () => {
+    await reconcileImageCacheAsync();
+    imageCacheStore.getState().recalculateFromDb();
+  }, []);
+
+  const handleImageRepair = useCallback(() => {
+    if (offlineMode) return;
+    repairIncompleteImagesAsync();
+  }, [offlineMode]);
 
   const dynamicStyles = useMemo(
     () =>
@@ -366,28 +383,19 @@ export function SettingsStorageScreen() {
               {formatBytes(totalBytes)}
             </Text>
           </View>
-          {incompleteCount > 0 && (
-            <Pressable
-              onPress={() =>
-                router.push({
-                  pathname: '/image-cache-browser',
-                  params: { filter: 'incomplete' },
-                })
-              }
-              style={({ pressed }) => [
-                settingsStyles.infoRow,
-                { borderBottomColor: colors.border },
-                pressed && settingsStyles.pressed,
+          <View style={[settingsStyles.infoRow, { borderBottomColor: colors.border }]}>
+            <Text style={[settingsStyles.infoLabel, { color: colors.textPrimary }]}>
+              {t('incompleteImages')}
+            </Text>
+            <Text
+              style={[
+                settingsStyles.infoValue,
+                { color: incompleteCount > 0 ? colors.red : colors.textSecondary },
               ]}
             >
-              <Text style={[settingsStyles.infoLabel, { color: colors.red }]}>
-                {t('incompleteImages')}
-              </Text>
-              <Text style={[settingsStyles.infoValue, { color: colors.red }]}>
-                {t('incompleteImagesWarning', { count: incompleteCount })}
-              </Text>
-            </Pressable>
-          )}
+              {incompleteCount}
+            </Text>
+          </View>
           <Pressable
             onPress={handleImageConcurrentPress}
             style={({ pressed }) => [
@@ -401,6 +409,46 @@ export function SettingsStorageScreen() {
               {maxConcurrentImageDownloads}
             </Text>
           </Pressable>
+          <View style={settingsStyles.actionRow}>
+            <Pressable
+              onPress={handleImageScan}
+              style={({ pressed }) => [
+                settingsStyles.actionRowButton,
+                { borderColor: colors.border, borderWidth: StyleSheet.hairlineWidth },
+                pressed && settingsStyles.pressed,
+              ]}
+            >
+              <Ionicons name="search-outline" size={18} color={colors.textPrimary} />
+              <Text style={[settingsStyles.actionRowButtonText, { color: colors.textPrimary }]}>
+                {t('scan')}
+              </Text>
+            </Pressable>
+            {incompleteCount > 0 && (
+              <Pressable
+                onPress={handleImageRepair}
+                disabled={offlineMode}
+                style={({ pressed }) => [
+                  settingsStyles.actionRowButton,
+                  { backgroundColor: colors.primary },
+                  pressed && !offlineMode && settingsStyles.pressed,
+                  offlineMode && settingsStyles.disabled,
+                ]}
+              >
+                <Ionicons name="build-outline" size={18} color="#fff" />
+                <Text style={[settingsStyles.actionRowButtonText, { color: '#fff' }]}>
+                  {t('repair')}
+                </Text>
+              </Pressable>
+            )}
+          </View>
+          {offlineMode && incompleteCount > 0 && (
+            <View style={styles.offlineNotice}>
+              <Ionicons name="cloud-offline-outline" size={16} color={colors.textSecondary} />
+              <Text style={[styles.offlineNoticeText, { color: colors.textSecondary }]}>
+                {t('repairImagesOfflineNotice')}
+              </Text>
+            </View>
+          )}
           <Pressable
             onPress={() => router.push('/image-cache-browser')}
             style={({ pressed }) => [
@@ -614,6 +662,22 @@ export function SettingsStorageScreen() {
 }
 
 const styles = StyleSheet.create({
+  // Mirrors `offlineNotice` / `offlineNoticeText` in
+  // `settings-library-data.tsx`. Duplicated here rather than lifted into
+  // settingsStyles because it's currently only used on these two cards;
+  // if a third caller appears, move it into the shared sheet.
+  offlineNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+    paddingHorizontal: 4,
+  },
+  offlineNoticeText: {
+    fontSize: 13,
+    lineHeight: 18,
+    flex: 1,
+  },
   clearCacheButton: {
     flexDirection: 'row',
     alignItems: 'center',

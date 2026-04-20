@@ -29,6 +29,8 @@ import { fetch } from 'expo/fetch';
 
 import { listDirectoryAsync } from 'expo-async-fs';
 import { imageCacheStore } from '../store/imageCacheStore';
+import { offlineModeStore } from '../store/offlineModeStore';
+import { fireAndForget } from '../utils/fireAndForget';
 import {
   bulkInsertCachedImages,
   type CachedImageEntry as DbCachedImageEntry,
@@ -133,7 +135,7 @@ export function initImageCache(): void {
     if (!appStateSubscription) {
       appStateSubscription = AppState.addEventListener('change', (next: AppStateStatus) => {
         if (next === 'active' && !isProcessing) {
-          recoverStalledImageDownloadsAsync();
+          repairIncompleteImagesAsync();
         }
       });
     }
@@ -164,15 +166,31 @@ export function teardownImageCache(): void {
  *   1. `reconcileImageCacheAsync` heals FS↔SQL drift before anything else
  *      reads cache state. Without it, orphan files or missing rows would
  *      confuse the incomplete-detection query.
- *   2. `recoverStalledImageDownloadsAsync` sweeps stale `.tmp` files and
+ *   2. `repairIncompleteImagesAsync` sweeps stale `.tmp` files and
  *      re-queues any covers SQL now reports as incomplete.
  *
  * All filesystem work runs via expo-async-fs, keeping the JS thread free.
  */
 export async function deferredImageCacheInit(): Promise<void> {
   await reconcileImageCacheAsync();
-  await recoverStalledImageDownloadsAsync();
+  // Skip repair when offline — queuing downloads against a network we
+  // can't reach would just churn until each retry exhausts. The
+  // offline→online subscriber below picks it up when we reconnect.
+  if (!offlineModeStore.getState().offlineMode) {
+    await repairIncompleteImagesAsync();
+  }
 }
+
+// Auto-resume repair when the user toggles back online. An in-flight
+// offline session can accumulate incomplete covers (downloads that were
+// mid-variant when the app went offline); the moment connectivity is
+// back we want to clear them without making the user open Settings.
+offlineModeStore.subscribe((state, prev) => {
+  if (state.offlineMode === prev.offlineMode) return;
+  if (state.offlineMode) return;
+  if (imageCacheStore.getState().incompleteCount <= 0) return;
+  fireAndForget(repairIncompleteImagesAsync(), 'imageCache.offlineResume');
+});
 
 /**
  * Heal drift between the `cached_images` table and the on-disk layout.
@@ -295,15 +313,19 @@ function ensureCacheDir(): Directory {
 
 /**
  * Clean up any abandoned `.tmp` files left from a crashed download or
- * variant generation, then re-queue any coverArtId that's missing one
- * or more size variants on disk.
+ * variant generation, then re-queue every cover-art ID that's missing
+ * one or more size variants on disk.
  *
- * The "incomplete" check used to walk every subdirectory; it now runs as
- * one SQL query (`findIncompleteCovers`). The `.tmp` sweep still walks —
- * `.tmp` files aren't in the DB by design, and a full tree walk catches
- * any that accumulated before the DB row was written.
+ * The "incomplete" check used to walk every subdirectory; it now runs
+ * as one SQL query (`findIncompleteCovers`). The `.tmp` sweep still
+ * walks — `.tmp` files aren't in the DB by design, and a full tree
+ * walk catches any that accumulated before the DB row was written.
+ *
+ * Exposed to the UI as the "Repair" action (settings-storage card +
+ * image-cache browser row badge); also fires automatically at launch
+ * post-splash and on resume-from-background via AppState.
  */
-async function recoverStalledImageDownloadsAsync(): Promise<void> {
+export async function repairIncompleteImagesAsync(): Promise<void> {
   if (isProcessing) return;
 
   const dir = ensureCacheDir();

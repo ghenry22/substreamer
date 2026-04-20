@@ -649,7 +649,7 @@ describe('generateResizedVariant — success and catch paths', () => {
   });
 });
 
-describe('recoverStalledImageDownloadsAsync', () => {
+describe('repairIncompleteImagesAsync', () => {
   it('deletes .tmp files and re-queues incomplete downloads', async () => {
     const id = 'stalled';
     const sdName = subDirName(id);
@@ -766,7 +766,7 @@ describe('AppState listener (lines 114-115)', () => {
     expect(addEventListenerCall).toBeDefined();
     const callback = addEventListenerCall[1];
 
-    // Provide listDirectoryAsync so recoverStalledImageDownloadsAsync works
+    // Provide listDirectoryAsync so repairIncompleteImagesAsync works
     mockListDirectoryAsync.mockResolvedValue([]);
 
     // Trigger with 'active' — should not throw
@@ -776,7 +776,7 @@ describe('AppState listener (lines 114-115)', () => {
   });
 });
 
-describe('recoverStalledImageDownloadsAsync — inner listDirectoryAsync failure (line 182)', () => {
+describe('repairIncompleteImagesAsync — inner listDirectoryAsync failure (line 182)', () => {
   it('continues to next subdir when inner listing fails', async () => {
     // reconcile + recover each walk top-level once then each subdir once.
     // Make the top-level always report two dirs; the bad-dir always rejects,
