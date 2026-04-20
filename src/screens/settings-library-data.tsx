@@ -466,22 +466,6 @@ export function SettingsLibraryDataScreen() {
             <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
           </Pressable>
           <Pressable
-            onPress={() => router.push('/my-listening')}
-            style={({ pressed }) => [
-              settingsStyles.navRow,
-              { borderTopColor: colors.border },
-              pressed && settingsStyles.pressed,
-            ]}
-          >
-            <View style={settingsStyles.navRowLeft}>
-              <Ionicons name="analytics-outline" size={18} color={colors.textPrimary} />
-              <Text style={[settingsStyles.navRowText, { color: colors.textPrimary }]}>
-                {t('myListening')}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-          </Pressable>
-          <Pressable
             onPress={() => router.push('/scrobble-exclusion-browser')}
             style={({ pressed }) => [
               settingsStyles.navRow,
