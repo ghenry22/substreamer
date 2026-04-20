@@ -133,6 +133,17 @@ describe('getCoverArtUrl', () => {
     const url = getCoverArtUrl('al-1');
     expect(url).not.toContain('size=');
   });
+
+  it('returns null when offline mode is on', async () => {
+    await ensureCoverArtAuth();
+    const { offlineModeStore } = require('../../store/offlineModeStore');
+    offlineModeStore.getState.mockReturnValue({ offlineMode: true });
+    try {
+      expect(getCoverArtUrl('al-1')).toBeNull();
+    } finally {
+      offlineModeStore.getState.mockReturnValue({ offlineMode: false });
+    }
+  });
 });
 
 describe('getStreamUrl', () => {
@@ -180,6 +191,17 @@ describe('getStreamUrl', () => {
     await ensureCoverArtAuth();
     const url = getStreamUrl('track-1', 0);
     expect(url).not.toContain('timeOffset');
+  });
+
+  it('returns null when offline mode is on', async () => {
+    await ensureCoverArtAuth();
+    const { offlineModeStore } = require('../../store/offlineModeStore');
+    offlineModeStore.getState.mockReturnValue({ offlineMode: true });
+    try {
+      expect(getStreamUrl('track-1')).toBeNull();
+    } finally {
+      offlineModeStore.getState.mockReturnValue({ offlineMode: false });
+    }
   });
 });
 

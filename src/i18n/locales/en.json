@@ -70,6 +70,7 @@
   "offlineSearchPlaceholder": "Offline Search...",
   "startingPlayback": "Starting playback…",
   "playbackError": "Playback Error",
+  "noOfflineTracksInQueue": "No downloaded tracks in queue — playback not available offline.",
   "skip": "Skip",
   "next": "Next",
   "getStarted": "Get Started",

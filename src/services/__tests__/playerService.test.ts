@@ -134,6 +134,7 @@ jest.mock('../imageCacheService', () => ({
 
 jest.mock('../musicCacheService', () => ({
   getLocalTrackUri: jest.fn().mockReturnValue(null),
+  waitForTrackMapsReady: jest.fn(() => Promise.resolve()),
 }));
 
 jest.mock('../../store/musicCacheStore', () => ({
@@ -141,6 +142,13 @@ jest.mock('../../store/musicCacheStore', () => ({
     getState: jest.fn(() => ({
       cachedSongs: {},
     })),
+  },
+}));
+
+const mockOfflineMode = { offlineMode: false };
+jest.mock('../../store/offlineModeStore', () => ({
+  offlineModeStore: {
+    getState: jest.fn(() => mockOfflineMode),
   },
 }));
 
@@ -478,6 +486,137 @@ describe('clearQueue', () => {
     expect(mockSetProgress).toHaveBeenCalledWith(0, 0, 0);
     expect(mockSetError).toHaveBeenCalledWith(null);
     expect(mockSetRetrying).toHaveBeenCalledWith(false);
+  });
+
+  it('completes store cleanup even when TrackPlayer.reset rejects', async () => {
+    // Simulates a native reset that gets stuck because AVPlayer is
+    // stalled on an unreachable stream URL. The store reset must still
+    // run so the mini player visibly clears.
+    mockTP.reset.mockRejectedValueOnce(new Error('native-reset-stuck'));
+    await clearQueue();
+    expect(mockSetCurrentTrack).toHaveBeenCalledWith(null);
+    expect(mockSetQueue).toHaveBeenCalledWith([]);
+    expect(mockSetPlaybackState).toHaveBeenCalledWith('idle');
+    expect(mockClearPersistedQueue).toHaveBeenCalled();
+  });
+
+  it('completes store cleanup even when TrackPlayer.reset never settles (timeout)', async () => {
+    mockTP.reset.mockImplementationOnce(() => new Promise(() => { /* never resolves */ }));
+    jest.useFakeTimers();
+    try {
+      const p = clearQueue();
+      // Advance past the 2000ms timeout built into clearQueue.
+      jest.advanceTimersByTime(2500);
+      await p;
+    } finally {
+      jest.useRealTimers();
+    }
+    expect(mockSetCurrentTrack).toHaveBeenCalledWith(null);
+    expect(mockSetQueue).toHaveBeenCalledWith([]);
+    expect(mockClearPersistedQueue).toHaveBeenCalled();
+  });
+});
+
+describe('offline-mode queue building', () => {
+  beforeEach(() => {
+    mockOfflineMode.offlineMode = false;
+  });
+
+  afterEach(() => {
+    mockOfflineMode.offlineMode = false;
+  });
+
+  it('playTrack filters out non-cached tracks when offline and refocuses on a cached one', async () => {
+    await initPlayer();
+    const { getLocalTrackUri } = require('../musicCacheService');
+    (getLocalTrackUri as jest.Mock).mockImplementation((id: string) =>
+      id === 't2' ? '/local/t2.mp3' : null,
+    );
+    mockOfflineMode.offlineMode = true;
+
+    const queue = [makeChild('t1'), makeChild('t2'), makeChild('t3')];
+
+    await playTrack(queue[0], queue);
+
+    const addedTracks = mockTP.add.mock.calls.at(-1)?.[0] as Array<{ id: string }>;
+    expect(addedTracks.map((t) => t.id)).toEqual(['t2']);
+    expect(mockTP.skip).not.toHaveBeenCalled(); // start index collapsed to 0
+    expect(mockTP.play).toHaveBeenCalled();
+  });
+
+  it('playTrack clears queue + toasts when all tracks are non-cached and offline', async () => {
+    await initPlayer();
+    const { getLocalTrackUri } = require('../musicCacheService');
+    (getLocalTrackUri as jest.Mock).mockReturnValue(null);
+    mockOfflineMode.offlineMode = true;
+
+    mockTP.add.mockClear();
+    await playTrack(makeChild('t1'), [makeChild('t1'), makeChild('t2')]);
+
+    expect(mockTP.add).not.toHaveBeenCalled();
+    expect(mockToastFail).toHaveBeenCalledWith(
+      expect.stringContaining('No downloaded tracks'),
+    );
+    expect(mockSetQueue).toHaveBeenCalledWith([]);
+  });
+
+  it('addToQueue drops non-cached tracks when offline', async () => {
+    await initPlayer();
+    const { getLocalTrackUri } = require('../musicCacheService');
+    (getLocalTrackUri as jest.Mock).mockImplementation((id: string) =>
+      id === 'seed' ? '/local/seed.mp3' : null,
+    );
+    await playTrack(makeChild('seed'), [makeChild('seed')]);
+
+    mockTP.add.mockClear();
+    mockToastFail.mockClear();
+    (getLocalTrackUri as jest.Mock).mockImplementation((id: string) =>
+      id === 'cached' ? '/local/cached.mp3' : null,
+    );
+    mockOfflineMode.offlineMode = true;
+
+    await addToQueue([makeChild('nonCached1'), makeChild('cached'), makeChild('nonCached2')]);
+
+    const addedTracks = mockTP.add.mock.calls.at(-1)?.[0] as Array<{ id: string }>;
+    expect(addedTracks.map((t) => t.id)).toEqual(['cached']);
+    expect(mockToastFail).not.toHaveBeenCalled();
+  });
+
+  it('addToQueue shows toast but leaves existing queue intact when all new tracks are non-cached offline', async () => {
+    await initPlayer();
+    const { getLocalTrackUri } = require('../musicCacheService');
+    (getLocalTrackUri as jest.Mock).mockImplementation((id: string) =>
+      id === 'seed' ? '/local/seed.mp3' : null,
+    );
+    await playTrack(makeChild('seed'), [makeChild('seed')]);
+
+    mockTP.add.mockClear();
+    mockToastFail.mockClear();
+    mockSetQueue.mockClear();
+    (getLocalTrackUri as jest.Mock).mockReturnValue(null);
+    mockOfflineMode.offlineMode = true;
+
+    await addToQueue([makeChild('a'), makeChild('b')]);
+
+    expect(mockTP.add).not.toHaveBeenCalled();
+    expect(mockToastFail).toHaveBeenCalledWith(
+      expect.stringContaining('No downloaded tracks'),
+    );
+    // Existing queue must not be cleared.
+    expect(mockSetQueue).not.toHaveBeenCalledWith([]);
+  });
+
+  it('leaves non-cached tracks in the queue when online (no filtering when offlineMode is off)', async () => {
+    await initPlayer();
+    const { getLocalTrackUri } = require('../musicCacheService');
+    (getLocalTrackUri as jest.Mock).mockReturnValue(null);
+    mockOfflineMode.offlineMode = false;
+
+    const queue = [makeChild('t1'), makeChild('t2'), makeChild('t3')];
+    await playTrack(queue[0], queue);
+
+    const addedTracks = mockTP.add.mock.calls.at(-1)?.[0] as Array<{ id: string }>;
+    expect(addedTracks.map((t) => t.id)).toEqual(['t1', 't2', 't3']);
   });
 });
 

@@ -23,6 +23,7 @@ import {
   type RepeatModeSetting,
 } from '../store/playbackSettingsStore';
 import { musicCacheStore } from '../store/musicCacheStore';
+import { offlineModeStore } from '../store/offlineModeStore';
 import { playbackToastStore } from '../store/playbackToastStore';
 import { playerStore, type PlaybackStatus } from '../store/playerStore';
 import { sleepTimerStore } from '../store/sleepTimerStore';
@@ -30,7 +31,7 @@ import { serverInfoStore } from '../store/serverInfoStore';
 import { shuffleArray } from '../utils/arrayHelpers';
 import { addCompletedScrobble, sendNowPlaying } from './scrobbleService';
 import { getCachedImageUri } from './imageCacheService';
-import { getLocalTrackUri } from './musicCacheService';
+import { getLocalTrackUri, waitForTrackMapsReady } from './musicCacheService';
 import {
   persistQueue,
   persistPositionIfDue,
@@ -40,6 +41,7 @@ import {
   getPersistedPosition,
 } from './queuePersistenceService';
 import { resolveEffectiveFormat } from '../utils/effectiveFormat';
+import { withTimeout } from '../utils/withTimeout';
 import {
   ensureCoverArtAuth,
   getCoverArtUrl,
@@ -125,22 +127,69 @@ function stampQueueFormat(child: Child): EffectiveFormat {
   });
 }
 
-/** Convert a Child (Subsonic song) to an RNTP Track object. */
-function childToTrack(child: Child): Track {
+/**
+ * Convert a Child (Subsonic song) to an RNTP Track object.
+ *
+ * Returns `null` when the track can't be played right now:
+ * - Offline mode + no local cached file → RNTP must not receive a
+ *   server stream URL (AVPlayer would latch onto it and stall
+ *   indefinitely waiting for data from an unreachable server).
+ * - No local URI AND stream-URL construction failed (e.g. auth not
+ *   yet initialised). An empty-string URL in RNTP produces the same
+ *   stall, so filter it out here rather than push it downstream.
+ *
+ * Callers must filter nulls out of the resulting array and treat an
+ * all-null queue as "nothing playable" (toast + clearQueue).
+ */
+function childToTrack(child: Child): Track | null {
   const localUri = getLocalTrackUri(child.id);
+  const offline = offlineModeStore.getState().offlineMode;
+  if (!localUri && offline) return null;
+
+  const url = localUri ?? getStreamUrl(child.id);
+  if (!url) return null;
+
   const cachedArt = getCachedImageUri(child.coverArt ?? '', 600);
   const contentType = localUri ? mimeFromUri(localUri) : undefined;
+  // In offline mode drop any server-only artwork so RNTP's lock-screen
+  // artwork fetch can't hit the network either. (`getCoverArtUrl` also
+  // returns null under offline mode now; this is belt-and-braces.)
+  const artwork = cachedArt
+    ?? (offline ? undefined : getCoverArtUrl(child.coverArt ?? '', 600) ?? undefined);
+
   return {
     id: child.id,
-    url: localUri ?? getStreamUrl(child.id) ?? '',
+    url,
     title: child.title,
     artist: child.artist ?? i18n.t('unknownArtist'),
     album: child.album ?? undefined,
-    artwork: cachedArt ?? getCoverArtUrl(child.coverArt ?? '', 600) ?? undefined,
+    artwork,
     duration: child.duration ?? 0,
     userAgent: 'substreamer8',
     ...(contentType ? { contentType } : {}),
   };
+}
+
+/**
+ * Build (RNTP tracks, filtered child queue) from a Child queue, dropping
+ * entries that aren't currently playable. Preserves source order so
+ * callers can translate desired indices onto the filtered queue by
+ * looking up the original Child.
+ */
+function buildPlayableQueue(queue: readonly Child[]): {
+  rnTracks: Track[];
+  filteredQueue: Child[];
+} {
+  const rnTracks: Track[] = [];
+  const filteredQueue: Child[] = [];
+  for (const child of queue) {
+    const track = childToTrack(child);
+    if (track) {
+      rnTracks.push(track);
+      filteredQueue.push(child);
+    }
+  }
+  return { rnTracks, filteredQueue };
 }
 
 /* ------------------------------------------------------------------ */
@@ -711,11 +760,43 @@ async function hydrateRestoredQueue(overrideIndex?: number): Promise<void> {
   pendingHydration = false;
   pendingResumePosition = null;
 
+  // Wait for the cached-track map so childToTrack sees local URIs for
+  // songs the user downloaded. Without this, a fast tap at cold launch
+  // hits the race where trackUriMap is still empty and every queue entry
+  // gets a server URL — fatal when offline + server unreachable.
+  await waitForTrackMapsReady();
   await ensureCoverArtAuth();
 
-  const rnTracks = currentChildQueue.map(childToTrack);
-  const storeIndex = playerStore.getState().currentTrackIndex ?? 0;
-  const startIndex = overrideIndex ?? storeIndex;
+  const originalIndex = overrideIndex ?? playerStore.getState().currentTrackIndex ?? 0;
+  const originalChild = currentChildQueue[originalIndex] ?? null;
+
+  const { rnTracks, filteredQueue } = buildPlayableQueue(currentChildQueue);
+
+  if (rnTracks.length === 0) {
+    // Nothing in the restored queue is playable right now (offline + no
+    // cached files). Surface a toast and clear out the stale queue so the
+    // mini player doesn't linger on a track we can't actually play.
+    playbackToastStore.getState().fail(i18n.t('noOfflineTracksInQueue'));
+    await clearQueue();
+    return;
+  }
+
+  const pruned = filteredQueue.length !== currentChildQueue.length;
+
+  if (pruned) {
+    currentChildQueue = filteredQueue;
+    playerStore.getState().setQueue(filteredQueue);
+  }
+
+  // Translate the requested start index onto the filtered queue by
+  // following the original Child. If the desired track was dropped
+  // (non-cached offline), fall back to 0 — user gets something playing
+  // rather than a silent stall.
+  let startIndex = 0;
+  if (originalChild) {
+    const idx = filteredQueue.findIndex((c) => c.id === originalChild.id);
+    if (idx !== -1) startIndex = idx;
+  }
 
   await TrackPlayer.add(rnTracks);
 
@@ -726,10 +807,14 @@ async function hydrateRestoredQueue(overrideIndex?: number): Promise<void> {
   if (
     overrideIndex == null &&
     resume &&
-    currentChildQueue[startIndex]?.id === resume.trackId &&
+    filteredQueue[startIndex]?.id === resume.trackId &&
     resume.position > 0
   ) {
     await TrackPlayer.seekTo(resume.position);
+  }
+
+  if (pruned) {
+    persistQueue(filteredQueue, startIndex);
   }
 }
 
@@ -771,22 +856,37 @@ export async function playTrack(
   playbackToastStore.getState().show();
 
   try {
+    // Populate trackUriMap before deciding which tracks are playable so
+    // a tap right after cold launch doesn't downgrade a downloaded song
+    // to a server URL.
+    await waitForTrackMapsReady();
     await ensureCoverArtAuth();
 
-    currentChildQueue = queue;
+    const { rnTracks, filteredQueue } = buildPlayableQueue(queue);
+
+    if (rnTracks.length === 0) {
+      playbackToastStore.getState().fail(i18n.t('noOfflineTracksInQueue'));
+      await clearQueue();
+      return;
+    }
+
+    currentChildQueue = filteredQueue;
     trackPlaylistMap.clear();
     if (sourcePlaylistId) {
-      for (const child of queue) trackPlaylistMap.set(child.id, sourcePlaylistId);
+      for (const child of filteredQueue) trackPlaylistMap.set(child.id, sourcePlaylistId);
     }
-    playerStore.getState().setQueue(queue);
+    playerStore.getState().setQueue(filteredQueue);
 
     // Stamp effective format for each track in the queue.
     const formats: Record<string, EffectiveFormat> = {};
-    for (const child of queue) formats[child.id] = stampQueueFormat(child);
+    for (const child of filteredQueue) formats[child.id] = stampQueueFormat(child);
     playerStore.getState().setQueueFormats(formats);
 
-    const rnTracks = queue.map(childToTrack);
-    const startIndex = queue.findIndex((c) => c.id === track.id);
+    // Translate the tapped track onto the filtered queue. If the tapped
+    // track isn't playable (non-cached + offline), start at 0 rather
+    // than blocking — users expect something to happen.
+    let startIndex = filteredQueue.findIndex((c) => c.id === track.id);
+    if (startIndex === -1) startIndex = 0;
 
     await TrackPlayer.reset();
     await TrackPlayer.add(rnTracks);
@@ -797,7 +897,7 @@ export async function playTrack(
 
     await TrackPlayer.play();
     playbackToastStore.getState().succeed();
-    persistQueue(queue, startIndex > 0 ? startIndex : 0);
+    persistQueue(filteredQueue, startIndex);
   } catch (e) {
     playbackToastStore.getState().fail(
       e instanceof Error ? e.message : i18n.t('playbackError'),
@@ -996,7 +1096,15 @@ export async function clearQueue(): Promise<void> {
   currentChildQueue = [];
   trackPlaylistMap.clear();
 
-  await TrackPlayer.reset();
+  // Native RNTP.reset() is normally synchronous, but if the active track
+  // is stalled on an unreachable stream URL the native teardown can block.
+  // Cap the await so the store cleanup below always runs — the user's tap
+  // must be visibly respected even when the native player is wedged.
+  try {
+    await withTimeout(() => TrackPlayer.reset(), 2000);
+  } catch {
+    /* RNTP reset failed — fall through to store cleanup anyway. */
+  }
   clearPersistedQueue();
 
   const store = playerStore.getState();
@@ -1028,21 +1136,28 @@ export async function addToQueue(
     return;
   }
 
+  await waitForTrackMapsReady();
   await ensureCoverArtAuth();
 
-  const rnTracks = tracks.map(childToTrack);
+  const { rnTracks, filteredQueue: playable } = buildPlayableQueue(tracks);
+
+  if (rnTracks.length === 0) {
+    playbackToastStore.getState().fail(i18n.t('noOfflineTracksInQueue'));
+    return;
+  }
+
   await TrackPlayer.add(rnTracks);
 
   if (sourcePlaylistId) {
-    for (const child of tracks) trackPlaylistMap.set(child.id, sourcePlaylistId);
+    for (const child of playable) trackPlaylistMap.set(child.id, sourcePlaylistId);
   }
 
   // Stamp format for each appended track using current settings.
-  for (const child of tracks) {
+  for (const child of playable) {
     playerStore.getState().addQueueFormat(child.id, stampQueueFormat(child));
   }
 
-  currentChildQueue = [...currentChildQueue, ...tracks];
+  currentChildQueue = [...currentChildQueue, ...playable];
   playerStore.getState().setQueue(currentChildQueue);
   persistQueue(currentChildQueue, playerStore.getState().currentTrackIndex ?? 0);
 }
@@ -1160,14 +1275,22 @@ export async function shuffleQueue(): Promise<void> {
     await TrackPlayer.pause();
 
     const shuffled = shuffleArray(currentChildQueue);
-    currentChildQueue = shuffled;
-    playerStore.getState().setQueue(shuffled);
+    const { rnTracks, filteredQueue } = buildPlayableQueue(shuffled);
+
+    if (rnTracks.length === 0) {
+      playbackToastStore.getState().fail(i18n.t('noOfflineTracksInQueue'));
+      await clearQueue();
+      return;
+    }
+
+    currentChildQueue = filteredQueue;
+    playerStore.getState().setQueue(filteredQueue);
 
     // Replace the RNTP queue atomically, skip to the first track, and play.
-    await TrackPlayer.setQueue(shuffled.map(childToTrack));
+    await TrackPlayer.setQueue(rnTracks);
     await TrackPlayer.skip(0);
     await TrackPlayer.play();
-    persistQueue(shuffled, 0);
+    persistQueue(filteredQueue, 0);
   } finally {
     isSettingQueue = false;
     isShuffling = false;

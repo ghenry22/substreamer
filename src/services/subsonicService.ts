@@ -214,6 +214,7 @@ export function getCoverArtUrl(coverArtId: string, size?: number): string | null
   const { isLoggedIn, serverUrl, username } = authStore.getState();
   if (!coverArtId || !isLoggedIn || !serverUrl || !username) return null;
   if (cachedCoverArtKey === null || !cachedCoverArtToken) return null;
+  if (offlineModeStore.getState().offlineMode) return null;
   const base = `${normalizeServerUrl(serverUrl)}/rest/getCoverArt.view`;
   const params = new URLSearchParams({
     id: stripCoverArtSuffix(coverArtId),
@@ -264,6 +265,7 @@ export function getStreamUrl(
   const { isLoggedIn, serverUrl, username } = authStore.getState();
   if (!trackId || !isLoggedIn || !serverUrl || !username) return null;
   if (cachedCoverArtKey === null || !cachedCoverArtToken) return null;
+  if (offlineModeStore.getState().offlineMode) return null;
   const base = `${normalizeServerUrl(serverUrl)}/rest/stream.view`;
   const params = new URLSearchParams({
     id: trackId,

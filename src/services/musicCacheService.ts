@@ -270,10 +270,38 @@ async function populateTrackMapsAsync(): Promise<void> {
   }
 
   trackMapsReady = true;
+  flushTrackMapsReadyWaiters();
 
   // Run any starred-songs sync that was deferred because the favoritesStore
   // subscription fired before the maps were ready.
   syncStarredSongsDownload();
+}
+
+/** Waiters queued before `trackMapsReady` flipped true. */
+const trackMapsReadyWaiters: Array<() => void> = [];
+
+function flushTrackMapsReadyWaiters(): void {
+  while (trackMapsReadyWaiters.length > 0) {
+    const resolve = trackMapsReadyWaiters.shift();
+    resolve?.();
+  }
+}
+
+/**
+ * Resolves as soon as {@link populateTrackMapsAsync} has finished rebuilding
+ * `trackUriMap`. Used by the player's resume path so `childToTrack` sees
+ * local URIs for downloaded songs instead of server stream URLs — critical
+ * on a cold launch in offline mode where the launch race would otherwise
+ * push unreachable URLs into RNTP.
+ *
+ * Resolves synchronously when the maps are already populated. Does NOT
+ * kick off the populate itself (that's owned by `deferredMusicCacheInit`).
+ */
+export function waitForTrackMapsReady(): Promise<void> {
+  if (trackMapsReady) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    trackMapsReadyWaiters.push(resolve);
+  });
 }
 
 /**

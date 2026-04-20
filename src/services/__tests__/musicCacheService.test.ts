@@ -266,6 +266,7 @@ import {
   redownloadTrack,
   registerMusicCacheOnAlbumReferencedHook,
   reconcileMusicCacheAsync,
+  waitForTrackMapsReady,
 } from '../musicCacheService';
 
 import type { Child } from '../subsonicService';
@@ -2417,5 +2418,41 @@ describe('reconcileMusicCacheAsync', () => {
         Object.defineProperty(Directory.prototype, 'exists', origDesc);
       }
     }
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  waitForTrackMapsReady                                              */
+/* ------------------------------------------------------------------ */
+
+describe('waitForTrackMapsReady', () => {
+  it('resolves immediately once trackMapsReady is set (i.e. after deferredMusicCacheInit)', async () => {
+    // deferredMusicCacheInit runs populateTrackMapsAsync which flips the
+    // ready flag. Subsequent calls should resolve synchronously.
+    await deferredMusicCacheInit();
+    const start = Date.now();
+    await waitForTrackMapsReady();
+    expect(Date.now() - start).toBeLessThan(50);
+  });
+
+  it('queues and flushes waiters when populateTrackMapsAsync flips the flag', async () => {
+    // The module scope is shared across tests in this file; to exercise
+    // the queued-waiter code path we rely on isolateModules to get a
+    // fresh musicCacheService with `trackMapsReady === false`.
+    jest.isolateModules(() => {
+      jest.doMock('../subsonicService', () => ({
+        ...jest.requireActual('../subsonicService'),
+      }));
+      const mod = require('../musicCacheService');
+      let resolved = false;
+      const p = mod.waitForTrackMapsReady().then(() => {
+        resolved = true;
+      });
+      expect(resolved).toBe(false);
+      // Trigger populate via deferredMusicCacheInit — resolves the waiter.
+      return mod.deferredMusicCacheInit().then(() => p).then(() => {
+        expect(resolved).toBe(true);
+      });
+    });
   });
 });
