@@ -66,16 +66,18 @@ jest.mock('expo-file-system', () => {
   };
 });
 
-jest.mock('expo-image-manipulator', () => ({
-  ImageManipulator: {
-    manipulate: jest.fn(() => ({
-      resize: jest.fn(),
-      renderAsync: jest.fn().mockResolvedValue({
-        saveAsync: jest.fn().mockResolvedValue({ uri: 'file:///tmp/resized.jpg' }),
-      }),
-    })),
+const mockResizeImageToFileAsync = jest.fn(
+  async (_src: string, targetUri: string, _width: number, _quality: number) => {
+    // Mimic the native module: after a successful resize the target file
+    // exists on disk. Tests drive the mock file-existence map so downstream
+    // rename/move logic sees the variant.
+    mockFileExistsMap.set(targetUri.replace(/^file:\/\//, ''), true);
   },
-  SaveFormat: { JPEG: 'jpeg' },
+);
+
+jest.mock('expo-image-resize', () => ({
+  resizeImageToFileAsync: (src: string, tgt: string, width: number, quality: number) =>
+    mockResizeImageToFileAsync(src, tgt, width, quality),
 }));
 
 jest.mock('expo-async-fs', () => ({
@@ -205,7 +207,8 @@ import {
 } from '../imageCacheService';
 
 const { fetch: mockFetch } = jest.requireMock('expo/fetch') as { fetch: jest.Mock };
-const { ImageManipulator: mockImageManipulator } = jest.requireMock('expo-image-manipulator') as any;
+// Reset helpers for the new expo-image-resize mock. Each test can override
+// default success behaviour with mockRejectedValueOnce / mockImplementationOnce.
 
 /**
  * Helper: build the internal mock `_name` key for a subdirectory under image-cache.
@@ -246,7 +249,11 @@ beforeEach(() => {
   mockRecalculateFromDb.mockClear();
   mockReset.mockClear();
   mockFetch.mockClear();
-  mockImageManipulator.manipulate.mockClear();
+  mockResizeImageToFileAsync.mockClear();
+  // Default: success. Target file appears in the mock FS existence map.
+  mockResizeImageToFileAsync.mockImplementation(async (_src: string, targetUri: string) => {
+    mockFileExistsMap.set(targetUri.replace(/^file:\/\//, ''), true);
+  });
   (getCoverArtUrl as jest.Mock).mockReturnValue('https://example.com/cover.jpg');
   (stripCoverArtSuffix as jest.Mock).mockImplementation((id: string) => id.replace(/_[0-9a-f]+$/, ''));
   // Default: empty directory walks for reconcile + recover passes.
@@ -546,15 +553,7 @@ describe('download pipeline — cacheAllSizes + processQueue', () => {
       arrayBuffer: () => Promise.resolve(new ArrayBuffer(1024)),
     });
 
-    // Mock ImageManipulator for the 3 resize operations
-    const mockSaveAsync = jest.fn().mockResolvedValue({ uri: 'file:///tmp/resized.jpg' });
-    const mockRenderAsync = jest.fn().mockResolvedValue({ saveAsync: mockSaveAsync });
-    const mockResize = jest.fn();
-    mockImageManipulator.manipulate.mockReturnValue({
-      resize: mockResize,
-      renderAsync: mockRenderAsync,
-    });
-
+    // Default mockResizeImageToFileAsync in beforeEach handles happy path.
     await cacheAllSizes(id);
 
     // fetch was called for the 600px source
@@ -616,17 +615,10 @@ describe('generateResizedVariant — success and catch paths', () => {
     // Evict in-memory cache so getCachedImageUri re-checks filesystem
     for (const s of IMAGE_SIZES) evictUriCacheEntry(id, s);
 
-    const mockSaveAsync = jest.fn().mockResolvedValue({ uri: 'file:///tmp/resized.jpg' });
-    const mockRenderAsync = jest.fn().mockResolvedValue({ saveAsync: mockSaveAsync });
-    mockImageManipulator.manipulate.mockReturnValue({
-      resize: jest.fn(),
-      renderAsync: mockRenderAsync,
-    });
-
     await cacheAllSizes(id);
 
-    // ImageManipulator.manipulate was called for each of the 3 resize sizes (300, 150, 50)
-    expect(mockImageManipulator.manipulate).toHaveBeenCalledTimes(3);
+    // resizeImageToFileAsync was called for each of the 3 resize sizes (300, 150, 50)
+    expect(mockResizeImageToFileAsync).toHaveBeenCalledTimes(3);
     expect(mockUpsertCachedImage).toHaveBeenCalled();
   });
 
@@ -638,13 +630,9 @@ describe('generateResizedVariant — success and catch paths', () => {
     mockFileExistsMap.set(fileMockName(id, '600.jpg'), true);
     for (const s of IMAGE_SIZES) evictUriCacheEntry(id, s);
 
-    // Make manipulate throw for all resize attempts
-    mockImageManipulator.manipulate.mockReturnValue({
-      resize: jest.fn(),
-      renderAsync: jest.fn().mockRejectedValue(new Error('Manipulator crash')),
-    });
+    // Make every resize call fail — failures must be caught internally.
+    mockResizeImageToFileAsync.mockRejectedValue(new Error('Resize crash'));
 
-    // Should not throw; failures are caught internally
     await expect(cacheAllSizes(id)).resolves.toBeUndefined();
   });
 });
@@ -669,12 +657,6 @@ describe('repairIncompleteImagesAsync', () => {
     // Pre-cache the source URI so the re-queue doesn't actually download.
     mockFileExistsMap.set(fileMockName(id, '600.jpg'), true);
     mockFileExistsMap.set(fileMockName(id, '300.jpg.tmp'), true);
-
-    const mockSaveAsync = jest.fn().mockResolvedValue({ uri: 'file:///tmp/resized.jpg' });
-    mockImageManipulator.manipulate.mockReturnValue({
-      resize: jest.fn(),
-      renderAsync: jest.fn().mockResolvedValue({ saveAsync: mockSaveAsync }),
-    });
 
     await deferredImageCacheInit();
 
@@ -709,12 +691,6 @@ describe('refreshCachedImage', () => {
       arrayBuffer: () => Promise.resolve(new ArrayBuffer(2048)),
     });
 
-    const mockSaveAsync = jest.fn().mockResolvedValue({ uri: 'file:///tmp/resized.jpg' });
-    mockImageManipulator.manipulate.mockReturnValue({
-      resize: jest.fn(),
-      renderAsync: jest.fn().mockResolvedValue({ saveAsync: mockSaveAsync }),
-    });
-
     await refreshCachedImage(id);
 
     // deleteCachedImage should have dropped the DB rows for this coverArtId.
@@ -732,12 +708,6 @@ describe('deduplication — concurrent cacheAllSizes calls', () => {
       ok: true,
       headers: { get: () => 'image/jpeg' },
       arrayBuffer: () => Promise.resolve(new ArrayBuffer(256)),
-    });
-
-    const mockSaveAsync = jest.fn().mockResolvedValue({ uri: 'file:///tmp/resized.jpg' });
-    mockImageManipulator.manipulate.mockReturnValue({
-      resize: jest.fn(),
-      renderAsync: jest.fn().mockResolvedValue({ saveAsync: mockSaveAsync }),
     });
 
     // Call cacheAllSizes concurrently for the same id
@@ -812,12 +782,6 @@ describe('downloadSourceImage — dest.exists before rename (line 399)', () => {
       },
     });
 
-    const mockSaveAsync = jest.fn().mockResolvedValue({ uri: 'file:///tmp/resized.jpg' });
-    mockImageManipulator.manipulate.mockReturnValue({
-      resize: jest.fn(),
-      renderAsync: jest.fn().mockResolvedValue({ saveAsync: mockSaveAsync }),
-    });
-
     await cacheAllSizes(id);
 
     expect(mockFetch).toHaveBeenCalled();
@@ -853,26 +817,22 @@ describe('generateResizedVariant — dest.exists before rename (line 445)', () =
     mockFileExistsMap.set(fileMockName(id, '600.jpg'), true);
     for (const s of IMAGE_SIZES) evictUriCacheEntry(id, s);
 
-    const mockSaveAsync = jest.fn().mockResolvedValue({ uri: 'file:///tmp/resized.jpg' });
-
-    let manipulateCallCount = 0;
-    mockImageManipulator.manipulate.mockImplementation(() => {
-      manipulateCallCount++;
+    let resizeCallCount = 0;
+    mockResizeImageToFileAsync.mockImplementation(async (_src: string, targetUri: string) => {
+      resizeCallCount++;
       // Set the dest file as existing for the CURRENT size so dest.exists is true
       // Resize order: 300, 150, 50
-      const sizeForCall = [300, 150, 50][manipulateCallCount - 1];
+      const sizeForCall = [300, 150, 50][resizeCallCount - 1];
       if (sizeForCall) {
         mockFileExistsMap.set(fileMockName(id, `${sizeForCall}.jpg`), true);
       }
-      return {
-        resize: jest.fn(),
-        renderAsync: jest.fn().mockResolvedValue({ saveAsync: mockSaveAsync }),
-      };
+      // Target tmp also appears on disk so the subsequent move succeeds.
+      mockFileExistsMap.set(targetUri.replace(/^file:\/\//, ''), true);
     });
 
     await cacheAllSizes(id);
 
-    expect(mockImageManipulator.manipulate).toHaveBeenCalledTimes(3);
+    expect(mockResizeImageToFileAsync).toHaveBeenCalledTimes(3);
     expect(mockUpsertCachedImage).toHaveBeenCalled();
   });
 });
@@ -885,18 +845,41 @@ describe('generateResizedVariant — catch with existing tmp (line 454)', () => 
     mockFileExistsMap.set(fileMockName(id, '600.jpg'), true);
     for (const s of IMAGE_SIZES) evictUriCacheEntry(id, s);
 
-    mockImageManipulator.manipulate.mockReturnValue({
-      resize: jest.fn(),
-      renderAsync: jest.fn().mockImplementation(() => {
-        // Set tmp files as existing before the error
-        mockFileExistsMap.set(fileMockName(id, '300.jpg.tmp'), true);
-        mockFileExistsMap.set(fileMockName(id, '150.jpg.tmp'), true);
-        mockFileExistsMap.set(fileMockName(id, '50.jpg.tmp'), true);
-        return Promise.reject(new Error('Resize failed'));
-      }),
+    mockResizeImageToFileAsync.mockImplementation(async () => {
+      // Set tmp files as existing before the error so the catch block's
+      // tmp.exists check fires for each size.
+      mockFileExistsMap.set(fileMockName(id, '300.jpg.tmp'), true);
+      mockFileExistsMap.set(fileMockName(id, '150.jpg.tmp'), true);
+      mockFileExistsMap.set(fileMockName(id, '50.jpg.tmp'), true);
+      throw new Error('Resize failed');
     });
 
     await expect(cacheAllSizes(id)).resolves.toBeUndefined();
+  });
+});
+
+describe('generateResizedVariant — 3-failure circuit breaker', () => {
+  it('stops calling resize for a cover after three consecutive failures', async () => {
+    const id = 'repeat-fail';
+
+    mockDirExistsMap.set(subDirName(id), true);
+    mockFileExistsMap.set(fileMockName(id, '600.jpg'), true);
+    for (const s of IMAGE_SIZES) evictUriCacheEntry(id, s);
+
+    mockResizeImageToFileAsync.mockRejectedValue(new Error('persistent decode failure'));
+
+    // Each cacheAllSizes pass attempts 3 resizes (300/150/50). After the
+    // first pass the failure counter hits 3; subsequent passes must skip.
+    await cacheAllSizes(id);
+    expect(mockResizeImageToFileAsync).toHaveBeenCalledTimes(3);
+
+    mockResizeImageToFileAsync.mockClear();
+    // Evict uriCache so cacheAllSizes believes the variants are still missing
+    // and tries to regenerate them.
+    for (const s of IMAGE_SIZES) evictUriCacheEntry(id, s);
+    await cacheAllSizes(id);
+
+    expect(mockResizeImageToFileAsync).not.toHaveBeenCalled();
   });
 });
 

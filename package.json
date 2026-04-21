@@ -51,7 +51,7 @@
     "expo-font": "~55.0.4",
     "expo-gzip": "file:./modules/expo-gzip",
     "expo-haptics": "~55.0.14",
-    "expo-image-manipulator": "~55.0.15",
+    "expo-image-resize": "file:./modules/expo-image-resize",
     "expo-intent-launcher": "~55.0.12",
     "expo-linear-gradient": "~55.0.13",
     "expo-linking": "~55.0.13",
@@ -130,6 +130,7 @@
           "expo-backup-exclusions",
           "expo-gzip",
           "expo-move-to-back",
+          "expo-image-resize",
           "subsonic-api"
         ]
       }

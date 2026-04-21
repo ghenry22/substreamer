@@ -23,11 +23,11 @@
  */
 
 import { Directory, File, Paths } from 'expo-file-system';
-import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { AppState, type AppStateStatus } from 'react-native';
 import { fetch } from 'expo/fetch';
 
 import { listDirectoryAsync } from 'expo-async-fs';
+import { resizeImageToFileAsync } from 'expo-image-resize';
 import { imageCacheStore } from '../store/imageCacheStore';
 import { offlineModeStore } from '../store/offlineModeStore';
 import { fireAndForget } from '../utils/fireAndForget';
@@ -603,8 +603,21 @@ async function downloadSourceImage(
 }
 
 /**
- * Generate a single resized variant from the 600px source using
- * expo-image-manipulator. Writes to a .tmp file first, then renames.
+ * Coverages where variant generation has failed repeatedly during this
+ * app session. We stop retrying so a persistent per-cover decode bug
+ * (e.g. corrupt 600 source) can't produce an unbounded loop on re-entry.
+ * Resets on app restart — transient issues self-heal.
+ */
+const variantFailureCount = new Map<string, number>();
+const MAX_VARIANT_FAILURES = 3;
+
+/**
+ * Generate a single resized variant from the 600px source using the
+ * local `expo-image-resize` native module. Writes to a .tmp file first,
+ * then renames. The module uses `BitmapFactory.decodeFile` (Android) /
+ * `UIImage(contentsOfFile:)` (iOS) — no Glide, no coroutine callback
+ * surface, so the `expo-image-manipulator` double-resume crash that
+ * surfaces on Android 16 is structurally impossible here.
  */
 async function generateResizedVariant(
   sourceUri: string,
@@ -612,22 +625,16 @@ async function generateResizedVariant(
   size: number,
   subDir: Directory,
 ): Promise<void> {
+  if ((variantFailureCount.get(coverArtId) ?? 0) >= MAX_VARIANT_FAILURES) return;
+
   const fileName = `${size}.jpg`;
   const tmpName = `${fileName}.tmp`;
+  const tmpFile = new File(subDir, tmpName);
+  const dest = new File(subDir, fileName);
+
   try {
-    const context = ImageManipulator.manipulate(sourceUri);
-    context.resize({ width: size });
-    const rendered = await context.renderAsync();
-    const saved = await rendered.saveAsync({
-      format: SaveFormat.JPEG,
-      compress: RESIZE_COMPRESS,
-    });
+    await resizeImageToFileAsync(sourceUri, tmpFile.uri, size, RESIZE_COMPRESS);
 
-    const savedFile = new File(saved.uri);
-    savedFile.move(new File(subDir, tmpName));
-    const tmpFile = new File(subDir, tmpName);
-
-    const dest = new File(subDir, fileName);
     if (dest.exists) {
       try { dest.delete(); } catch { /* best-effort */ }
     }
@@ -644,10 +651,16 @@ async function generateResizedVariant(
       cachedAt: Date.now(),
     });
     uriCache.set(uriCacheKey(coverArtId, size), dest.uri);
+
+    // Success — reset any accumulated failures for this cover.
+    variantFailureCount.delete(coverArtId);
   } catch {
-    const tmp = new File(subDir, tmpName);
-    if (tmp.exists) {
-      try { tmp.delete(); } catch { /* best-effort */ }
+    variantFailureCount.set(
+      coverArtId,
+      (variantFailureCount.get(coverArtId) ?? 0) + 1,
+    );
+    if (tmpFile.exists) {
+      try { tmpFile.delete(); } catch { /* best-effort */ }
     }
   }
 }

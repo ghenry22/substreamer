@@ -4,7 +4,7 @@ globs: modules/**/*
 
 # Local Expo Native Modules
 
-Custom native functionality lives in `modules/` as local Expo modules. Current modules: `expo-async-fs`, `expo-ssl-trust`, `expo-gzip`, `expo-backup-exclusions`, `expo-move-to-back`, a local fork of `react-native-track-player`, and a local fork of `subsonic-api`. Follow existing modules as reference.
+Custom native functionality lives in `modules/` as local Expo modules. Current modules: `expo-async-fs`, `expo-ssl-trust`, `expo-gzip`, `expo-backup-exclusions`, `expo-move-to-back`, `expo-image-resize`, a local fork of `react-native-track-player`, and a local fork of `subsonic-api`. Follow existing modules as reference.
 
 ## Directory Structure
 

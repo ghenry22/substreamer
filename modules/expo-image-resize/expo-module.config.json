@@ -1,0 +1,9 @@
+{
+  "platforms": ["ios", "android"],
+  "ios": {
+    "modules": ["ExpoImageResizeModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.imageresize.ExpoImageResizeModule"]
+  }
+}

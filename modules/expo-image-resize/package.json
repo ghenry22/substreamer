@@ -1,0 +1,15 @@
+{
+  "name": "expo-image-resize",
+  "version": "1.0.0",
+  "description": "Minimal Expo native module for resizing a local JPEG file to a new width on a background thread. Bypasses Glide so it does not inherit the expo-image-manipulator double-resume crash.",
+  "author": "Gaven Henry",
+  "license": "MIT",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {},
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}

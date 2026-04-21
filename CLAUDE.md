@@ -170,7 +170,7 @@ Use `type` keyword for type-only imports: `import { type AlbumID3 } from '...'`.
 
 ## Native Modules
 
-Local native modules live in `modules/` and are referenced in `package.json` as `"module-name": "file:./modules/module-name"`. Current modules: `expo-async-fs`, `expo-ssl-trust`, `expo-gzip`, `expo-backup-exclusions`, `expo-move-to-back`, `react-native-track-player`, `subsonic-api`. After adding or removing a module dependency, **always run `npm install`** to update the symlink. See `native-modules` rule for the full creation checklist.
+Local native modules live in `modules/` and are referenced in `package.json` as `"module-name": "file:./modules/module-name"`. Current modules: `expo-async-fs`, `expo-ssl-trust`, `expo-gzip`, `expo-backup-exclusions`, `expo-move-to-back`, `expo-image-resize`, `react-native-track-player`, `subsonic-api`. After adding or removing a module dependency, **always run `npm install`** to update the symlink. See `native-modules` rule for the full creation checklist.
 
 ## Generated Native Directories — DO NOT EDIT
 
