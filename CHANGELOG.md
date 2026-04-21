@@ -1,5 +1,27 @@
 # Changelog
 
+## [8.0.53] - 2026-04-21
+
+- reset changelog
+- ci: update coverage badge [skip ci]
+- fix(player): make MiniPlayer and PlayerProgressBar share a single source
+- ci: update coverage badge [skip ci]
+- i18n(zh): fill 38 remaining English placeholders in zh-Hans + zh-Hant
+- ci: update coverage badge [skip ci]
+- i18n: round-2 defense of Apple-aligned values
+- i18n: update translations from Crowdin (#121)
+- ci: update coverage badge [skip ci]
+- i18n(zh-Hant): full Taiwan Traditional pass from zh-Hans baseline
+- ci: update coverage badge [skip ci]
+- i18n: defend Apple-aligned zh-Hans and ru terminology
+- ci: update coverage badge [skip ci]
+- i18n: update translations from Crowdin (#120)
+- i18n: Apple Music / Spotify terminology pass for 6 locales
+- ci: update coverage badge [skip ci]
+- i18n: update translations from Crowdin (#119)
+- ci: update coverage badge [skip ci]
+- fix(image-cache): drop isProcessing guard blocking bulk repair
+- ci: update coverage badge [skip ci]
 ## [8.0.52] - 2026-04-20
 
 - refactor(scrobbles): move pendingScrobbleStore to per-row SQLite

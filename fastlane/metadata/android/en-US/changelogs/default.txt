@@ -1,0 +1,11 @@
+Reset changelog
+Make MiniPlayer and PlayerProgressBar share a single source
+Fill 38 remaining English placeholders in zh-Hans + zh-Hant
+Round-2 defense of Apple-aligned values
+Update translations from Crowdin (#121)
+Full Taiwan Traditional pass from zh-Hans baseline
+Defend Apple-aligned zh-Hans and ru terminology
+Update translations from Crowdin (#120)
+Apple Music / Spotify terminology pass for 6 locales
+Update translations from Crowdin (#119)
+Drop isProcessing guard blocking bulk repair
