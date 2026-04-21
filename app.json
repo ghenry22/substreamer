@@ -61,6 +61,7 @@
       "./plugins/dedupe-lc++",
       "./plugins/fix-jvm-target",
       "./plugins/large-heap",
+      "./plugins/fresco-race-suppression",
       "./plugins/set-gradle-version",
       "expo-sqlite",
       "./modules/expo-ssl-trust/plugin",

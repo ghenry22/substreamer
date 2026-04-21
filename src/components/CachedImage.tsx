@@ -260,6 +260,11 @@ export const CachedImage = memo(function CachedImage({
           style={[StyleSheet.absoluteFill, fadeStyle]}
           onLoad={handleImageLoad}
           onError={handleImageError}
+          // We do our own crossfade via fadeStyle. Disabling Fresco's built-in
+          // fade shrinks the window in which a recycled view can deliver a
+          // decode-success callback to a released CloseableReference, which is
+          // the trigger for the IllegalStateException in PipelineDraweeController.
+          fadeDuration={0}
         />
       )}
       {uri != null && !showPlaceholder && (
@@ -268,6 +273,7 @@ export const CachedImage = memo(function CachedImage({
           source={{ uri }}
           style={StyleSheet.absoluteFill}
           onError={handleImageError}
+          fadeDuration={0}
         />
       )}
     </View>
