@@ -669,24 +669,23 @@ export function ExpandedPlayerView({
                 </View>
               )}
 
-              {/* Bottom toggle: lyrics / info / queue */}
+              {/* Bottom toggle: queue / info / lyrics — ordering matches the
+                  portrait PlayerTabBar so muscle memory transfers. */}
               <View style={styles.toggleRow}>
                 <View style={styles.toggleButtons}>
-                  {!offlineMode && (
-                    <Pressable
-                      onPress={() => setRightPanelMode('lyrics')}
-                      hitSlop={8}
-                      accessibilityRole="button"
-                      accessibilityLabel={t('showLyrics')}
-                      style={({ pressed }) => [styles.toggleButton, pressed && styles.pressed]}
-                    >
-                      <MaterialCommunityIcons
-                        name="comment-quote-outline"
-                        size={22}
-                        color={rightPanelMode === 'lyrics' ? colors.primary : colors.textSecondary}
-                      />
-                    </Pressable>
-                  )}
+                  <Pressable
+                    onPress={() => setRightPanelMode('queue')}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('showQueue')}
+                    style={({ pressed }) => [styles.toggleButton, pressed && styles.pressed]}
+                  >
+                    <MaterialCommunityIcons
+                      name="playlist-music"
+                      size={22}
+                      color={rightPanelMode === 'queue' ? colors.primary : colors.textSecondary}
+                    />
+                  </Pressable>
                   {!offlineMode && (
                     <Pressable
                       onPress={() => setRightPanelMode('info')}
@@ -702,19 +701,21 @@ export function ExpandedPlayerView({
                       />
                     </Pressable>
                   )}
-                  <Pressable
-                    onPress={() => setRightPanelMode('queue')}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('showQueue')}
-                    style={({ pressed }) => [styles.toggleButton, pressed && styles.pressed]}
-                  >
-                    <MaterialCommunityIcons
-                      name="playlist-music"
-                      size={22}
-                      color={rightPanelMode === 'queue' ? colors.primary : colors.textSecondary}
-                    />
-                  </Pressable>
+                  {!offlineMode && (
+                    <Pressable
+                      onPress={() => setRightPanelMode('lyrics')}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('showLyrics')}
+                      style={({ pressed }) => [styles.toggleButton, pressed && styles.pressed]}
+                    >
+                      <MaterialCommunityIcons
+                        name="comment-quote-outline"
+                        size={22}
+                        color={rightPanelMode === 'lyrics' ? colors.primary : colors.textSecondary}
+                      />
+                    </Pressable>
+                  )}
                 </View>
               </View>
             </Animated.View>
