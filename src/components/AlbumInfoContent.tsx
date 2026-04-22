@@ -196,41 +196,50 @@ export const AlbumInfoContent = memo(function AlbumInfoContent({
         </View>
       ) : (albumInfoLoading || refreshing) ? (
         /* Skeleton placeholder — mirrors the real layout */
-        <View>
-          {/* Hero block */}
-          <View style={styles.heroBlock}>
-            <View style={[styles.skeletonBar, styles.skeletonAlbumTitle]} />
-            <View style={[styles.skeletonBar, styles.skeletonArtistSubtitle]} />
-            <View style={[styles.skeletonBar, styles.skeletonFormatBadge]} />
-            <View style={styles.skeletonGenrePillRow}>
-              {[72, 96, 60, 84].map((w, i) => (
-                <View key={i} style={[styles.skeletonBar, styles.skeletonGenrePill, { width: w }]} />
-              ))}
+        (() => {
+          // Theme-aware skeleton fill: derives from `textSecondary` so light
+          // mode gets a dark-gray bar (visible on white) and dark mode gets
+          // a light-gray bar (visible on black). The hardcoded white-alpha
+          // previously used was invisible on light backgrounds.
+          const skeletonFill = { backgroundColor: hexWithAlpha(colors.textSecondary, 0.2) };
+          return (
+            <View>
+              {/* Hero block */}
+              <View style={styles.heroBlock}>
+                <View style={[styles.skeletonBar, styles.skeletonAlbumTitle, skeletonFill]} />
+                <View style={[styles.skeletonBar, styles.skeletonArtistSubtitle, skeletonFill]} />
+                <View style={[styles.skeletonBar, styles.skeletonFormatBadge, skeletonFill]} />
+                <View style={styles.skeletonGenrePillRow}>
+                  {[72, 96, 60, 84].map((w, i) => (
+                    <View key={i} style={[styles.skeletonBar, styles.skeletonGenrePill, skeletonFill, { width: w }]} />
+                  ))}
+                </View>
+              </View>
+
+              {/* Inline metadata strip */}
+              <View style={[styles.skeletonBar, styles.skeletonMetaStrip, skeletonFill]} />
+
+              {/* Description */}
+              <View style={[styles.divider, { backgroundColor: colors.textSecondary }]} />
+              <View style={styles.descriptionSection}>
+                {[1, 0.97, 1, 0.95, 0.98, 1, 0.93, 0.96, 1, 0.6].map((w, i) => (
+                  <View
+                    key={i}
+                    style={[styles.skeletonBar, styles.skeletonTextLine, skeletonFill, { width: `${w * 100}%` }]}
+                  />
+                ))}
+              </View>
+
+              {/* External links */}
+              <View style={[styles.divider, { backgroundColor: colors.textSecondary }]} />
+              <View style={styles.skeletonLinksRow}>
+                {[90, 110, 95].map((w, i) => (
+                  <View key={i} style={[styles.skeletonBar, styles.skeletonChip, skeletonFill, { width: w }]} />
+                ))}
+              </View>
             </View>
-          </View>
-
-          {/* Inline metadata strip */}
-          <View style={[styles.skeletonBar, styles.skeletonMetaStrip]} />
-
-          {/* Description */}
-          <View style={[styles.divider, { backgroundColor: colors.textSecondary }]} />
-          <View style={styles.descriptionSection}>
-            {[1, 0.97, 1, 0.95, 0.98, 1, 0.93, 0.96, 1, 0.6].map((w, i) => (
-              <View
-                key={i}
-                style={[styles.skeletonBar, styles.skeletonTextLine, { width: `${w * 100}%` }]}
-              />
-            ))}
-          </View>
-
-          {/* External links */}
-          <View style={[styles.divider, { backgroundColor: colors.textSecondary }]} />
-          <View style={styles.skeletonLinksRow}>
-            {[90, 110, 95].map((w, i) => (
-              <View key={i} style={[styles.skeletonBar, styles.skeletonChip, { width: w }]} />
-            ))}
-          </View>
-        </View>
+          );
+        })()
       ) : (
         <>
           {/* ── Hero header block (centered) ── */}
@@ -520,11 +529,12 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
 
-  /* Skeleton loading */
+  /* Skeleton loading — `backgroundColor` is applied inline per theme at
+     render time (see `skeletonFill`) so bars are visible on both light
+     and dark backgrounds. */
   skeletonBar: {
     height: 12,
     borderRadius: 6,
-    backgroundColor: 'rgba(255,255,255,0.12)',
   },
   skeletonAlbumTitle: {
     width: '65%',
