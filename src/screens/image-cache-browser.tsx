@@ -5,7 +5,6 @@ import { HeaderHeightContext } from '@react-navigation/elements';
 import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -15,6 +14,7 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
+import { CachedImage } from '../components/CachedImage';
 import { EmptyState } from '../components/EmptyState';
 import { GradientBackground } from '../components/GradientBackground';
 import { MiniPlayerFooter } from '../components/MiniPlayerFooter';
@@ -53,7 +53,6 @@ const CacheRow = memo(function CacheRow({
   onDelete: (coverArtId: string) => void;
 }) {
   const { t } = useTranslation();
-  const thumbUri = entry.files[0]?.uri;
   const offlineMode = offlineModeStore((s) => s.offlineMode);
 
   const handleDelete = useCallback(() => {
@@ -77,8 +76,9 @@ const CacheRow = memo(function CacheRow({
   return (
     <SwipeableRow rightActions={rightActions} leftActions={leftActions} enableFullSwipeRight enableFullSwipeLeft={!offlineMode} rowGap={10} borderRadius={12}>
       <View style={styles.row}>
-        <Image
-          source={{ uri: thumbUri }}
+        <CachedImage
+          coverArtId={entry.coverArtId}
+          size={THUMB_SIZE}
           style={[styles.thumb, { backgroundColor: colors.border }]}
           resizeMode="cover"
         />

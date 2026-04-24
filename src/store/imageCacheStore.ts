@@ -30,6 +30,10 @@ interface ImageCacheSettings {
    *  Consumed by imageCacheService to throttle reconcile to once per
    *  week in the deferred-init path. Undefined = never run. */
   lastReconcileMs?: number;
+  /** Set true after the one-shot filesystem-hostile-char (`:` etc.)
+   *  directory migration has run and renamed any pre-existing
+   *  `dc-xxxx:N`-style dirs under image-cache to the sanitised form. */
+  fsKeyMigrationV1Done?: boolean;
 }
 
 function readSettingsBlob(): ImageCacheSettings {
@@ -48,6 +52,9 @@ function readSettingsBlob(): ImageCacheSettings {
     };
     if (typeof parsed?.lastReconcileMs === 'number' && parsed.lastReconcileMs > 0) {
       validated.lastReconcileMs = parsed.lastReconcileMs;
+    }
+    if (parsed?.fsKeyMigrationV1Done === true) {
+      validated.fsKeyMigrationV1Done = true;
     }
     return validated;
   } catch {
@@ -80,6 +87,17 @@ export function getLastReconcileMs(): number | undefined {
 export function markReconcileRan(ts: number): void {
   const existing = readSettingsBlob();
   writeSettingsBlob({ ...existing, lastReconcileMs: ts });
+}
+
+/** True once the FS-hostile-char cache-dir migration has run. */
+export function getFsKeyMigrationDone(): boolean {
+  return readSettingsBlob().fsKeyMigrationV1Done === true;
+}
+
+/** Persist the migration-done flag; preserves all other settings. */
+export function markFsKeyMigrationDone(): void {
+  const existing = readSettingsBlob();
+  writeSettingsBlob({ ...existing, fsKeyMigrationV1Done: true });
 }
 
 export interface ImageCacheState {

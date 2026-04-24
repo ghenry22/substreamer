@@ -1,24 +1,32 @@
 /**
  * Drop-in replacement for `<Image>` that loads cover art from the
  * local disk cache when available, and falls back to the remote
- * Subsonic URL on a cache miss (triggering a background download
- * of all size variants for next time).
+ * Subsonic URL on a cache miss (triggering a background download of
+ * all size variants for next time).
  *
- * Shows a branded WaveformLogo placeholder underneath the image layer
- * whenever no image has successfully loaded, with a smooth crossfade
- * when the image becomes visible. Debounces remote fetches to avoid
- * unnecessary downloads during fast scrolling in FlashList.
+ * Design invariants:
  *
- * Recovery on error:
- *   - Online: deletes the broken local variant (if the failed URI was
- *     a file://), then retries once after a 2.5s backoff with a
- *     cache-buster so RN doesn't dedupe the prop. On a second failure
- *     surfaces the placeholder.
- *   - Offline: preserves the cached file (the error may be transient)
- *     and surfaces the placeholder; later mounts can retry.
+ *   - The branded WaveformLogo placeholder is ALWAYS rendered as the
+ *     base layer. Anything drawn on top (the actual image, whether
+ *     cached or remote) just covers it once it paints. If the image
+ *     fails to decode or is missing, the placeholder remains visible —
+ *     we never reach a "blank square" state.
+ *   - A cached `file://` URI is rendered at full opacity on the first
+ *     frame, with no onLoad gate and no fade-in. If the decode fails
+ *     (corrupt file), onError falls through to retry/placeholder paths.
+ *   - A remote URL is rendered underneath a brief 300ms crossfade so
+ *     the placeholder dissolves smoothly into the downloaded art.
+ *   - Offline + cache miss shows the placeholder. No network attempts.
+ *
+ * Recovery on decode error:
+ *   - Online: delete the broken local variant, retry once after a
+ *     2.5s backoff with a cache-buster so RN doesn't dedupe the prop.
+ *     Second failure leaves the placeholder visible.
+ *   - Offline: drop the URI so the placeholder shows; preserve the
+ *     file on disk since the error may be transient.
  */
 
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import {
   Image as RNImage,
   type ImageProps,
@@ -30,7 +38,6 @@ import {
 } from 'react-native';
 import Animated, {
   cancelAnimation,
-  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -52,7 +59,7 @@ import { offlineModeStore } from '../store/offlineModeStore';
 
 /** Delay before starting a remote download (avoids fetches during fast scrolls). */
 const DEBOUNCE_MS = 150;
-/** Duration of the placeholder-to-image crossfade. */
+/** Duration of the placeholder-to-image crossfade for remote URLs. */
 const FADE_DURATION_MS = 300;
 /** Backoff before retrying a failed image load once (covers server cold-start). */
 const RETRY_BACKOFF_MS = 2500;
@@ -100,6 +107,11 @@ function computeLogoSize(w: number | undefined, h: number | undefined): number {
   return Math.min(MAX_LOGO_SIZE, Math.max(MIN_LOGO_SIZE, smaller * LOGO_SCALE));
 }
 
+/** True when the URI is a local cache file (trusted, render at full opacity). */
+function isCachedFileUri(uri: string | undefined): boolean {
+  return uri != null && uri.startsWith('file://');
+}
+
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
@@ -124,92 +136,87 @@ export const CachedImage = memo(function CachedImage({
       : VARIOUS_ARTISTS_COVER_URI
     : rawFallbackUri;
 
-  /* ---- initial synchronous cache check ---- */
-  const initialCached = coverArtId ? getCachedImageUri(coverArtId, size) : null;
+  /* ---- reload nonce forces derivation to re-run after an error ----- */
+  const [reloadNonce, setReloadNonce] = useState(0);
 
-  const [uri, setUri] = useState<string | undefined>(
-    initialCached ?? (!coverArtId ? fallbackUri : undefined),
-  );
-  // Single source of truth: when false, the placeholder is visible.
-  // Flipped to true only after `onLoad` completes the fade-in.
-  const [imageLoaded, setImageLoaded] = useState(false);
+  /* ---- remote-URL fallback state (set after the debounced fetch) -- */
+  const [remoteUri, setRemoteUri] = useState<string | undefined>(undefined);
 
-  const fadeAnim = useSharedValue(0);
+  /* ---- error suppress: after a decode error, hide the Image layer
+          until recovery (retry success, coverArtId/size change) so the
+          placeholder shows through and we don't immediately re-attempt
+          rendering the same broken source. */
+  const [errorSuppress, setErrorSuppress] = useState(false);
+
+  /* ---- derive the URI to render on EVERY render -------------------- */
+  // Cache lookup is synchronous and uses the `uriCache` Map inside the
+  // image service. Re-reading on every render means a file that was
+  // deleted by reconcile/purge/cleanup below is immediately reflected —
+  // we don't pin a stale URI across session-boundary cleanups.
+  const cachedUri = coverArtId ? getCachedImageUri(coverArtId, size) : null;
+  const resolvedUri = errorSuppress
+    ? undefined
+    : cachedUri ?? remoteUri ?? (!coverArtId ? fallbackUri : undefined);
+  const trustedInstant = isCachedFileUri(cachedUri ?? undefined) || (!coverArtId && !!fallbackUri);
+
+  /* ---- refs for the one-shot error retry --------------------------- */
   const currentIdRef = useRef(coverArtId);
   const retriedRef = useRef(false);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  /* ---- measure actual rendered size for placeholder logo ---- */
-  const [layoutSize, setLayoutSize] = useState<{ w: number; h: number } | null>(null);
+  /* ---- fade-in shared value (remote URLs only) --------------------- */
+  // Initial opacity: 1 for trusted instant URIs (cached files + bundled
+  // fallbacks), 0 for remote URLs that should fade in on onLoad.
+  const fadeAnim = useSharedValue(trustedInstant ? 1 : 0);
 
-  const handleLayout = useCallback((e: LayoutChangeEvent) => {
-    const { width, height } = e.nativeEvent.layout;
-    setLayoutSize((prev) => {
-      if (prev && Math.abs(prev.w - width) < 1 && Math.abs(prev.h - height) < 1) return prev;
-      return { w: width, h: height };
-    });
-  }, []);
-
-  /* ---- synchronous reset when props change (prevents stale images) ---- */
-  useLayoutEffect(() => {
+  /* ---- reset fade state when coverArtId/size change ---------------- */
+  useEffect(() => {
     currentIdRef.current = coverArtId;
     retriedRef.current = false;
     if (retryTimeoutRef.current) {
       clearTimeout(retryTimeoutRef.current);
       retryTimeoutRef.current = null;
     }
-
-    const cached = coverArtId ? getCachedImageUri(coverArtId, size) : null;
+    // Clear any stale remote URL and error-suppression from a previous
+    // coverArtId so a new mount starts fresh.
+    setRemoteUri(undefined);
+    setErrorSuppress(false);
+    // Reset the animation. Trusted instant URIs (cache hit or bundled
+    // fallback) jump straight to 1; everything else fades in on onLoad.
     cancelAnimation(fadeAnim);
-    fadeAnim.value = 0;
-    setImageLoaded(false);
-
-    if (cached) {
-      // Seed the image layer with the cached URI so it starts decoding
-      // immediately. Placeholder stays visible underneath until `onLoad`
-      // confirms the file actually rendered — this is what rescues us
-      // from a cached URI pointing at a broken file.
-      setUri(cached);
-    } else if (!coverArtId) {
-      setUri(fallbackUri);
-    } else {
-      setUri(undefined);
-    }
+    const cachedOnMount = coverArtId ? getCachedImageUri(coverArtId, size) : null;
+    const instantReady = isCachedFileUri(cachedOnMount ?? undefined) || (!coverArtId && !!fallbackUri);
+    fadeAnim.value = instantReady ? 1 : 0;
+    // NOTE: reloadNonce is deliberately NOT in this dep array. Nonce
+    // bumps are for forcing a re-render to re-derive cachedUri after
+    // retry recovery; they must not clear the retry's remoteUri.
   }, [coverArtId, size, fallbackUri, fadeAnim]);
 
-  /* ---- debounced remote fetch for cache misses ---- */
+  /* ---- debounced remote fetch for cache misses --------------------- */
   useEffect(() => {
     if (!coverArtId) return;
-
-    const cached = getCachedImageUri(coverArtId, size);
-    if (cached) return;
-
+    if (cachedUri) return;
     if (offlineModeStore.getState().offlineMode) return;
 
     let cancelled = false;
-
     const timer = setTimeout(() => {
       if (cancelled || currentIdRef.current !== coverArtId) return;
 
       const remoteUrl = getCoverArtUrl(coverArtId, size) ?? fallbackUri;
-      if (remoteUrl) setUri(remoteUrl);
+      if (remoteUrl) setRemoteUri(remoteUrl);
 
-      cacheAllSizes(coverArtId)
-        .then(() => {
-          if (cancelled || currentIdRef.current !== coverArtId) return;
-          const newCached = getCachedImageUri(coverArtId, size);
-          if (newCached) setUri(newCached);
-        })
-        .catch(() => { /* non-critical: disk cache miss is handled by fallback */ });
+      cacheAllSizes(coverArtId).catch(() => {
+        /* cache failure is non-critical; placeholder or remote URL stays */
+      });
     }, DEBOUNCE_MS);
 
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [coverArtId, size, fallbackUri]);
+  }, [coverArtId, size, fallbackUri, cachedUri, reloadNonce]);
 
-  /* ---- clear any pending retry on unmount ---- */
+  /* ---- clear pending retry on unmount ------------------------------ */
   useEffect(() => {
     return () => {
       if (retryTimeoutRef.current) {
@@ -219,88 +226,94 @@ export const CachedImage = memo(function CachedImage({
     };
   }, []);
 
-  /* ---- fade-in animation on image load ---- */
+  /* ---- fade-in on successful load (remote URLs only) --------------- */
   const handleImageLoad = useCallback(() => {
-    // A successful load resets the retry budget so a later failure
-    // (e.g. file evicted mid-session) can recover.
     retriedRef.current = false;
-    fadeAnim.value = withTiming(1, { duration: FADE_DURATION_MS }, (finished) => {
-      if (finished) runOnJS(setImageLoaded)(true);
-    });
+    // Trusted instant URIs already have fadeAnim.value = 1; a second
+    // withTiming(1) from 1 is effectively instant. For remote URLs
+    // this runs the 300ms crossfade.
+    if (fadeAnim.value < 1) {
+      fadeAnim.value = withTiming(1, { duration: FADE_DURATION_MS });
+    }
   }, [fadeAnim]);
 
-  /* ---- recovery on load failure ---- */
+  /* ---- recovery on decode failure ---------------------------------- */
   const handleImageError = useCallback(() => {
     if (!coverArtId) return;
-    const failedUri = uri;
+    const failedUri = resolvedUri;
     const offline = offlineModeStore.getState().offlineMode;
 
+    // Common reset: fade to 0 and suppress the Image layer so the
+    // placeholder underneath is visible.
+    cancelAnimation(fadeAnim);
+    fadeAnim.value = 0;
+    setErrorSuppress(true);
+
     if (offline) {
-      // Offline: never delete the cached file — a single decode error
-      // may be transient (decoder hiccup, memory pressure). Preserving
-      // the file lets a later remount succeed. Just surface the
-      // placeholder for this mount.
-      cancelAnimation(fadeAnim);
-      fadeAnim.value = 0;
-      setImageLoaded(false);
-      setUri(undefined);
+      // Preserve the file on disk — errors may be transient. Drop any
+      // remote URL too; the placeholder stays visible for this mount.
+      setRemoteUri(undefined);
       return;
     }
 
     // Online: if the failed URI was the local cache, the file is
     // broken — delete it so the next download writes a fresh copy.
-    // If the failed URI was a remote URL (server error), no file to
-    // delete.
+    // Remote failures leave the file alone.
     if (failedUri?.startsWith('file://')) {
       deleteCachedVariant(coverArtId, size);
     }
 
     if (retriedRef.current) {
-      // Second failure after retry — surface the placeholder and stop.
-      cancelAnimation(fadeAnim);
-      fadeAnim.value = 0;
-      setImageLoaded(false);
-      setUri(undefined);
+      // Second failure — surface placeholder and stop.
+      setRemoteUri(undefined);
       return;
     }
     retriedRef.current = true;
 
-    // Show placeholder while we wait for the backoff retry.
-    cancelAnimation(fadeAnim);
-    fadeAnim.value = 0;
-    setImageLoaded(false);
-
+    // Schedule a single retry with a cache-buster so RN re-fetches
+    // even when the underlying URL is identical.
     if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
     retryTimeoutRef.current = setTimeout(() => {
       retryTimeoutRef.current = null;
       if (currentIdRef.current !== coverArtId) return;
 
-      const freshCached = getCachedImageUri(coverArtId, size);
-      if (freshCached) {
-        setUri(freshCached);
-        return;
-      }
+      // Lift error suppression regardless of outcome so the retry can
+      // actually paint.
+      setErrorSuppress(false);
 
-      // Cache-buster forces RN to treat this as a new source even when
-      // the underlying URL is identical to the one that just failed.
+      // Force a fresh remote round-trip with a cache-buster so RN
+      // doesn't dedupe the source prop when the underlying URL would
+      // otherwise match a just-failed one. The debounced-fetch effect
+      // runs concurrently; this is the authoritative retry URI.
       const remoteUrl = getCoverArtUrl(coverArtId, size);
-      if (remoteUrl) setUri(`${remoteUrl}&_r=${Date.now()}`);
+      if (remoteUrl) setRemoteUri(`${remoteUrl}&_r=${Date.now()}`);
 
+      // Always re-queue cacheAllSizes — if the server now serves the
+      // cover, the next render picks up the fresh cached URI.
       cacheAllSizes(coverArtId)
         .then(() => {
           if (currentIdRef.current !== coverArtId) return;
-          const newCached = getCachedImageUri(coverArtId, size);
-          if (newCached) setUri(newCached);
+          setReloadNonce((n) => n + 1);
         })
         .catch(() => { /* retry exhausted — placeholder stays visible */ });
     }, RETRY_BACKOFF_MS);
-  }, [coverArtId, size, uri, fadeAnim]);
+  }, [coverArtId, size, resolvedUri, fadeAnim]);
+
+  /* ---- measure actual rendered size for placeholder logo ---------- */
+  const [layoutSize, setLayoutSize] = useState<{ w: number; h: number } | null>(null);
+  const handleLayout = useCallback((e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setLayoutSize((prev) => {
+      if (prev && Math.abs(prev.w - width) < 1 && Math.abs(prev.h - height) < 1) return prev;
+      return { w: width, h: height };
+    });
+  }, []);
 
   const fadeStyle = useAnimatedStyle(() => ({
     opacity: fadeAnim.value,
   }));
 
-  /* ---- derive logo size from measured layout (or style fallback) ---- */
+  /* ---- derive logo size from measured layout (or style fallback) -- */
   const flatStyle = StyleSheet.flatten(style) as (ImageStyle & ViewStyle) | undefined;
   const logoSize = computeLogoSize(
     layoutSize?.w ?? (typeof flatStyle?.width === 'number' ? flatStyle.width : undefined),
@@ -309,25 +322,28 @@ export const CachedImage = memo(function CachedImage({
 
   return (
     <View style={[style as ViewStyle, styles.container]} onLayout={handleLayout}>
-      {!imageLoaded && (
-        <View style={styles.placeholder}>
-          <WaveformLogo
-            size={logoSize}
-            color={placeholderColor ?? PLACEHOLDER_COLOR}
-          />
-        </View>
-      )}
-      {uri != null && (
+      {/* Placeholder is ALWAYS in the tree. Any Image drawn on top
+          covers it; if the Image is absent, broken or still fading in,
+          the placeholder shows through. This is the invariant that
+          prevents "blank square" states. */}
+      <View style={styles.placeholder} pointerEvents="none">
+        <WaveformLogo
+          size={logoSize}
+          color={placeholderColor ?? PLACEHOLDER_COLOR}
+        />
+      </View>
+      {resolvedUri != null && (
         <Animated.Image
           {...imageProps}
-          source={{ uri }}
+          source={{ uri: resolvedUri }}
           style={[StyleSheet.absoluteFill, fadeStyle]}
           onLoad={handleImageLoad}
           onError={handleImageError}
-          // We do our own crossfade via fadeStyle. Disabling Fresco's built-in
-          // fade shrinks the window in which a recycled view can deliver a
-          // decode-success callback to a released CloseableReference, which is
-          // the trigger for the IllegalStateException in PipelineDraweeController.
+          // We do our own crossfade via fadeStyle. Disabling Fresco's
+          // built-in fade shrinks the window in which a recycled view
+          // can deliver a decode-success callback to a released
+          // CloseableReference (the IllegalStateException trigger in
+          // PipelineDraweeController on Android).
           fadeDuration={0}
         />
       )}

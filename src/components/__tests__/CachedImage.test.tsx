@@ -1,17 +1,26 @@
 /**
- * Tests for CachedImage recovery behaviour.
+ * Tests for CachedImage render + recovery behaviour.
+ *
+ * Invariant under test: the placeholder is ALWAYS in the view tree.
+ * The Image is drawn on top and covers the placeholder when it
+ * paints; if it isn't present or is hidden, the placeholder shows
+ * through. We never end up with a blank rectangle.
  *
  * Scenarios:
- *   1. Placeholder stays visible until onLoad fires (even with a
- *      cached URI seeded by the layout effect).
+ *   1. Placeholder is always rendered. A cached URI is rendered on
+ *      top; the placeholder shows through wherever the image isn't
+ *      painted yet.
  *   2. Broken local file: deleteCachedVariant is called on error and
  *      the 2.5s backoff retry sets a new URI with cache-buster.
  *   3. Remote 503: first load errors, backoff fires new setUri.
- *   4. Second failure after retry clears uri and restores placeholder.
+ *   4. Second failure after retry clears uri so the placeholder is
+ *      visible with no Image layer.
  *   5. Navigation recovery: remount resets retry state.
  *   6. Sentinel coverArtId never triggers deleteCachedVariant.
  *   7. Offline preserves the cached file on error (no delete).
- *   8. Offline with valid cache renders the image on onLoad.
+ *   8. Offline with valid cache renders the Image layer.
+ *   9. No cache + no coverArtId + no fallback: only the placeholder
+ *      renders. No Image element, no blank square possible.
  */
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -179,7 +188,7 @@ afterEach(() => {
 /* ------------------------------------------------------------------ */
 
 describe('CachedImage', () => {
-  it('1. placeholder stays visible until onLoad fires, even with a cached URI seeded', async () => {
+  it('1. placeholder is always rendered; a cached URI is drawn on top at full opacity', async () => {
     mockGetCachedImageUri.mockReturnValue('file:///cache/abc/600.jpg');
 
     const { queryByTestId, toJSON, UNSAFE_root } = render(
@@ -187,17 +196,20 @@ describe('CachedImage', () => {
     );
     await flushEffects();
 
+    // Placeholder is always part of the tree — the never-blank invariant.
     expect(queryByTestId('waveform-placeholder')).not.toBeNull();
 
+    // Image is rendered with the cached URI on the first frame.
     const img = getRenderedImageHandlers(toJSON, UNSAFE_root, 'file:///cache/abc/600.jpg');
     expect(img).not.toBeNull();
 
+    // Placeholder stays in the tree after onLoad too — the Image just
+    // covers it visually.
     await act(async () => {
       img!.onLoad?.();
       await Promise.resolve();
     });
-
-    expect(queryByTestId('waveform-placeholder')).toBeNull();
+    expect(queryByTestId('waveform-placeholder')).not.toBeNull();
   });
 
   it('2. broken local file on error: deletes variant and retries with cache-buster after 2.5s', async () => {
@@ -294,8 +306,9 @@ describe('CachedImage', () => {
       await Promise.resolve();
     });
 
+    // Placeholder is still in the tree (always is) and the Image layer
+    // is suppressed so the placeholder shows through with nothing on top.
     expect(queryByTestId('waveform-placeholder')).not.toBeNull();
-    // No image with a source URI is rendered anymore (uri cleared).
     expect(findImagesInJSON(toJSON)).toHaveLength(0);
   });
 
@@ -364,6 +377,8 @@ describe('CachedImage', () => {
     });
 
     expect(mockDeleteCachedVariant).not.toHaveBeenCalled();
+    // Placeholder is always there; the Image layer is suppressed after
+    // the decode error so the placeholder shows through.
     expect(queryByTestId('waveform-placeholder')).not.toBeNull();
     expect(findImagesInJSON(toJSON)).toHaveLength(0);
 
@@ -374,7 +389,7 @@ describe('CachedImage', () => {
     expect(mockCacheAllSizes).not.toHaveBeenCalled();
   });
 
-  it('8. offline with valid cache renders the image on onLoad', async () => {
+  it('8. offline with valid cache renders the image layer on top of the placeholder', async () => {
     mockOfflineMode = true;
     mockGetCachedImageUri.mockReturnValue('file:///cache/abc/600.jpg');
 
@@ -383,14 +398,31 @@ describe('CachedImage', () => {
     );
     await flushEffects();
 
+    // Placeholder is always present; Image renders on top from the first
+    // frame because the URI is a trusted cached file.
     expect(queryByTestId('waveform-placeholder')).not.toBeNull();
-
     const img = getRenderedImageHandlers(toJSON, UNSAFE_root, 'file:///cache/abc/600.jpg');
+    expect(img).not.toBeNull();
+
+    // onLoad is idempotent for cached files (fadeAnim already 1).
     await act(async () => {
       img!.onLoad?.();
       await Promise.resolve();
     });
+    expect(queryByTestId('waveform-placeholder')).not.toBeNull();
+    // Image still rendered.
+    expect(findImagesInJSON(toJSON).some((n) => n.props.source.uri.startsWith('file://'))).toBe(true);
+  });
 
-    expect(queryByTestId('waveform-placeholder')).toBeNull();
+  it('9. no cache + no coverArtId + no fallback: only the placeholder renders (never blank)', async () => {
+    const { queryByTestId, toJSON } = render(
+      <CachedImage coverArtId={undefined} size={600} />,
+    );
+    await flushEffects();
+
+    // Placeholder is always in the tree — this is the never-blank invariant.
+    expect(queryByTestId('waveform-placeholder')).not.toBeNull();
+    // No Image layer (nothing to render on top).
+    expect(findImagesInJSON(toJSON)).toHaveLength(0);
   });
 });

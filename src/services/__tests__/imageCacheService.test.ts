@@ -115,6 +115,11 @@ const mockReset = jest.fn();
 const mockRecalculateFromDb = jest.fn();
 const mockGetLastReconcileMs = jest.fn(() => undefined as number | undefined);
 const mockMarkReconcileRan = jest.fn();
+// Default: migration already done, so existing tests don't re-trigger the
+// FS-rename pass. Tests that specifically exercise the migration override
+// this with mockReturnValueOnce(false).
+const mockGetFsKeyMigrationDone = jest.fn(() => true);
+const mockMarkFsKeyMigrationDone = jest.fn();
 
 const mockOfflineMode = { offlineMode: false };
 jest.mock('../../store/offlineModeStore', () => ({
@@ -134,6 +139,8 @@ jest.mock('../../store/imageCacheStore', () => ({
   },
   getLastReconcileMs: () => mockGetLastReconcileMs(),
   markReconcileRan: (ts: number) => mockMarkReconcileRan(ts),
+  getFsKeyMigrationDone: () => mockGetFsKeyMigrationDone(),
+  markFsKeyMigrationDone: () => mockMarkFsKeyMigrationDone(),
 }));
 
 // The service now reads stats + browser listings from `cached_images` via
@@ -1509,5 +1516,79 @@ describe('repairIncompleteImagesAsync — outcome counts', () => {
     expect(outcome.failed).toBe(1);
     expect(outcome.removed).toBe(0);
     expect(outcome.repaired).toBe(0);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Filesystem-hostile coverArtIds (e.g. `dc-*:1` disc covers)         */
+/* ------------------------------------------------------------------ */
+
+describe('coverArtPathKey — FS-hostile coverArtId sanitisation', () => {
+  function subDirUri(dirName: string): string {
+    return `file://file:///document/image-cache/${dirName}`;
+  }
+
+  it('getCachedImageUri maps a `:` in coverArtId to `_` when checking the filesystem', () => {
+    // Sanitised dir exists on disk; raw dir does NOT. The lookup must
+    // resolve to the sanitised path.
+    const sanitised = 'dc-abc_1';
+    const raw = 'dc-abc:1';
+    mockDirExistsMap.set(subDirUri(sanitised), true);
+    mockFileExistsMap.set(fileMockName(sanitised, '600.jpg'), true);
+    mockFileSizeMap.set(fileMockName(sanitised, '600.jpg'), 1000);
+
+    const uri = getCachedImageUri(raw, 600);
+    expect(uri).toMatch(/dc-abc_1\/600\.jpg$/);
+    // The raw-form dir was never asked for.
+    expect(mockDirExistsMap.has(subDirUri(raw))).toBe(false);
+  });
+
+  it('downloadAndCacheImage writes under the sanitised path', async () => {
+    const raw = 'dc-foo:2';
+    const sanitised = 'dc-foo_2';
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      headers: { get: () => 'image/jpeg' },
+      arrayBuffer: async () => new ArrayBuffer(128),
+    });
+
+    await cacheAllSizes(raw);
+
+    // The upsert went under the ORIGINAL coverArtId (SQL stays canonical).
+    expect(mockUpsertCachedImage).toHaveBeenCalledWith(
+      expect.objectContaining({ coverArtId: raw, size: 600 }),
+    );
+    // But the on-disk File was under the sanitised directory name.
+    // Walk the existence map for any path containing the sanitised dir.
+    const sanitisedPaths = [...mockFileExistsMap.keys()].filter((k) =>
+      k.includes(`/${sanitised}/`),
+    );
+    expect(sanitisedPaths.length).toBeGreaterThan(0);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Reconcile: uriCache eviction on row deletion                       */
+/* ------------------------------------------------------------------ */
+
+describe('reconcileImageCacheAsync — uriCache eviction', () => {
+  it('Pass 2: evicts the URI cache entry when a DB row is deleted for a missing file', async () => {
+    // Seed a DB row for a cover whose file no longer exists on disk.
+    seedDbRow({ coverArtId: 'gone-album', size: 600, ext: 'jpg' });
+    mockListDirectoryAsync.mockImplementation(async () => []);
+    mockFileExistsMap.clear();
+
+    // Pre-warm the URI cache so we can prove it gets cleared.
+    const { getCachedImageUri: _get } = require('../imageCacheService');
+    // Prime: cache the null lookup (file doesn't exist).
+    _get('gone-album', 600);
+
+    await reconcileImageCacheAsync();
+
+    // Row was deleted and the variant-level uriCache entry is evicted.
+    expect(mockDeleteCachedImageVariant).toHaveBeenCalledWith('gone-album', 600);
+    // A follow-up lookup sees an empty cache and has to hit the FS
+    // (returns null because the file doesn't exist).
+    expect(_get('gone-album', 600)).toBeNull();
   });
 });

@@ -24,8 +24,10 @@ jest.mock('expo-sqlite', () => ({
 
 import { kvStorage } from '../persistence/__mocks__/kvStorage';
 import {
+  getFsKeyMigrationDone,
   getLastReconcileMs,
   imageCacheStore,
+  markFsKeyMigrationDone,
   markReconcileRan,
 } from '../imageCacheStore';
 
@@ -199,5 +201,39 @@ describe('imageCacheStore — reconcile timestamp helpers', () => {
       JSON.stringify({ maxConcurrentImageDownloads: 5, lastReconcileMs: 0 }),
     );
     expect(getLastReconcileMs()).toBeUndefined();
+  });
+});
+
+describe('imageCacheStore — FS-hostile-key migration flag', () => {
+  it('returns false when the flag has never been set', () => {
+    expect(getFsKeyMigrationDone()).toBe(false);
+  });
+
+  it('persists and reads back the done flag', () => {
+    markFsKeyMigrationDone();
+    expect(getFsKeyMigrationDone()).toBe(true);
+  });
+
+  it('preserves maxConcurrentImageDownloads and lastReconcileMs when setting the flag', () => {
+    imageCacheStore.getState().setMaxConcurrentImageDownloads(10);
+    markReconcileRan(1700000000000);
+    markFsKeyMigrationDone();
+
+    const persisted = JSON.parse(
+      kvStorage.getItem('substreamer-image-cache-settings') as string,
+    );
+    expect(persisted).toEqual({
+      maxConcurrentImageDownloads: 10,
+      lastReconcileMs: 1700000000000,
+      fsKeyMigrationV1Done: true,
+    });
+  });
+
+  it('ignores a non-boolean-true value in the persisted blob', () => {
+    kvStorage.setItem(
+      'substreamer-image-cache-settings',
+      JSON.stringify({ maxConcurrentImageDownloads: 5, fsKeyMigrationV1Done: 'yes' }),
+    );
+    expect(getFsKeyMigrationDone()).toBe(false);
   });
 });
