@@ -40,7 +40,20 @@ export function DownloadBanner() {
     s.downloadQueue.find((q) => q.status === 'downloading'),
   );
   const cachedItems = musicCacheStore((s) => s.cachedItems);
-  const queueCount = musicCacheStore((s) => s.downloadQueue.length);
+  // Count only rows the download-queue screen actually renders
+  // (`download-queue.tsx` filters to downloading/queued/error). Any row in
+  // another status — e.g. a stuck `complete` row left over from a v1
+  // migration or a race — must not keep this banner visible, because the
+  // user has no UI affordance to resolve it otherwise.
+  const queueCount = musicCacheStore((s) =>
+    s.downloadQueue.reduce(
+      (n, q) =>
+        q.status === 'downloading' || q.status === 'queued' || q.status === 'error'
+          ? n + 1
+          : n,
+      0,
+    ),
+  );
   const visible = queueCount > 0;
 
   const prevVisible = useRef(visible);

@@ -161,6 +161,36 @@ describe('DownloadBanner', () => {
     );
   });
 
+  it('stays hidden when queue contains only rows with unknown statuses', () => {
+    // A row in an unexpected status (e.g. a stuck `complete` survivor
+    // from a v1 migration, or any drift) must NOT keep the banner
+    // visible — the download-queue screen filters such rows out, so
+    // there's no UI affordance for the user to resolve it otherwise.
+    musicCacheStore.setState({
+      downloadQueue: [
+        makeQueueItem({ status: 'complete' as DownloadQueueItem['status'] }),
+      ],
+    });
+    const { toJSON } = render(<DownloadBanner />);
+    const root = toJSON() as import('react-test-renderer').ReactTestRendererJSON;
+    expect(root.props.style).toEqual(
+      expect.arrayContaining([expect.objectContaining({ height: 0 })]),
+    );
+  });
+
+  it('stays visible when queue has an error row with no in-flight transfer', () => {
+    musicCacheStore.setState({
+      downloadQueue: [
+        makeQueueItem({ status: 'error', error: 'network' }),
+      ],
+    });
+    const { toJSON } = render(<DownloadBanner />);
+    const root = toJSON() as import('react-test-renderer').ReactTestRendererJSON;
+    expect(root.props.style).toEqual(
+      expect.arrayContaining([expect.objectContaining({ height: 44 })]),
+    );
+  });
+
   it('renders zero progress when active item has zero totalSongs', () => {
     musicCacheStore.setState({
       downloadQueue: [
