@@ -61,7 +61,13 @@ export function BottomChrome({ withSafeAreaPadding = false }: BottomChromeProps 
         withSafeAreaPadding ? { paddingBottom: insets.bottom } : null,
       ]}
     >
-      <DownloadBanner />
+      {/* Mount the banner only when there's something to show. The
+          banner's own height animation can stall after a download
+          completes (Reanimated worklet race vs. queue mutation), and
+          there's no UI affordance to dismiss a stuck banner from the
+          tabs view — easier to never let it get into that state. The
+          entrance animation still plays on every fresh mount. */}
+      {hasDownloads && <DownloadBanner />}
       {!isWide && hasCurrentTrack && <MiniPlayer />}
     </View>
   );

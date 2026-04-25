@@ -67,13 +67,13 @@ beforeEach(() => {
 describe('BottomChrome', () => {
   /* ---- visibility table ---- */
 
-  it('compact + has-track + no-downloads → MiniPlayer only, no banner', () => {
+  it('compact + has-track + no-downloads → MiniPlayer only, banner unmounted', () => {
     playerStore.setState({ currentTrack: TRACK });
     const { getByTestId, queryByTestId } = render(<BottomChrome />);
     expect(getByTestId('mini-player')).toBeTruthy();
-    // The DownloadBanner is mounted (it self-collapses to height 0), so we
-    // only assert that the MiniPlayer is on screen and the wrapper rendered.
-    expect(queryByTestId('download-banner')).toBeTruthy();
+    // Banner is conditionally mounted only when hasDownloads — eliminates
+    // the class of bugs where the banner's height-animation gets stuck.
+    expect(queryByTestId('download-banner')).toBeNull();
   });
 
   it('compact + no-track + has-downloads → banner only, MiniPlayer absent', () => {

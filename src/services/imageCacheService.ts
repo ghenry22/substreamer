@@ -708,6 +708,17 @@ export async function repairIncompleteImagesAsync(): Promise<RepairOutcome> {
 /**
  * Check if a cached image exists for the given coverArtId and size.
  * Returns the local `file://` URI or `null`.
+ *
+ * Caching policy: only POSITIVE lookups are memoised in `uriCache`. A
+ * miss (file not on disk) re-checks the filesystem on every call.
+ * Caching nulls was the root cause of "covers vanish after a download"
+ * — once a row was poisoned with null (via a transient FS hiccup, an
+ * eviction by a sibling code path, or a never-completed download), the
+ * map returned null forever even after the file had been written. The
+ * cost of re-checking on miss is one sync `file.exists` per render —
+ * cheap on-device, no network — and the logic stays simple: the map's
+ * presence implies "we know there's a file here", absence implies
+ * "ask the filesystem".
  */
 export function getCachedImageUri(
   coverArtId: string,
@@ -717,13 +728,11 @@ export function getCachedImageUri(
   coverArtId = stripCoverArtSuffix(coverArtId);
 
   const key = uriCacheKey(coverArtId, size);
-  if (uriCache.has(key)) return uriCache.get(key)!;
+  const cached = uriCache.get(key);
+  if (cached) return cached;
 
   const subDir = new Directory(ensureCacheDir(), coverArtPathKey(coverArtId));
-  if (!subDir.exists) {
-    uriCache.set(key, null);
-    return null;
-  }
+  if (!subDir.exists) return null;
   for (const ext of EXTENSIONS) {
     const file = new File(subDir, `${size}${ext}`);
     if (file.exists) {
@@ -731,7 +740,6 @@ export function getCachedImageUri(
       return file.uri;
     }
   }
-  uriCache.set(key, null);
   return null;
 }
 
