@@ -17,7 +17,8 @@ import { useTheme } from '../hooks/useTheme';
 import { EmptyState } from './EmptyState';
 import type { AlbumID3 } from '../services/subsonicService';
 import { layoutPreferencesStore } from '../store/layoutPreferencesStore';
-import { getFirstLetter } from '../utils/stringHelpers';
+import { getSortFirstLetter } from '../utils/sortHelpers';
+import { serverInfoStore } from '../store/serverInfoStore';
 import { AlbumCard } from './AlbumCard';
 import { AlbumRow } from './AlbumRow';
 import { closeOpenRow } from './SwipeableRow';
@@ -129,29 +130,34 @@ export function AlbumListView({
   /* ---- Alphabet scroller support ---- */
   const scrollerVisible = showAlphabetScroller && albums.length > 0;
   const albumSortOrder = layoutPreferencesStore((s) => s.albumSortOrder);
+  const ignoredArticles = serverInfoStore((s) => s.ignoredArticles);
 
-  /** Return the field the list is currently sorted by for a given album. */
-  const getSortField = useCallback(
-    (a: AlbumID3) => (albumSortOrder === 'title' ? a.name : (a.artist ?? a.name)),
-    [albumSortOrder]
+  /** Compute the alphabet-scroller letter for a given album, mirroring
+   *  the article-stripped sort key used by `albumLibraryStore`. */
+  const getLetter = useCallback(
+    (a: AlbumID3): string =>
+      albumSortOrder === 'title'
+        ? getSortFirstLetter(a.name ?? '', a.sortName, ignoredArticles ?? undefined)
+        : getSortFirstLetter(a.artist ?? a.name ?? '', undefined, ignoredArticles ?? undefined),
+    [albumSortOrder, ignoredArticles],
   );
 
   const activeLetters = useMemo(() => {
     if (!scrollerVisible) return new Set<string>();
-    return new Set(albums.map((a) => getFirstLetter(getSortField(a))));
-  }, [albums, scrollerVisible, getSortField]);
+    return new Set(albums.map((a) => getLetter(a)));
+  }, [albums, scrollerVisible, getLetter]);
 
   const handleLetterChange = useCallback(
     (letter: string) => {
       const idx = albums.findIndex((a) => {
-        const first = getFirstLetter(getSortField(a));
+        const first = getLetter(a);
         return letter === '#' ? first === '#' : first === letter;
       });
       if (idx >= 0) {
         listRef.current?.scrollToIndex({ index: idx, animated: false });
       }
     },
-    [albums, getSortField]
+    [albums, getLetter]
   );
 
   if (loading && albums.length === 0) {

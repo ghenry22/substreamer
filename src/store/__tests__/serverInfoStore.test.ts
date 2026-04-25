@@ -11,6 +11,7 @@ const baseInfo: ServerInfo = {
   lastFetchedAt: 999,
   adminRole: true,
   shareRole: true,
+  ignoredArticles: null,
 };
 
 beforeEach(() => {

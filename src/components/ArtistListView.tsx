@@ -16,7 +16,8 @@ import { useRefreshControlKey } from '../hooks/useRefreshControlKey';
 import { useTheme } from '../hooks/useTheme';
 import { EmptyState } from './EmptyState';
 import type { ArtistID3 } from '../services/subsonicService';
-import { getFirstLetter } from '../utils/stringHelpers';
+import { getSortFirstLetter } from '../utils/sortHelpers';
+import { serverInfoStore } from '../store/serverInfoStore';
 import { ArtistCard } from './ArtistCard';
 import { ArtistRow } from './ArtistRow';
 import { closeOpenRow } from './SwipeableRow';
@@ -127,16 +128,19 @@ export function ArtistListView({
 
   /* ---- Alphabet scroller support ---- */
   const scrollerVisible = showAlphabetScroller && artists.length > 0;
+  const ignoredArticles = serverInfoStore((s) => s.ignoredArticles);
 
   const activeLetters = useMemo(() => {
     if (!scrollerVisible) return new Set<string>();
-    return new Set(artists.map((a) => getFirstLetter(a.name)));
-  }, [artists, scrollerVisible]);
+    return new Set(
+      artists.map((a) => getSortFirstLetter(a.name, a.sortName, ignoredArticles ?? undefined)),
+    );
+  }, [artists, scrollerVisible, ignoredArticles]);
 
   const handleLetterChange = useCallback(
     (letter: string) => {
       const idx = artists.findIndex((a) => {
-        const first = getFirstLetter(a.name);
+        const first = getSortFirstLetter(a.name, a.sortName, ignoredArticles ?? undefined);
         if (letter === '#') return first === '#';
         return first === letter;
       });
@@ -144,7 +148,7 @@ export function ArtistListView({
         listRef.current?.scrollToIndex({ index: idx, animated: false });
       }
     },
-    [artists]
+    [artists, ignoredArticles],
   );
 
   if (loading && artists.length === 0) {

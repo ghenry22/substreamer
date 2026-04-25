@@ -20,7 +20,7 @@ import i18n from '../i18n/i18n';
 import { authStore } from '../store/authStore';
 import { offlineModeStore } from '../store/offlineModeStore';
 import { FORMAT_PRESETS, playbackSettingsStore, type StreamFormat, type MaxBitRate } from '../store/playbackSettingsStore';
-import type { ServerInfo } from '../store/serverInfoStore';
+import { serverInfoStore, type ServerInfo } from '../store/serverInfoStore';
 import { supports } from './serverCapabilityService';
 
 const reactNativeCrypto: Crypto = {
@@ -560,11 +560,24 @@ export async function getAllAlbumsAlphabetical(): Promise<AlbumID3[]> {
 /**
  * Fetch all artists via the getArtists endpoint.
  * Flattens the index-based response into a flat array of ArtistID3.
+ *
+ * Side-effect: captures the response's `ignoredArticles` hint into
+ * `serverInfoStore` so the article-stripped sort in album/artist/playlist
+ * lists matches the server's configured article list (Navidrome admins
+ * can extend this beyond the Subsonic default).
  */
 export async function getAllArtists(): Promise<ArtistID3[]> {
   const api = getApi();
   if (!api) return [];
   const response = await api.getArtists();
+  const ignoredArticlesRaw = response.artists?.ignoredArticles;
+  if (typeof ignoredArticlesRaw === 'string') {
+    const articles = ignoredArticlesRaw
+      .split(/\s+/)
+      .map((a) => a.trim())
+      .filter((a) => a.length > 0);
+    serverInfoStore.getState().setIgnoredArticles(articles);
+  }
   const indexes = response.artists?.index ?? [];
   const artists = indexes.flatMap((idx) => idx.artist ?? []);
   return artists.map((a) =>
@@ -819,6 +832,10 @@ export async function fetchServerInfo(): Promise<ServerInfo | null> {
       lastFetchedAt: Date.now(),
       adminRole,
       shareRole,
+      // `ignoredArticles` is populated separately by `getAllArtists` —
+      // `getServerInfo` doesn't fetch it. Preserve any previously-set
+      // value rather than wiping it on every `setServerInfo` call.
+      ignoredArticles: serverInfoStore.getState().ignoredArticles,
     };
   } catch {
     return null;

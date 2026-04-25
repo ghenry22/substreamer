@@ -66,6 +66,57 @@ describe('albumLibraryStore', () => {
       expect(albumLibraryStore.getState().albums[1].name).toBe('Zebra');
     });
 
+    it('strips a leading "The " article when sorting by title', async () => {
+      layoutPreferencesStore.setState({ albumSortOrder: 'title' });
+      const albums = [
+        makeAlbum('a1', 'The Wall', 'X'),
+        makeAlbum('a2', 'Best Of', 'X'),
+        makeAlbum('a3', 'Vampire Weekend', 'X'),
+      ];
+      mockSearchAllAlbums.mockResolvedValue(albums);
+
+      await albumLibraryStore.getState().fetchAllAlbums();
+
+      // "The Wall" sorts as "Wall" → between "Vampire Weekend" and end.
+      const names = albumLibraryStore.getState().albums.map((a) => a.name);
+      expect(names).toEqual(['Best Of', 'Vampire Weekend', 'The Wall']);
+    });
+
+    it('strips a leading "The " article when sorting by artist', async () => {
+      const albums = [
+        makeAlbum('a1', 'Album A', 'The Beatles'),
+        makeAlbum('a2', 'Album B', 'Best Coast'),
+        makeAlbum('a3', 'Album C', 'Vampire Weekend'),
+      ];
+      mockSearchAllAlbums.mockResolvedValue(albums);
+
+      await albumLibraryStore.getState().fetchAllAlbums();
+
+      // "The Beatles" sorts as "Beatles" — first.
+      const artists = albumLibraryStore.getState().albums.map((a) => a.artist);
+      expect(artists).toEqual(['The Beatles', 'Best Coast', 'Vampire Weekend']);
+    });
+
+    it('respects server-supplied sortName when it differs from name', async () => {
+      layoutPreferencesStore.setState({ albumSortOrder: 'title' });
+      const { serverInfoStore } = require('../serverInfoStore');
+      serverInfoStore.getState().setIgnoredArticles(['the']);
+      const albums = [
+        // sortName = "Beatles" (server stripped "The "); should sort under B.
+        { id: 'a1', name: 'The Beatles', sortName: 'Beatles', artist: 'X' } as any,
+        // sortName = comma-suffix form — should be ignored, fall back to client-strip.
+        { id: 'a2', name: 'The Wall', sortName: 'Wall, The', artist: 'X' } as any,
+        makeAlbum('a3', 'Best Of', 'X'),
+      ];
+      mockSearchAllAlbums.mockResolvedValue(albums);
+
+      await albumLibraryStore.getState().fetchAllAlbums();
+
+      const names = albumLibraryStore.getState().albums.map((a) => a.name);
+      // All three sort-keys: 'beatles', 'best of', 'wall'. → B, B, W.
+      expect(names).toEqual(['The Beatles', 'Best Of', 'The Wall']);
+    });
+
     it('handles null artist/name during sort', async () => {
       const albums = [
         { id: 'a1', name: 'Alpha', artist: null } as any,

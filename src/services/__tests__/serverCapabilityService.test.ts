@@ -18,6 +18,7 @@ function setServerInfo(overrides: {
 		lastFetchedAt: null,
 		adminRole: overrides.adminRole ?? null,
 		shareRole: overrides.shareRole ?? null,
+		ignoredArticles: null,
 	});
 }
 

@@ -15,7 +15,8 @@ import { useGridColumns, getGridItemPadding, GRID_GAP, LIST_PADDING } from '../h
 import { useRefreshControlKey } from '../hooks/useRefreshControlKey';
 import { useTheme } from '../hooks/useTheme';
 import type { Playlist } from '../services/subsonicService';
-import { getFirstLetter } from '../utils/stringHelpers';
+import { getSortFirstLetter } from '../utils/sortHelpers';
+import { serverInfoStore } from '../store/serverInfoStore';
 import { EmptyState } from './EmptyState';
 import { InsetRefreshSpacer } from './InsetRefreshSpacer';
 import { PlaylistCard } from './PlaylistCard';
@@ -127,16 +128,19 @@ export function PlaylistListView({
 
   /* ---- Alphabet scroller support ---- */
   const scrollerVisible = showAlphabetScroller && playlists.length > 0;
+  const ignoredArticles = serverInfoStore((s) => s.ignoredArticles);
 
   const activeLetters = useMemo(() => {
     if (!scrollerVisible) return new Set<string>();
-    return new Set(playlists.map((p) => getFirstLetter(p.name)));
-  }, [playlists, scrollerVisible]);
+    return new Set(
+      playlists.map((p) => getSortFirstLetter(p.name, undefined, ignoredArticles ?? undefined)),
+    );
+  }, [playlists, scrollerVisible, ignoredArticles]);
 
   const handleLetterChange = useCallback(
     (letter: string) => {
       const idx = playlists.findIndex((p) => {
-        const first = getFirstLetter(p.name);
+        const first = getSortFirstLetter(p.name, undefined, ignoredArticles ?? undefined);
         if (letter === '#') return first === '#';
         return first === letter;
       });
@@ -144,7 +148,7 @@ export function PlaylistListView({
         listRef.current?.scrollToIndex({ index: idx, animated: false });
       }
     },
-    [playlists]
+    [playlists, ignoredArticles],
   );
 
   if (loading && playlists.length === 0) {
