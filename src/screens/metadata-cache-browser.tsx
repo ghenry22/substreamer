@@ -16,7 +16,7 @@ import { useTranslation } from 'react-i18next';
 import { CachedImage } from '../components/CachedImage';
 import { EmptyState } from '../components/EmptyState';
 import { GradientBackground } from '../components/GradientBackground';
-import { MiniPlayerFooter } from '../components/MiniPlayerFooter';
+import { BottomChrome } from '../components/BottomChrome';
 import { settingsStyles } from '../styles/settingsStyles';
 import { SwipeableRow, type SwipeAction } from '../components/SwipeableRow';
 import { ThemedAlert } from '../components/ThemedAlert';
@@ -374,7 +374,7 @@ export function MetadataCacheBrowserScreen() {
         ListHeaderComponent={listHeader}
         ListEmptyComponent={listEmpty}
       />
-      <MiniPlayerFooter />
+      <BottomChrome withSafeAreaPadding />
     </GradientBackground>
     <ThemedAlert {...alertProps} />
     </>

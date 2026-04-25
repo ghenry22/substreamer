@@ -17,7 +17,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { CachedImage } from '../components/CachedImage';
 import { EmptyState } from '../components/EmptyState';
 import { GradientBackground } from '../components/GradientBackground';
-import { MiniPlayerFooter } from '../components/MiniPlayerFooter';
+import { BottomChrome } from '../components/BottomChrome';
 import { SegmentControl, type Segment } from '../components/SegmentControl';
 import { settingsStyles } from '../styles/settingsStyles';
 import { useTransitionComplete } from '../hooks/useTransitionComplete';
@@ -40,7 +40,6 @@ import {
 import { clearQueue } from '../services/playerService';
 import { albumDetailStore } from '../store/albumDetailStore';
 import { offlineModeStore } from '../store/offlineModeStore';
-import { playbackToastStore } from '../store/playbackToastStore';
 import {
   musicCacheStore,
   type CachedItemMeta,
@@ -324,9 +323,6 @@ const CacheRow = memo(function CacheRow({
                       <Pressable
                         onPress={() => {
                           void enqueueAlbumDownload(item.itemId);
-                          playbackToastStore
-                            .getState()
-                            .flashSuccess(t('addedToDownloadQueue'));
                         }}
                         style={({ pressed }) => [
                           styles.partialActionRow,
@@ -637,7 +633,7 @@ export function MusicCacheBrowserScreen() {
           onSelect={setStatusFilter}
         />
       </View>
-      <MiniPlayerFooter />
+      <BottomChrome withSafeAreaPadding />
     </GradientBackground>
     <ThemedAlert {...alertProps} />
     <ThemedAlert {...removalAlertProps} />

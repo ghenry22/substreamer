@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 
 import { settingsStyles } from '../styles/settingsStyles';
 import { GradientBackground } from '../components/GradientBackground';
-import { MiniPlayerFooter } from '../components/MiniPlayerFooter';
+import { BottomChrome } from '../components/BottomChrome';
 import { StreamFormatSheet } from '../components/StreamFormatSheet';
 import { useTheme } from '../hooks/useTheme';
 import { useThemedAlert } from '../hooks/useThemedAlert';
@@ -529,7 +529,7 @@ export function SettingsPlaybackScreen() {
             </Pressable>
           )}
         </ScrollView>
-        <MiniPlayerFooter />
+        <BottomChrome withSafeAreaPadding />
       </GradientBackground>
       <ThemedAlert {...alertProps} />
       <StreamFormatSheet />

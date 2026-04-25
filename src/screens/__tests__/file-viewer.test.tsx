@@ -45,8 +45,8 @@ jest.mock('expo-clipboard', () => ({
   setStringAsync: jest.fn(),
 }));
 
-jest.mock('../../components/MiniPlayerFooter', () => ({
-  MiniPlayerFooter: () => null,
+jest.mock('../../components/BottomChrome', () => ({
+  BottomChrome: () => null,
 }));
 
 import React from 'react';

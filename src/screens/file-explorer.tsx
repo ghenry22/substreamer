@@ -18,7 +18,7 @@ import { listDirectoryAsync } from 'expo-async-fs';
 import { settingsStyles } from '../styles/settingsStyles';
 import { EmptyState } from '../components/EmptyState';
 import { GradientBackground } from '../components/GradientBackground';
-import { MiniPlayerFooter } from '../components/MiniPlayerFooter';
+import { BottomChrome } from '../components/BottomChrome';
 import { useTheme } from '../hooks/useTheme';
 import { isViewableFile } from './file-viewer';
 
@@ -262,7 +262,7 @@ export function FileExplorerScreen() {
             ))}
           </View>
         </ScrollView>
-        <MiniPlayerFooter />
+        <BottomChrome withSafeAreaPadding />
       </GradientBackground>
     );
   }
@@ -285,7 +285,7 @@ export function FileExplorerScreen() {
           contentContainerStyle={[styles.listContent, { paddingTop: headerHeight }]}
         />
       )}
-      <MiniPlayerFooter />
+      <BottomChrome withSafeAreaPadding />
     </GradientBackground>
   );
 }

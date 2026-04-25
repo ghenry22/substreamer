@@ -24,7 +24,7 @@ import i18next from 'i18next';
 import { useTranslation } from 'react-i18next';
 
 import { GradientBackground } from '../components/GradientBackground';
-import { MiniPlayerFooter } from '../components/MiniPlayerFooter';
+import { BottomChrome } from '../components/BottomChrome';
 import { useTheme } from '../hooks/useTheme';
 import { useThemedAlert } from '../hooks/useThemedAlert';
 import { ThemedAlert } from '../components/ThemedAlert';
@@ -632,7 +632,7 @@ export function SettingsLibraryDataScreen() {
         </View>
       )}
     </ScrollView>
-    <MiniPlayerFooter />
+    <BottomChrome withSafeAreaPadding />
     </GradientBackground>
 
     {/* Restore Backup Modal */}

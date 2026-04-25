@@ -24,7 +24,12 @@ import { useTheme } from '../hooks/useTheme';
 import { musicCacheStore } from '../store/musicCacheStore';
 import { computeQueueItemProgress } from '../store/persistence/cachedItemHelpers';
 
-const BANNER_HEIGHT = 44;
+/**
+ * Rendered height of the banner when fully expanded. Exported so other
+ * chrome (PlaybackToast) can offset itself above the banner without
+ * duplicating the literal.
+ */
+export const BANNER_HEIGHT = 44;
 const EXPAND_MS = 300;
 const COLLAPSE_MS = 280;
 const COLLAPSE_DELAY_MS = 60;
@@ -56,9 +61,15 @@ export function DownloadBanner() {
   );
   const visible = queueCount > 0;
 
-  const prevVisible = useRef(visible);
-  const heightValue = useSharedValue(visible ? BANNER_HEIGHT : 0);
-  const contentOpacity = useSharedValue(visible ? 1 : 0);
+  // Always start collapsed and let the visibility effect run the entrance
+  // animation on the first false → true transition. This guarantees the
+  // slide-in plays whether the queue is non-empty at app launch or fills
+  // up after the banner remounts (e.g. when the bottom-chrome wrapper
+  // unmounts because both the play queue and the download queue cleared,
+  // then the user kicks off a fresh download).
+  const prevVisible = useRef(false);
+  const heightValue = useSharedValue(0);
+  const contentOpacity = useSharedValue(0);
 
   useEffect(() => {
     if (visible && !prevVisible.current) {

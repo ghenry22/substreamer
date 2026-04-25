@@ -10,7 +10,7 @@ import { useShallow } from 'zustand/react/shallow';
 
 import { GradientBackground } from '../components/GradientBackground';
 import { InfoRow } from '../components/InfoRow';
-import { MiniPlayerFooter } from '../components/MiniPlayerFooter';
+import { BottomChrome } from '../components/BottomChrome';
 import { useTheme } from '../hooks/useTheme';
 import { useThemedAlert } from '../hooks/useThemedAlert';
 import { ThemedAlert } from '../components/ThemedAlert';
@@ -391,7 +391,7 @@ export function SettingsServerScreen() {
         </Pressable>
       </View>
     </ScrollView>
-    <MiniPlayerFooter />
+    <BottomChrome withSafeAreaPadding />
     </GradientBackground>
     <Modal
       visible={changePasswordVisible}

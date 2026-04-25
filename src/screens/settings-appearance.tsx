@@ -5,7 +5,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 're
 import { useTranslation } from 'react-i18next';
 
 import { GradientBackground } from '../components/GradientBackground';
-import { MiniPlayerFooter } from '../components/MiniPlayerFooter';
+import { BottomChrome } from '../components/BottomChrome';
 import { settingsStyles } from '../styles/settingsStyles';
 import { LanguageSelector } from '../components/LanguageSelector';
 import { useTheme } from '../hooks/useTheme';
@@ -616,7 +616,7 @@ export function SettingsAppearanceScreen() {
 
 
     </ScrollView>
-    <MiniPlayerFooter />
+    <BottomChrome withSafeAreaPadding />
     </GradientBackground>
   );
 }

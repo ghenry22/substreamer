@@ -28,7 +28,7 @@ import { useTranslation } from 'react-i18next';
 import { EditShareSheet } from '../components/EditShareSheet';
 import { EmptyState } from '../components/EmptyState';
 import { GradientBackground } from '../components/GradientBackground';
-import { MiniPlayerFooter } from '../components/MiniPlayerFooter';
+import { BottomChrome } from '../components/BottomChrome';
 import { useRefreshControlKey } from '../hooks/useRefreshControlKey';
 import { useTheme } from '../hooks/useTheme';
 import { useThemedAlert } from '../hooks/useThemedAlert';
@@ -358,7 +358,7 @@ export function ShareBrowserScreen() {
         )}
       </View>
     </ScrollView>
-    <MiniPlayerFooter />
+    <BottomChrome withSafeAreaPadding />
     </GradientBackground>
 
     <EditShareSheet />

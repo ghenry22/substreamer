@@ -7,7 +7,7 @@ import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Switch,
 import { useTranslation } from 'react-i18next';
 
 import { GradientBackground } from '../components/GradientBackground';
-import { MiniPlayerFooter } from '../components/MiniPlayerFooter';
+import { BottomChrome } from '../components/BottomChrome';
 import { useTheme } from '../hooks/useTheme';
 import { settingsStyles } from '../styles/settingsStyles';
 import { audioDiagnosticsStore } from '../store/audioDiagnosticsStore';
@@ -69,7 +69,7 @@ export function MigrationLogScreen() {
     return (
       <GradientBackground style={styles.centered}>
         <ActivityIndicator color={colors.primary} />
-        <MiniPlayerFooter />
+        <BottomChrome withSafeAreaPadding />
       </GradientBackground>
     );
   }
@@ -189,7 +189,7 @@ export function MigrationLogScreen() {
         </View>
       </View>
     </ScrollView>
-    <MiniPlayerFooter />
+    <BottomChrome withSafeAreaPadding />
     </GradientBackground>
   );
 }

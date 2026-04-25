@@ -11,7 +11,7 @@ import { EmptyState } from '../components/EmptyState';
 import { GenreChart } from '../components/GenreChart';
 import { GradientBackground } from '../components/GradientBackground';
 import { MiniBarChart } from '../components/MiniBarChart';
-import { MiniPlayerFooter } from '../components/MiniPlayerFooter';
+import { BottomChrome } from '../components/BottomChrome';
 import { SectionTitle } from '../components/SectionTitle';
 import { StatCard } from '../components/StatCard';
 import { TopItemRow } from '../components/TopItemRow';
@@ -89,7 +89,7 @@ export function MyListeningScreen() {
     return (
       <GradientBackground style={styles.loadingContainer}>
         <ActivityIndicator color={colors.primary} size="large" />
-        <MiniPlayerFooter />
+        <BottomChrome withSafeAreaPadding />
       </GradientBackground>
     );
   }
@@ -108,7 +108,7 @@ export function MyListeningScreen() {
             {t('listeningHistoryDisclaimer')}
           </Text>
         </EmptyState>
-        <MiniPlayerFooter />
+        <BottomChrome withSafeAreaPadding />
       </GradientBackground>
     );
   }
@@ -387,7 +387,7 @@ export function MyListeningScreen() {
 
       <View style={styles.footer} />
     </ScrollView>
-    <MiniPlayerFooter />
+    <BottomChrome withSafeAreaPadding />
     </GradientBackground>
   );
 }

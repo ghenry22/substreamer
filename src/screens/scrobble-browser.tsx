@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 
 import { EmptyState as EmptyStateComponent } from '../components/EmptyState';
 import { GradientBackground } from '../components/GradientBackground';
-import { MiniPlayerFooter } from '../components/MiniPlayerFooter';
+import { BottomChrome } from '../components/BottomChrome';
 import { SegmentControl } from '../components/SegmentControl';
 import { useTheme } from '../hooks/useTheme';
 import { completedScrobbleStore, type CompletedScrobble } from '../store/completedScrobbleStore';
@@ -165,7 +165,7 @@ export function ScrobbleBrowserScreen() {
       <View style={[styles.segmentOverlay, { top: headerHeight }]}>
         <SegmentControl segments={segments} selected={activeSegment} onSelect={setActiveSegment} />
       </View>
-      <MiniPlayerFooter />
+      <BottomChrome withSafeAreaPadding />
     </GradientBackground>
   );
 }

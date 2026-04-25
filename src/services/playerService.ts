@@ -1020,7 +1020,6 @@ export async function playTrack(
   positionOffset = 0;
   pendingResumePosition = null;
   playerStore.getState().setQueueLoading(true);
-  playbackToastStore.getState().show();
 
   try {
     // Populate trackUriMap before deciding which tracks are playable so
@@ -1063,7 +1062,6 @@ export async function playTrack(
     }
 
     await TrackPlayer.play();
-    playbackToastStore.getState().succeed();
     persistQueue(filteredQueue, startIndex);
   } catch (e) {
     playbackToastStore.getState().fail(

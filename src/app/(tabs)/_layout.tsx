@@ -7,30 +7,25 @@ import { Keyboard, View } from 'react-native';
 
 import WaveformLogo from '../../components/WaveformLogo';
 import { BannerStack } from '../../components/BannerStack';
-import { DownloadBanner } from '../../components/DownloadBanner';
+import { BottomChrome } from '../../components/BottomChrome';
 import { GradientBackground } from '../../components/GradientBackground';
-import { MiniPlayer } from '../../components/MiniPlayer';
 import { SearchableHeader } from '../../components/SearchableHeader';
 import { SearchResultsOverlay } from '../../components/SearchResultsOverlay';
-import { useLayoutMode } from '../../hooks/useLayoutMode';
 import { useTheme } from '../../hooks/useTheme';
 import { searchStore } from '../../store/searchStore';
 
 export default function TabLayout() {
   const { t } = useTranslation();
   const { colors } = useTheme();
-  const layoutMode = useLayoutMode();
-  const isWide = layoutMode === 'wide';
 
   const renderTabBar = useCallback(
     (props: React.ComponentProps<typeof BottomTabBar>) => (
       <>
-        <DownloadBanner />
-        {!isWide && <MiniPlayer />}
+        <BottomChrome />
         <BottomTabBar {...props} />
       </>
     ),
-    [isWide],
+    [],
   );
 
   return (

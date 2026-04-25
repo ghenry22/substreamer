@@ -16,11 +16,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../hooks/useTheme';
 import { useLayoutMode } from '../hooks/useLayoutMode';
 import { authStore } from '../store/authStore';
+import { musicCacheStore } from '../store/musicCacheStore';
 import { playerStore } from '../store/playerStore';
 import {
   playbackToastStore,
   type PlaybackToastStatus,
 } from '../store/playbackToastStore';
+import { BANNER_HEIGHT } from './DownloadBanner';
 
 const CAPSULE_HEIGHT = 44;
 const CAPSULE_BORDER_RADIUS = CAPSULE_HEIGHT / 2;
@@ -42,17 +44,27 @@ export function PlaybackToast() {
   const hide = playbackToastStore((s) => s.hide);
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  // Lift the pill above the MiniPlayerFooter when the footer is rendered so
-  // they don't stack. MiniPlayerFooter's visibility rules must match this
-  // predicate.
+  // Lift the pill above the bottom chrome (DownloadBanner + MiniPlayer)
+  // when either is rendered so they don't stack. The chrome lives in
+  // `BottomChrome` (per-screen and inside the tabs `renderTabBar`); its
+  // visibility rules must match this predicate so the offsets align.
+  // Banner visibility is independent of MiniPlayer visibility — the banner
+  // can be on screen with no track playing (downloads queued, queue
+  // cleared while downloading, etc.), so it gets its own offset term.
   const isLoggedIn = authStore((s) => s.isLoggedIn);
   const hasCurrentTrack = playerStore((s) => s.currentTrack !== null);
   const isWide = useLayoutMode() === 'wide';
   const miniPlayerVisible = isLoggedIn && hasCurrentTrack && !isWide;
+  const hasDownloads = musicCacheStore((s) =>
+    s.downloadQueue.some(
+      (q) => q.status === 'downloading' || q.status === 'queued' || q.status === 'error',
+    ),
+  );
   const bottomOffset =
     Math.max(insets.bottom, 16) +
     BOTTOM_OFFSET +
-    (miniPlayerVisible ? MINI_PLAYER_HEIGHT : 0);
+    (miniPlayerVisible ? MINI_PLAYER_HEIGHT : 0) +
+    (hasDownloads ? BANNER_HEIGHT : 0);
 
   const capsuleScale = useSharedValue(0);
   const capsuleOpacity = useSharedValue(0);

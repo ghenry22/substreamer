@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 
 import { AlbumListView } from '../components/AlbumListView';
 import { GradientBackground } from '../components/GradientBackground';
-import { MiniPlayerFooter } from '../components/MiniPlayerFooter';
+import { BottomChrome } from '../components/BottomChrome';
 import {
   albumListsStore,
   type AlbumListType,
@@ -70,7 +70,7 @@ export function AlbumListScreen() {
         refreshing={refreshing}
         contentInsetTop={headerHeight}
       />
-      <MiniPlayerFooter />
+      <BottomChrome withSafeAreaPadding />
     </GradientBackground>
   );
 }

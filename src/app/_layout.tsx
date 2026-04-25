@@ -658,11 +658,12 @@ export default function RootLayout() {
       {/* Global processing overlay for async operations (delete, etc.) */}
       <ProcessingOverlay />
 
-      {/* Global confirmation pill. Originally built for playback status; now
-          repurposed via `playbackToastStore.flashSuccess(label)` for any
-          brief acknowledgement (e.g. "Added to download queue"). Lifts
-          itself above MiniPlayerFooter when present. */}
+      {/* Global error pill. Used by `playerService.fail(...)` to surface
+          genuine playback failures (offline + no cached tracks, RNTP
+          errors). Lifts itself above the BottomChrome (DownloadBanner +
+          MiniPlayer) when present so it doesn't stack on top. */}
       <PlaybackToast />
+
 
       {/* Onboarding welcome guide shown once after first login */}
       <OnboardingGuide />

@@ -342,8 +342,11 @@ describe('playTrack', () => {
     expect(addedTracks[0].id).toBe('t1');
     expect(mockTP.skip).toHaveBeenCalledWith(1);
     expect(mockTP.play).toHaveBeenCalled();
-    expect(mockToastShow).toHaveBeenCalled();
-    expect(mockToastSucceed).toHaveBeenCalled();
+    // No "Starting playback" / "Now Playing" pill — those routine
+    // acknowledgements were removed; the MiniPlayer + DownloadBanner
+    // chrome is the persistent confirmation.
+    expect(mockToastShow).not.toHaveBeenCalled();
+    expect(mockToastSucceed).not.toHaveBeenCalled();
   });
 
   it('does not skip when playing first track', async () => {

@@ -21,7 +21,7 @@ import { AlbumRow } from '../components/AlbumRow';
 import { EmptyState } from '../components/EmptyState';
 import { ArtistCard } from '../components/ArtistCard';
 import { CachedImage } from '../components/CachedImage';
-import { MiniPlayerFooter } from '../components/MiniPlayerFooter';
+import { BottomChrome } from '../components/BottomChrome';
 import { MoreOptionsButton } from '../components/MoreOptionsButton';
 import { SectionTitle } from '../components/SectionTitle';
 import { SongCard } from '../components/SongCard';
@@ -563,7 +563,7 @@ export function ArtistDetailScreen() {
             )
           }
         />
-        <MiniPlayerFooter />
+        <BottomChrome withSafeAreaPadding />
       </View>
     </>
   );
