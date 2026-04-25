@@ -30,6 +30,7 @@ import com.doublesymmetry.kotlinaudio.event.PlayerEventHolder
 import com.doublesymmetry.kotlinaudio.models.*
 import com.doublesymmetry.kotlinaudio.players.QueuedAudioPlayer
 import com.doublesymmetry.trackplayer.HeadlessJsMediaService
+import com.doublesymmetry.trackplayer.diagnostics.RemoteControlDiagnosticLog
 import com.doublesymmetry.trackplayer.extensions.NumberExt.Companion.toMilliseconds
 import com.doublesymmetry.trackplayer.extensions.NumberExt.Companion.toSeconds
 import com.doublesymmetry.trackplayer.extensions.asLibState
@@ -218,7 +219,15 @@ class MusicService : HeadlessJsMediaService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         onStartCommandIntentValid = intent != null
+        val incomingKey = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+            intent?.getParcelableExtra(Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)
+        else intent?.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
         Timber.d("onStartCommand: ${intent?.action}, ${intent?.`package`}")
+        RemoteControlDiagnosticLog.log(
+            this,
+            "onStartCommand action=${intent?.action} pkg=${intent?.`package`} " +
+                "keyCode=${incomingKey?.keyCode} keyAction=${incomingKey?.action}",
+        )
         // Some OEMs (OnePlus OxygenOS < 15, Huawei HarmonyOS) route media button
         // intents here instead of through MediaSession.Callback.onMediaButtonEvent(),
         // even on Android 13+. Always attempt to handle them here — deduplication
@@ -1223,12 +1232,16 @@ class MusicService : HeadlessJsMediaService() {
             // Skip if this exact press was already processed.
             if (keyEvent.downTime == lastMediaKeyDownTime &&
                 keyEvent.keyCode == lastMediaKeyCode) {
+                RemoteControlDiagnosticLog.log(
+                    this,
+                    "onMediaKeyEvent: deduped (keyCode=${keyEvent.keyCode})",
+                )
                 return true // already handled
             }
             lastMediaKeyDownTime = keyEvent.downTime
             lastMediaKeyCode = keyEvent.keyCode
 
-            return when (keyEvent.keyCode) {
+            val resolved = when (keyEvent.keyCode) {
                 KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
                     emit(MusicEvents.BUTTON_PLAY_PAUSE)
                     true
@@ -1271,6 +1284,11 @@ class MusicService : HeadlessJsMediaService() {
 
                 else -> null
             }
+            RemoteControlDiagnosticLog.log(
+                this,
+                "onMediaKeyEvent: keyCode=${keyEvent.keyCode} resolved=$resolved",
+            )
+            return resolved
         }
         return null
     }
@@ -1373,6 +1391,14 @@ class MusicService : HeadlessJsMediaService() {
             controllerInfo: MediaSession.ControllerInfo,
             intent: Intent
         ): Boolean {
+            val incomingKey = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+                intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)
+            else intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
+            RemoteControlDiagnosticLog.log(
+                this@MusicService,
+                "onMediaButtonEvent action=${intent.action} controller=${controllerInfo.packageName} " +
+                    "keyCode=${incomingKey?.keyCode} keyAction=${incomingKey?.action}",
+            )
             return onMediaKeyEvent(intent) ?: super.onMediaButtonEvent(
                 session,
                 controllerInfo,

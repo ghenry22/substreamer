@@ -21,6 +21,22 @@
             </intent-filter>
         </service>
 
+        <!-- Media3 canonical media-button broadcast entrypoint.
+             Required for OEMs (Xiaomi/MIUI/HyperOS, FunTouchOS, ColorOS,
+             Realme, Honor MagicOS) whose system UI dispatches notification
+             and Bluetooth play/pause taps as broadcasts rather than as
+             direct MediaSession controller events. Receiver locates this
+             app's MediaLibraryService via SERVICE_INTERFACE and forwards
+             the KeyEvent via startForegroundService() — landing in
+             onStartCommand(), where the existing fall-through handles it. -->
+        <receiver
+            android:name="androidx.media3.session.MediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>
