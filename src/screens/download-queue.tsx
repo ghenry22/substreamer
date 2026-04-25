@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ReorderableList, {
   useReorderableDrag,
   type ReorderableListReorderEvent,
@@ -246,6 +247,7 @@ export function DownloadQueueScreen() {
   const { alert, alertProps } = useThemedAlert();
   const navigation = useNavigation();
   const headerHeight = useContext(HeaderHeightContext) ?? 0;
+  const insets = useSafeAreaInsets();
   const downloadQueue = musicCacheStore((s) => s.downloadQueue);
 
   /* ---- Sorted display list: downloading → queued → error ---- */
@@ -412,9 +414,9 @@ export function DownloadQueueScreen() {
     () => ({
       flexGrow: 1 as const,
       paddingTop: headerHeight,
-      paddingBottom: 32,
+      paddingBottom: insets.bottom + 32,
     }),
-    [headerHeight],
+    [headerHeight, insets.bottom],
   );
 
   return (
