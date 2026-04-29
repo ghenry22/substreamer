@@ -13,6 +13,7 @@ import type { ThemePreference } from '../store/themeStore';
 import { DEFAULT_PRIMARY_COLOR } from '../store/themeStore';
 import {
   layoutPreferencesStore,
+  ShowSongInPlaylist,
   type AlbumSortOrder,
   type ArtistAlbumSortOrder,
   type DateFormat,
@@ -47,6 +48,8 @@ const ALBUM_SORT_OPTIONS: { value: AlbumSortOrder; labelKey: string }[] = [
   { value: 'title', labelKey: 'sortAlbumTitle' },
 ];
 
+
+
 const ARTIST_ALBUM_SORT_OPTIONS: { value: ArtistAlbumSortOrder; labelKey: string }[] = [
   { value: 'newest', labelKey: 'sortNewestFirst' },
   { value: 'oldest', labelKey: 'sortOldestFirst' },
@@ -75,6 +78,10 @@ const ACCENT_COLORS: { labelKey: string; hex: string }[] = [
   { labelKey: 'colorYellow', hex: '#FFD600' },
 ];
 
+const SHOW_SONG_IN_PLAYLIST_OPTIONS: { value: ShowSongInPlaylist; labelKey: string }[] = [
+  { value: 'show', labelKey: 'showSongInPlaylist' },
+  { value: 'hide', labelKey: 'hideSongInPlaylist' },
+];
 export function SettingsAppearanceScreen() {
   const { t } = useTranslation();
   const { colors, preference, primaryColor, setThemePreference, setPrimaryColor } = useTheme();
@@ -85,8 +92,11 @@ export function SettingsAppearanceScreen() {
   const [artistAlbumSortOpen, setArtistAlbumSortOpen] = useState(false);
   const [dateFormatOpen, setDateFormatOpen] = useState(false);
   const [listLengthOpen, setListLengthOpen] = useState(false);
+  const [showSongInPlaylistOpen, setShowSongInPlaylistOpen] = useState(false);
+
   const activeAccentMatch = ACCENT_COLORS.find((c) => c.hex === activePrimary);
   const activeAccentLabel = activeAccentMatch ? t(activeAccentMatch.labelKey) : t('custom');
+
 
   const handleAccentSelect = useCallback(
     (hex: string) => {
@@ -177,6 +187,9 @@ export function SettingsAppearanceScreen() {
     favAlbumLayout: setFavAlbumLayout,
     favArtistLayout: setFavArtistLayout,
   };
+
+  const showSongInPlaylist = layoutPreferencesStore((s) => s.showSongInPlaylist);
+  const setShowSongInPlaylist = layoutPreferencesStore((s) => s.setShowSongInPlaylist);
 
   const dynamicStyles = useMemo(
     () =>
@@ -611,6 +624,56 @@ export function SettingsAppearanceScreen() {
               </View>
             );
           })}
+        </View>
+      </View>
+
+      <View style={settingsStyles.section}>
+        <Text style={[settingsStyles.sectionTitle, dynamicStyles.sectionTitle]}>{t('showSongInPlaylistOption')}</Text>
+        <View style={[styles.accentDropdown, { backgroundColor: colors.card }]}>
+          <Pressable
+            onPress={() => setShowSongInPlaylistOpen((prev) => !prev)}
+            style={({ pressed }) => [
+              styles.accentHeader,
+              pressed && settingsStyles.pressed,
+            ]}
+          >
+            <Text style={[styles.chipLabel, { color: colors.textPrimary }]}>
+              {t(SHOW_SONG_IN_PLAYLIST_OPTIONS.find((o) => o.value === showSongInPlaylist)!.labelKey)}{' '}
+            </Text>
+            <Ionicons
+              name={showSongInPlaylistOpen ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color={colors.textSecondary}
+            />
+          </Pressable>
+          {showSongInPlaylistOpen && (
+            <View style={[styles.accentList, { borderTopColor: colors.border }]}>
+              {SHOW_SONG_IN_PLAYLIST_OPTIONS.map((opt) => {
+                const isActive = showSongInPlaylist === opt.value;
+                return (
+                  <Pressable
+                    key={opt.value}
+                    onPress={() => {
+                      setShowSongInPlaylist(opt.value);
+                      setShowSongInPlaylistOpen(false);
+                    }}
+                    style={({ pressed }) => [
+                      styles.accentOption,
+                      { borderBottomColor: colors.border },
+                      pressed && settingsStyles.pressed,
+                    ]}
+                  >
+                    <Text style={[styles.chipLabel, { color: colors.textPrimary }]}>
+                      {t(opt.labelKey)}{' '}
+                    </Text>
+                    {isActive && (
+                      <Ionicons name="checkmark" size={20} color={colors.primary} />
+                    )}
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
         </View>
       </View>
 
