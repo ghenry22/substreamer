@@ -910,5 +910,10 @@
   "storageNoLimit": "無限制",
   "storageLegendImages": "圖像",
   "storageLegendMusic": "音樂",
-  "storageLegendFree": "剩餘"
+  "storageLegendFree": "剩餘",
+  "showSongInPlaylistOption": "Show if song is in playlist",
+  "showSongInPlaylist": "Show",
+  "hideSongInPlaylist": "Hide",
+  "numberOfTimesInPlaylist": "Times present : {{count}}",
+  "failedToLoadPlaylistsEntries": "Failed To Load Playlists Entries"
 }
