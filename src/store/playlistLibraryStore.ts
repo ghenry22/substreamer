@@ -8,6 +8,8 @@ import { kvStorage } from './persistence';
 import {
   ensureCoverArtAuth,
   getAllPlaylists,
+  getPlaylist,
+  PlaylistWithSongs,
   type Playlist,
 } from '../services/subsonicService';
 
@@ -26,7 +28,7 @@ export function registerPlaylistLibraryReconcileHook(
 
 export interface PlaylistLibraryState {
   /** All playlists in the user's library */
-  playlists: Playlist[];
+  playlists: (Playlist | PlaylistWithSongs)[];
   /** Whether a fetch is currently in progress */
   loading: boolean;
   /** Last error message, if any */
@@ -36,6 +38,10 @@ export interface PlaylistLibraryState {
 
   /** Fetch all playlists from the server via getPlaylists. */
   fetchAllPlaylists: () => Promise<void>;
+
+  /** Fetch all playlists with their songs from the server via getPlaylists and getPlaylist. */
+  fetchAllPlaylistsWithSongs: () => Promise<void>;
+
   /** Remove a single playlist from the library by ID. */
   removePlaylist: (id: string) => void;
   /** Clear all playlist data */
@@ -49,6 +55,7 @@ export const playlistLibraryStore = create<PlaylistLibraryState>()(
     (set, get) => ({
       playlists: [],
       loading: false,
+      entriesLoading: false,
       error: null,
       lastFetchedAt: null,
 
@@ -81,6 +88,36 @@ export const playlistLibraryStore = create<PlaylistLibraryState>()(
             error: e instanceof Error ? e.message : i18n.t('failedToLoadPlaylists'),
           });
         }
+      },
+
+      fetchAllPlaylistsWithSongs: async () => {
+        await get().fetchAllPlaylists();
+
+        if (get().loading) return;
+
+        set({ loading: true, error: null });
+
+        try {
+
+          const playlistPromises = get().playlists.map(async (playlist) => {
+            const playlistWithEntries = await getPlaylist(playlist.id);
+            return playlistWithEntries || playlist;
+          });
+
+          const newPlaylists = await Promise.all(playlistPromises);
+
+          set({
+            loading: false,
+            playlists: newPlaylists,
+          });
+
+        } catch (e) {
+          set({
+            loading: false,
+            error: e instanceof Error ? e.message : i18n.t('failedToLoadPlaylistsEntries'),
+          });
+        }
+
       },
 
       removePlaylist: (id) =>

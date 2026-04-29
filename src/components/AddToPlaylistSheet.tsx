@@ -18,6 +18,8 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
+import i18n from '../i18n/i18n';
+
 
 import { BottomSheet } from './BottomSheet';
 import { CachedImage } from './CachedImage';
@@ -36,8 +38,9 @@ import { musicCacheStore } from '../store/musicCacheStore';
 import { playlistDetailStore } from '../store/playlistDetailStore';
 import { playlistLibraryStore } from '../store/playlistLibraryStore';
 import { processingOverlayStore } from '../store/processingOverlayStore';
+import { layoutPreferencesStore } from '@/store/layoutPreferencesStore';
 
-import type { Playlist } from '../services/subsonicService';
+import type { Playlist, PlaylistWithSongs } from '../services/subsonicService';
 
 const CONTENT_DELAY_MS = 750;
 const CONTENT_ANIMATE_DURATION = 1000;
@@ -86,6 +89,7 @@ export function AddToPlaylistSheet() {
   const playlists = playlistLibraryStore((s) => s.playlists);
   const playlistsLoading = playlistLibraryStore((s) => s.loading);
   const playlistsFetchError = playlistLibraryStore((s) => s.error);
+  const showSongInPlaylist = layoutPreferencesStore((s) => s.showSongInPlaylist);
 
   const { colors } = useTheme();
   const { t } = useTranslation();
@@ -111,7 +115,11 @@ export function AddToPlaylistSheet() {
       animatedHeight.value = SPINNER_HEIGHT;
       contentOpacity.value = 0;
       const timer = setTimeout(() => {
-        playlistLibraryStore.getState().fetchAllPlaylists();
+        if (showSongInPlaylist === "show") {
+          playlistLibraryStore.getState().fetchAllPlaylistsWithSongs();
+        } else {
+          playlistLibraryStore.getState().fetchAllPlaylists();
+        }
         setPhase('measuring');
       }, CONTENT_DELAY_MS);
       return () => clearTimeout(timer);
@@ -184,8 +192,11 @@ export function AddToPlaylistSheet() {
             syncCachedItemTracks(playlist.id, updated.entry ?? []);
           }
         }
-
-        playlistLibraryStore.getState().fetchAllPlaylists();
+        if (showSongInPlaylist === "show") {
+          playlistLibraryStore.getState().fetchAllPlaylistsWithSongs();
+        } else {
+          playlistLibraryStore.getState().fetchAllPlaylists();
+        }
         processingOverlayStore.getState().showSuccess(t('addedToPlaylist'));
       } catch {
         processingOverlayStore.getState().showError(t('failedToAddToPlaylist'));
@@ -212,7 +223,11 @@ export function AddToPlaylistSheet() {
       if (!success) throw new Error('API returned false');
 
       handleClose();
-      playlistLibraryStore.getState().fetchAllPlaylists();
+      if (showSongInPlaylist === "show") {
+        playlistLibraryStore.getState().fetchAllPlaylistsWithSongs();
+      } else {
+        playlistLibraryStore.getState().fetchAllPlaylists();
+      }
       processingOverlayStore.getState().show(t('creating'));
       processingOverlayStore.getState().showSuccess(t('playlistCreated'));
     } catch {
@@ -255,6 +270,22 @@ export function AddToPlaylistSheet() {
   const subtitle = target ? getSubtitleText(target, t) : '';
   const coverArtId = target ? getTargetCoverArt(target) : undefined;
 
+  const numberOfMatch = (playlist: Playlist | PlaylistWithSongs) => {
+    if (!playlist) return 0;
+    if (!(playlist as PlaylistWithSongs)?.entry) return 0;
+
+    const playlistWithSongs = playlist as PlaylistWithSongs;
+
+    if (target?.type === 'song') {
+      const matchCount = playlistWithSongs.entry?.filter((current_entry) => target.item.id === current_entry.id).length || 0;
+      return matchCount;
+    }
+    else if (target?.type === "album") {
+      return 0;
+    }
+
+    return 0;
+  }
   return (
     <BottomSheet visible={visible} onClose={handleClose} maxHeight="70%">
       <View style={styles.header}>
@@ -285,120 +316,129 @@ export function AddToPlaylistSheet() {
             ]}
             onLayout={phase === 'measuring' ? handleContentLayout : undefined}
           >
-          {mode === 'pick' ? (
-            <ScrollView
-            style={styles.listContainer}
-            contentContainerStyle={styles.listContent}
-            bounces={false}
-            showsVerticalScrollIndicator={false}
-          >
-            {/* New Playlist row */}
-            <Pressable
-              onPress={handleShowCreate}
-              style={({ pressed }) => [
-                styles.playlistRow,
-                pressed && styles.rowPressed,
-              ]}
-            >
-              <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
-              <Text style={[styles.newPlaylistLabel, dynamicStyles.newPlaylistLabel]}>
-                {t('newPlaylist')}
-              </Text>
-            </Pressable>
-
-            <View style={[styles.separator, dynamicStyles.separator]} />
-
-            {playlists.map((playlist) => (
-              <Pressable
-                key={playlist.id}
-                onPress={() => handleSelectPlaylist(playlist)}
-                disabled={busy}
-                style={({ pressed }) => [
-                  styles.playlistRow,
-                  pressed && styles.rowPressed,
-                ]}
+            {mode === 'pick' ? (
+              <ScrollView
+                style={styles.listContainer}
+                contentContainerStyle={styles.listContent}
+                bounces={false}
+                showsVerticalScrollIndicator={false}
               >
-                <Ionicons name="list-outline" size={22} color={colors.textSecondary} />
-                <View style={styles.playlistInfo}>
-                  <Text
-                    style={[styles.playlistName, dynamicStyles.playlistName]}
-                    numberOfLines={1}
+                {/* New Playlist row */}
+                <Pressable
+                  onPress={handleShowCreate}
+                  style={({ pressed }) => [
+                    styles.playlistRow,
+                    pressed && styles.rowPressed,
+                  ]}
+                >
+                  <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
+                  <Text style={[styles.newPlaylistLabel, dynamicStyles.newPlaylistLabel]}>
+                    {t('newPlaylist')}
+                  </Text>
+                </Pressable>
+
+                <View style={[styles.separator, dynamicStyles.separator]} />
+
+                {playlists.map((playlist) => (
+                  <Pressable
+                    key={playlist.id}
+                    onPress={() => handleSelectPlaylist(playlist)}
+                    disabled={busy}
+                    style={({ pressed }) => [
+                      styles.playlistRow,
+                      pressed && styles.rowPressed,
+                    ]}
                   >
-                    {playlist.name}
+                    <Ionicons name="list-outline" size={22} color={colors.textSecondary} />
+                    <View style={styles.playlistInfo}>
+                      <Text
+                        style={[styles.playlistName, dynamicStyles.playlistName]}
+                        numberOfLines={1}
+                      >
+                        {playlist.name}
+                      </Text>
+                      <Text style={[styles.playlistCount, dynamicStyles.playlistCount]}>
+                        {t('trackWithCount', { count: playlist.songCount ?? 0 })}
+                      </Text>
+                    </View>
+                    {numberOfMatch(playlist) > 0 ?
+                      <View>
+
+                        <Text style={[styles.playlistName, dynamicStyles.playlistName]}
+                          numberOfLines={1}>
+                          {i18n.t('numberOfTimesInPlaylist', { count: numberOfMatch(playlist) })}
+                        </Text>
+
+                      </View> : null}
+                  </Pressable>
+                ))}
+
+                {playlists.length === 0 && playlistsLoading && (
+                  <ActivityIndicator style={styles.loadingIndicator} color={colors.textSecondary} />
+                )}
+
+                {playlists.length === 0 && !playlistsLoading && !playlistsFetchError && (
+                  <Text style={[styles.emptyText, dynamicStyles.playlistCount]}>
+                    {t('noPlaylistsYet')}
                   </Text>
-                  <Text style={[styles.playlistCount, dynamicStyles.playlistCount]}>
-                    {t('trackWithCount', { count: playlist.songCount ?? 0 })}
+                )}
+
+                {playlistsFetchError && playlists.length === 0 && !playlistsLoading && (
+                  <Text style={[styles.emptyText, dynamicStyles.errorText]}>
+                    {t('failedToLoadPlaylists')}
                   </Text>
-                </View>
-              </Pressable>
-            ))}
+                )}
 
-            {playlists.length === 0 && playlistsLoading && (
-              <ActivityIndicator style={styles.loadingIndicator} color={colors.textSecondary} />
+                {playlists.length > 0 && playlistsLoading && (
+                  <ActivityIndicator style={styles.loadingIndicator} size="small" color={colors.textSecondary} />
+                )}
+              </ScrollView>
+            ) : (
+              <View style={styles.formSection}>
+                {/* Back arrow */}
+                <Pressable onPress={handleBackToPick} style={styles.backButton}>
+                  <Ionicons name="arrow-back" size={20} color={colors.primary} />
+                  <Text style={[styles.backLabel, { color: colors.primary }]}>{t('back')}</Text>
+                </Pressable>
+
+                <Text style={[styles.label, dynamicStyles.subtitle]}>{t('playlistName')}</Text>
+                <TextInput
+                  style={[styles.input, dynamicStyles.input]}
+                  value={name}
+                  onChangeText={setName}
+                  placeholder={t('enterPlaylistNamePlaceholder')}
+                  placeholderTextColor={colors.textSecondary}
+                  returnKeyType="done"
+                  autoFocus
+                  editable={!busy}
+                  onSubmitEditing={handleCreatePlaylist}
+                />
+
+                {error && (
+                  <Text style={[styles.errorText, dynamicStyles.errorText]}>{error}</Text>
+                )}
+
+                <Pressable
+                  onPress={handleCreatePlaylist}
+                  disabled={busy}
+                  style={({ pressed }) => [
+                    styles.createButton,
+                    dynamicStyles.createButton,
+                    pressed && styles.buttonPressed,
+                    busy && styles.buttonDisabled,
+                  ]}
+                >
+                  {busy ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="add-outline" size={18} color="#fff" />
+                      <Text style={styles.createButtonText}>{t('createPlaylist')}</Text>
+                    </>
+                  )}
+                </Pressable>
+              </View>
             )}
-
-            {playlists.length === 0 && !playlistsLoading && !playlistsFetchError && (
-              <Text style={[styles.emptyText, dynamicStyles.playlistCount]}>
-                {t('noPlaylistsYet')}
-              </Text>
-            )}
-
-            {playlistsFetchError && playlists.length === 0 && !playlistsLoading && (
-              <Text style={[styles.emptyText, dynamicStyles.errorText]}>
-                {t('failedToLoadPlaylists')}
-              </Text>
-            )}
-
-            {playlists.length > 0 && playlistsLoading && (
-              <ActivityIndicator style={styles.loadingIndicator} size="small" color={colors.textSecondary} />
-            )}
-          </ScrollView>
-        ) : (
-          <View style={styles.formSection}>
-            {/* Back arrow */}
-            <Pressable onPress={handleBackToPick} style={styles.backButton}>
-              <Ionicons name="arrow-back" size={20} color={colors.primary} />
-              <Text style={[styles.backLabel, { color: colors.primary }]}>{t('back')}</Text>
-            </Pressable>
-
-            <Text style={[styles.label, dynamicStyles.subtitle]}>{t('playlistName')}</Text>
-            <TextInput
-              style={[styles.input, dynamicStyles.input]}
-              value={name}
-              onChangeText={setName}
-              placeholder={t('enterPlaylistNamePlaceholder')}
-              placeholderTextColor={colors.textSecondary}
-              returnKeyType="done"
-              autoFocus
-              editable={!busy}
-              onSubmitEditing={handleCreatePlaylist}
-            />
-
-            {error && (
-              <Text style={[styles.errorText, dynamicStyles.errorText]}>{error}</Text>
-            )}
-
-            <Pressable
-              onPress={handleCreatePlaylist}
-              disabled={busy}
-              style={({ pressed }) => [
-                styles.createButton,
-                dynamicStyles.createButton,
-                pressed && styles.buttonPressed,
-                busy && styles.buttonDisabled,
-              ]}
-            >
-              {busy ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <>
-                  <Ionicons name="add-outline" size={18} color="#fff" />
-                  <Text style={styles.createButtonText}>{t('createPlaylist')}</Text>
-                </>
-              )}
-            </Pressable>
-          </View>
-          )}
           </Animated.View>
         )}
       </Animated.View>
@@ -457,8 +497,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   playlistName: {
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 14,
   },
   playlistCount: {
     fontSize: 14,
