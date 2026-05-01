@@ -181,7 +181,7 @@ export function ArtistDetailScreen() {
         setTopSongs(entry.topSongs);
         setBiography(entry.biography);
         if (isRefresh && entry.artist.coverArt) {
-          refreshCachedImage(entry.artist.coverArt).catch(() => { /* non-critical */ });
+          refreshCachedImage(entry.artist.coverArt, 'artist-detail-pull').catch(() => { /* non-critical */ });
         }
       }
       await delay;

@@ -181,7 +181,7 @@ export function PlaylistDetailScreen() {
       setPlaylist(data);
       if (!data) setError(t('playlistNotFound'));
       if (isRefresh && data?.coverArt) {
-        refreshCachedImage(data.coverArt).catch(() => { /* non-critical */ });
+        refreshCachedImage(data.coverArt, 'playlist-detail-pull').catch(() => { /* non-critical */ });
       }
       await delay;
     } catch (e) {

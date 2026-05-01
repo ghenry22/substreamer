@@ -257,7 +257,7 @@ export function ImageCacheBrowserScreen() {
   const handleRefresh = useCallback(
     (coverArtId: string) => {
       setItemStatus(coverArtId, 'refreshing');
-      refreshCachedImage(coverArtId)
+      refreshCachedImage(coverArtId, 'browser')
         .then(() => listCachedImagesAsync('all'))
         .then((result) => {
           setAllEntries(result);

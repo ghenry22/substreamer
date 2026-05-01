@@ -155,7 +155,7 @@ export function AlbumDetailScreen() {
       setAlbum(data);
       if (!data) setError(t('albumNotFound'));
       if (isRefresh && data?.coverArt) {
-        refreshCachedImage(data.coverArt).catch(() => { /* non-critical */ });
+        refreshCachedImage(data.coverArt, 'album-detail-pull').catch(() => { /* non-critical */ });
       }
       await delay;
     } catch (e) {

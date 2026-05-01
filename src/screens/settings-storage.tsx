@@ -226,8 +226,7 @@ export function SettingsStorageScreen() {
     // the tap actually did something.
     const minShown = minDelay(1500);
     try {
-      await reconcileImageCacheAsync();
-      imageCacheStore.getState().recalculateFromDb();
+      await reconcileImageCacheAsync('settings');
     } finally {
       await minShown;
       setImageScanning(false);
@@ -242,8 +241,7 @@ export function SettingsStorageScreen() {
     processingOverlayStore.getState().show(t('repairingImages'));
     const minShown = minDelay(1500);
     try {
-      const outcome = await repairIncompleteImagesAsync();
-      imageCacheStore.getState().recalculateFromDb();
+      const outcome = await repairIncompleteImagesAsync('settings');
 
       if (outcome.queued === 0 && outcome.removed === 0) {
         processingOverlayStore.getState().showSuccess(t('imageRepairNothingToDo'));
