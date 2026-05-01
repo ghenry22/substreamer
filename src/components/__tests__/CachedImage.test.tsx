@@ -57,12 +57,33 @@ jest.mock('../../services/musicCacheService', () => ({
 }));
 
 let mockOfflineMode = false;
+let mockOfflineSubscribers: Array<
+  (state: { offlineMode: boolean }, prev: { offlineMode: boolean }) => void
+> = [];
 
 jest.mock('../../store/offlineModeStore', () => ({
   offlineModeStore: {
     getState: () => ({ offlineMode: mockOfflineMode }),
+    subscribe: (
+      cb: (state: { offlineMode: boolean }, prev: { offlineMode: boolean }) => void,
+    ) => {
+      mockOfflineSubscribers.push(cb);
+      return () => {
+        mockOfflineSubscribers = mockOfflineSubscribers.filter((s) => s !== cb);
+      };
+    },
   },
 }));
+
+/** Flip the mocked offlineMode and notify subscribers, mirroring zustand. */
+function setMockOfflineMode(next: boolean): void {
+  const prev = mockOfflineMode;
+  if (prev === next) return;
+  mockOfflineMode = next;
+  for (const cb of [...mockOfflineSubscribers]) {
+    cb({ offlineMode: next }, { offlineMode: prev });
+  }
+}
 
 jest.mock('../WaveformLogo', () => {
   const { View } = require('react-native');
@@ -171,6 +192,7 @@ beforeEach(() => {
   mockDeleteCachedVariant.mockReset();
   mockGetCoverArtUrl.mockReset();
   mockOfflineMode = false;
+  mockOfflineSubscribers = [];
 
   mockGetCachedImageUri.mockReturnValue(null);
   mockCacheAllSizes.mockResolvedValue(undefined);
@@ -462,6 +484,45 @@ describe('CachedImage', () => {
       await Promise.resolve();
     });
     expect(mockCacheAllSizes).not.toHaveBeenCalled();
+  });
+
+  it('7b. offline error then reconnect lifts errorSuppress and re-renders cached file', async () => {
+    // Card mounts offline against a cached file. RNImage errors (e.g.
+    // corrupt local decode) → handleImageError's offline branch sets
+    // errorSuppress=true and bails. With the offline subscriber in place,
+    // flipping back to online clears errorSuppress so the next render
+    // can pick up the (still-on-disk) file URI without remount.
+    mockOfflineMode = true;
+    mockGetCachedImageUri.mockReturnValue('file:///cache/abc/600.jpg');
+
+    const { queryByTestId, toJSON, UNSAFE_root } = render(
+      <CachedImage coverArtId="album1" size={600} />,
+    );
+    await flushEffects();
+
+    const img = getRenderedImageHandlers(toJSON, UNSAFE_root, 'file:///cache/abc/600.jpg');
+    await act(async () => {
+      img!.onError?.();
+      await Promise.resolve();
+    });
+
+    // Stuck on placeholder while offline.
+    expect(findImagesInJSON(toJSON)).toHaveLength(0);
+    expect(queryByTestId('waveform-placeholder')).not.toBeNull();
+
+    // Reconnect → subscriber fires → errorSuppress lifted, reloadNonce
+    // bumps, cachedUri re-derives, file:// renders.
+    await act(async () => {
+      setMockOfflineMode(false);
+      await Promise.resolve();
+    });
+
+    const recovered = getRenderedImageHandlers(
+      toJSON,
+      UNSAFE_root,
+      'file:///cache/abc/600.jpg',
+    );
+    expect(recovered).not.toBeNull();
   });
 
   it('8. offline with valid cache renders the image layer on top of the placeholder', async () => {

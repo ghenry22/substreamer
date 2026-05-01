@@ -230,6 +230,26 @@ export const CachedImage = memo(function CachedImage({
     };
   }, []);
 
+  /* ---- recover from offline-mode errorSuppress on reconnect -------- */
+  // The offline branch of handleImageError sets errorSuppress=true and
+  // returns early without scheduling a retry that would lift it. Without
+  // this subscriber, a card that errored while offline would stay on the
+  // placeholder forever — even after the user reconnects and the cover
+  // lands on disk via the auto-repair-on-reconnect path in the service.
+  // Mirror logic for the online second-error fix shipped in d83a2f8.
+  useEffect(() => {
+    return offlineModeStore.subscribe((state, prev) => {
+      if (state.offlineMode === prev.offlineMode) return;
+      if (state.offlineMode) return; // only act on offline → online
+      // Reset retry state so a freshly-online network failure doesn't
+      // count against the budget consumed offline; bump reloadNonce so
+      // the debounced fetch effect re-evaluates and can set remoteUri.
+      retriedRef.current = false;
+      setErrorSuppress(false);
+      setReloadNonce((n) => n + 1);
+    });
+  }, []);
+
   /* ---- fade-in on successful load (remote URLs only) --------------- */
   const handleImageLoad = useCallback(() => {
     retriedRef.current = false;
