@@ -385,10 +385,10 @@ export default function AnimatedSplashScreen({ onFinish }: Props) {
         {/* Subtitle row — fixed height for text cross-fade */}
         <View style={styles.subtitleRow}>
           <Animated.Text style={[styles.subtitleText, styles.subtitleAbsolute, validatingStyle]}>
-            validating
+            {t('migrationValidating')}
           </Animated.Text>
           <Animated.Text style={[styles.subtitleText, styles.subtitleAbsolute, completeStyle]}>
-            complete
+            {t('migrationComplete')}
           </Animated.Text>
         </View>
       </Animated.View>

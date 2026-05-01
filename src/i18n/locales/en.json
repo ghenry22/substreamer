@@ -857,6 +857,8 @@
   "backupExclusionCount_other": "{{count}} exclusions",
   "genresWithCount": "Genres ({{selected}}/{{max}})",
   "startingUp": "Starting up",
+  "migrationValidating": "validating",
+  "migrationComplete": "complete",
   "less": "Less",
   "more": "More",
   "noPlaylists": "No playlists",
