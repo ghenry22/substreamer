@@ -49,6 +49,7 @@ import {
   deleteCachedVariant,
   getCachedImageUri,
 } from '../services/imageCacheService';
+import { logImageCache } from '../services/imageCacheLogger';
 import { STARRED_COVER_ART_ID } from '../services/musicCacheService';
 import { getCoverArtUrl, VARIOUS_ARTISTS_COVER_ART_ID } from '../services/subsonicService';
 import { offlineModeStore } from '../store/offlineModeStore';
@@ -204,6 +205,9 @@ export const CachedImage = memo(function CachedImage({
 
       const remoteUrl = getCoverArtUrl(coverArtId, size) ?? fallbackUri;
       if (remoteUrl) setRemoteUri(remoteUrl);
+      logImageCache(
+        `CachedImage debounce id=${coverArtId} size=${size} remote=${remoteUrl ? 'set' : 'null'}`,
+      );
 
       cacheAllSizes(coverArtId).catch(() => {
         /* cache failure is non-critical; placeholder or remote URL stays */
@@ -242,6 +246,14 @@ export const CachedImage = memo(function CachedImage({
     if (!coverArtId) return;
     const failedUri = resolvedUri;
     const offline = offlineModeStore.getState().offlineMode;
+    const failedKind = failedUri?.startsWith('file://')
+      ? 'file'
+      : failedUri
+        ? 'remote'
+        : 'none';
+    logImageCache(
+      `CachedImage onError id=${coverArtId} size=${size} kind=${failedKind} retried=${retriedRef.current} offline=${offline}`,
+    );
 
     // Common reset: fade to 0 and suppress the Image layer so the
     // placeholder underneath is visible.
@@ -264,8 +276,15 @@ export const CachedImage = memo(function CachedImage({
     }
 
     if (retriedRef.current) {
-      // Second failure — surface placeholder and stop.
+      // Second failure — give up on the remote attempts. Drop the
+      // remote URL and lift errorSuppress so a freshly cached file URI
+      // (delivered later by the cacheAllSizes promise from the retry
+      // path) can render on the next reloadNonce bump. Without lifting
+      // errorSuppress here, the common-reset above pins it true and
+      // the card stays on the placeholder forever even when disk
+      // eventually has the file.
       setRemoteUri(undefined);
+      setErrorSuppress(false);
       return;
     }
     retriedRef.current = true;
@@ -287,12 +306,19 @@ export const CachedImage = memo(function CachedImage({
       // runs concurrently; this is the authoritative retry URI.
       const remoteUrl = getCoverArtUrl(coverArtId, size);
       if (remoteUrl) setRemoteUri(`${remoteUrl}&_r=${Date.now()}`);
+      logImageCache(
+        `CachedImage retry-fire id=${coverArtId} size=${size} remote=${remoteUrl ? 'set' : 'null'}`,
+      );
 
       // Always re-queue cacheAllSizes — if the server now serves the
       // cover, the next render picks up the fresh cached URI.
       cacheAllSizes(coverArtId)
         .then(() => {
           if (currentIdRef.current !== coverArtId) return;
+          const hit = getCachedImageUri(coverArtId, size);
+          logImageCache(
+            `CachedImage retry-cacheAllSizes-resolved id=${coverArtId} size=${size} hit=${hit ? 'yes' : 'no'}`,
+          );
           setReloadNonce((n) => n + 1);
         })
         .catch(() => { /* retry exhausted — placeholder stays visible */ });

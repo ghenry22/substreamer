@@ -50,6 +50,7 @@ import {
   upsertCachedImage,
   type CacheBrowserFilter,
 } from '../store/persistence/imageCacheTable';
+import { logImageCache } from './imageCacheLogger';
 import {
   ensureCoverArtAuth,
   getCoverArtUrl,
@@ -812,7 +813,10 @@ export function cacheAllSizes(coverArtId: string): Promise<void> {
   const allCached = IMAGE_SIZES.every(
     (s) => getCachedImageUri(coverArtId, s) != null,
   );
-  if (allCached) return Promise.resolve();
+  if (allCached) {
+    logImageCache(`cacheAllSizes id=${coverArtId} all-cached noop`);
+    return Promise.resolve();
+  }
 
   return new Promise<void>((resolve) => {
     const list = pendingResolvers.get(coverArtId) ?? [];
@@ -820,9 +824,11 @@ export function cacheAllSizes(coverArtId: string): Promise<void> {
     pendingResolvers.set(coverArtId, list);
 
     if (downloading.has(coverArtId) || downloadQueue.includes(coverArtId)) {
+      logImageCache(`cacheAllSizes id=${coverArtId} dedup waiters=${list.length}`);
       return;
     }
 
+    logImageCache(`cacheAllSizes id=${coverArtId} enqueued queue=${downloadQueue.length + 1}`);
     downloadQueue.push(coverArtId);
     processQueue();
   });
@@ -937,6 +943,7 @@ async function downloadSourceImage(
 
   let tmpName: string | null = null;
   try {
+    logImageCache(`download id=${coverArtId} start url=${url}`);
     const response = await fetch(url);
     if (!response.ok) {
       if (response.status === 404) {
@@ -950,12 +957,14 @@ async function downloadSourceImage(
         console.warn(
           `[imageCacheService] 404 for coverArt=${coverArtId} — purging cache rows`,
         );
+        logImageCache(`download id=${coverArtId} 404 purge`);
         purgeCoverArtRows(coverArtId);
         return null;
       }
       // Other non-OK statuses (5xx, 403, etc.) count toward the failure
       // budget. Transient issues (one 503, single timeout) don't cost
       // anything; persistent ones eventually purge.
+      logImageCache(`download id=${coverArtId} status=${response.status} fail`);
       bumpSourceFailure(coverArtId);
       return null;
     }
@@ -989,9 +998,10 @@ async function downloadSourceImage(
 
     // Success — wipe any accumulated failure count.
     sourceFailureCount.delete(coverArtId);
+    logImageCache(`download id=${coverArtId} ok bytes=${bytes.length} ext=${ext.slice(1)}`);
 
     return dest.uri;
-  } catch {
+  } catch (e) {
     if (tmpName) {
       const tmp = new File(subDir, tmpName);
       if (tmp.exists) {
@@ -999,6 +1009,7 @@ async function downloadSourceImage(
       }
     }
     // Network error, JSON parse, etc. — transient; count it.
+    logImageCache(`download id=${coverArtId} threw=${e instanceof Error ? e.message : String(e)}`);
     bumpSourceFailure(coverArtId);
     return null;
   }
@@ -1013,11 +1024,13 @@ async function downloadSourceImage(
 function bumpSourceFailure(coverArtId: string): void {
   const next = (sourceFailureCount.get(coverArtId) ?? 0) + 1;
   sourceFailureCount.set(coverArtId, next);
+  logImageCache(`bumpSourceFailure id=${coverArtId} count=${next}/${MAX_SOURCE_FAILURES}`);
   if (next >= MAX_SOURCE_FAILURES) {
     // eslint-disable-next-line no-console
     console.warn(
       `[imageCacheService] ${next} consecutive failures for coverArt=${coverArtId} — purging cache rows`,
     );
+    logImageCache(`bumpSourceFailure id=${coverArtId} threshold-purge`);
     purgeCoverArtRows(coverArtId);
   }
 }
@@ -1074,10 +1087,12 @@ async function generateResizedVariant(
 
     // Success — reset any accumulated failures for this cover.
     variantFailureCount.delete(coverArtId);
-  } catch {
-    variantFailureCount.set(
-      coverArtId,
-      (variantFailureCount.get(coverArtId) ?? 0) + 1,
+    logImageCache(`resize id=${coverArtId} size=${size} ok bytes=${dest.size ?? 0}`);
+  } catch (e) {
+    const next = (variantFailureCount.get(coverArtId) ?? 0) + 1;
+    variantFailureCount.set(coverArtId, next);
+    logImageCache(
+      `resize id=${coverArtId} size=${size} fail count=${next}/${MAX_VARIANT_FAILURES} err=${e instanceof Error ? e.message : String(e)}`,
     );
     if (tmpFile.exists) {
       try { tmpFile.delete(); } catch { /* best-effort */ }

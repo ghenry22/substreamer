@@ -312,6 +312,81 @@ describe('CachedImage', () => {
     expect(findImagesInJSON(toJSON)).toHaveLength(0);
   });
 
+  it('4b. second failure does not strand a freshly-cached file', async () => {
+    // Disk has nothing initially → the debounced effect kicks off the
+    // remote fetch path. A deferred resolver is wired so the test can
+    // resolve the retry's cacheAllSizes call AFTER the second error
+    // fires, simulating the real race: cacheAllSizes lands the file on
+    // disk while RN's <Image> is busy erroring out.
+    mockGetCachedImageUri.mockReturnValue(null);
+    let resolveRetryCache: (() => void) | null = null;
+    mockCacheAllSizes
+      .mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(
+        () => new Promise<void>((resolve) => {
+          resolveRetryCache = resolve;
+        }),
+      );
+
+    const { queryByTestId, toJSON, UNSAFE_root } = render(
+      <CachedImage coverArtId="album1" size={300} />,
+    );
+    await flushEffects();
+
+    // Debounce fires → remote URL is set, RN <Image> mounts.
+    await act(async () => {
+      jest.advanceTimersByTime(150);
+      await Promise.resolve();
+    });
+
+    const firstRemote = getRenderedImageHandlers(
+      toJSON,
+      UNSAFE_root,
+      'https://example.com/cover.jpg',
+    );
+    expect(firstRemote).not.toBeNull();
+
+    // First error → retry scheduled.
+    await act(async () => {
+      firstRemote!.onError?.();
+      await Promise.resolve();
+    });
+
+    // Retry fires → second remote (cache-buster) is rendered.
+    await act(async () => {
+      jest.advanceTimersByTime(2500);
+      await Promise.resolve();
+    });
+    const retryRemote = getRenderedImageHandlers(toJSON, UNSAFE_root, '_r=');
+    expect(retryRemote).not.toBeNull();
+
+    // Second error → without the fix, errorSuppress stays true and the
+    // freshly-landed cached file below would never render.
+    await act(async () => {
+      retryRemote!.onError?.();
+      await Promise.resolve();
+    });
+    expect(findImagesInJSON(toJSON)).toHaveLength(0);
+    expect(queryByTestId('waveform-placeholder')).not.toBeNull();
+
+    // Now the disk has the file (cacheAllSizes finished writing) and
+    // its promise resolves → setReloadNonce++ → next render must show
+    // the cached file URI.
+    mockGetCachedImageUri.mockReturnValue('file:///cache/abc/300.jpg');
+    await act(async () => {
+      resolveRetryCache!();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const recovered = getRenderedImageHandlers(
+      toJSON,
+      UNSAFE_root,
+      'file:///cache/abc/300.jpg',
+    );
+    expect(recovered).not.toBeNull();
+  });
+
   it('5. navigation recovery: remounting with a new id resets retry state', async () => {
     mockGetCachedImageUri.mockReturnValue('file:///cache/a/600.jpg');
 

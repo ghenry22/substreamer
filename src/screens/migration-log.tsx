@@ -11,12 +11,14 @@ import { BottomChrome } from '../components/BottomChrome';
 import { useTheme } from '../hooks/useTheme';
 import { settingsStyles } from '../styles/settingsStyles';
 import { audioDiagnosticsStore } from '../store/audioDiagnosticsStore';
+import { imageCacheDiagnosticsStore } from '../store/imageCacheDiagnosticsStore';
 import { remoteControlDiagnosticsStore } from '../store/remoteControlDiagnosticsStore';
 import { formatBytes } from '../utils/formatters';
 
 const LOG_FILE = new File(Paths.document, 'migration-log.txt');
 const DIAG_LOG_FILE = new File(Paths.document, 'audio-diagnostics.log');
 const REMOTE_LOG_FILE = new File(Paths.document, 'remote-control-diagnostics.log');
+const IMAGE_LOG_FILE = new File(Paths.document, 'image-cache-diagnostics.log');
 
 export function MigrationLogScreen() {
   const { colors } = useTheme();
@@ -29,10 +31,13 @@ export function MigrationLogScreen() {
   const diagLogSize = audioDiagnosticsStore((s) => s.logFileSize);
   const remoteEnabled = remoteControlDiagnosticsStore((s) => s.enabled);
   const remoteLogSize = remoteControlDiagnosticsStore((s) => s.logFileSize);
+  const imageEnabled = imageCacheDiagnosticsStore((s) => s.enabled);
+  const imageLogSize = imageCacheDiagnosticsStore((s) => s.logFileSize);
 
   useEffect(() => {
     audioDiagnosticsStore.getState().refreshStatus();
     remoteControlDiagnosticsStore.getState().refreshStatus();
+    imageCacheDiagnosticsStore.getState().refreshStatus();
     if (LOG_FILE.exists) {
       LOG_FILE.text().then((text) => {
         setContent(text);
@@ -68,6 +73,20 @@ export function MigrationLogScreen() {
   const handleShareRemoteLog = useCallback(async () => {
     if (REMOTE_LOG_FILE.exists) {
       await shareAsync(REMOTE_LOG_FILE.uri, { mimeType: 'text/plain' });
+    }
+  }, []);
+
+  const handleImageToggle = useCallback(async (value: boolean) => {
+    await imageCacheDiagnosticsStore.getState().setEnabled(value);
+  }, []);
+
+  const handleImageReset = useCallback(async () => {
+    await imageCacheDiagnosticsStore.getState().resetLog();
+  }, []);
+
+  const handleShareImageLog = useCallback(async () => {
+    if (IMAGE_LOG_FILE.exists) {
+      await shareAsync(IMAGE_LOG_FILE.uri, { mimeType: 'text/plain' });
     }
   }, []);
 
@@ -208,6 +227,64 @@ export function MigrationLogScreen() {
             >
               <Ionicons name="trash-outline" size={18} color={remoteLogSize != null ? colors.red : colors.textSecondary} />
               <Text style={[styles.actionButtonText, { color: remoteLogSize != null ? colors.red : colors.textSecondary }]}>
+                {t('clear')}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+
+      {/* Image Cache Diagnostics */}
+      <View style={settingsStyles.section}>
+        <Text style={[settingsStyles.sectionTitle, { color: colors.label }]}>{t('imageCacheDiagnostics')}</Text>
+        <View style={[settingsStyles.card, settingsStyles.cardPadded, { backgroundColor: colors.card }]}>
+          <View style={[styles.diagRow, { borderBottomColor: colors.border }]}>
+            <View style={styles.diagTextWrap}>
+              <Text style={[styles.diagLabel, { color: colors.textPrimary }]}>{t('imageCacheLogging')}</Text>
+              <Text style={[styles.diagHint, { color: colors.textSecondary }]}>
+                {t('imageCacheLoggingHint')}
+              </Text>
+            </View>
+            <Switch
+              value={imageEnabled}
+              onValueChange={handleImageToggle}
+              trackColor={{ false: colors.border, true: colors.primary }}
+            />
+          </View>
+          <View style={[styles.diagRow, styles.diagRowLast]}>
+            <Text style={[styles.diagLabel, { color: colors.textPrimary }]}>{t('logFile')}</Text>
+            <Text style={[styles.diagValue, { color: colors.textSecondary }]}>
+              {imageLogSize != null ? formatBytes(imageLogSize) : t('none')}
+            </Text>
+          </View>
+          <View style={styles.buttonRow}>
+            <Pressable
+              onPress={handleShareImageLog}
+              disabled={imageLogSize == null}
+              style={({ pressed }) => [
+                styles.actionButton,
+                { borderColor: colors.border },
+                pressed && imageLogSize != null && settingsStyles.pressed,
+                imageLogSize == null && settingsStyles.disabled,
+              ]}
+            >
+              <Ionicons name="share-outline" size={18} color={imageLogSize != null ? colors.primary : colors.textSecondary} />
+              <Text style={[styles.actionButtonText, { color: imageLogSize != null ? colors.primary : colors.textSecondary }]}>
+                {t('share')}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={handleImageReset}
+              disabled={imageLogSize == null}
+              style={({ pressed }) => [
+                styles.actionButton,
+                { borderColor: colors.border },
+                pressed && imageLogSize != null && settingsStyles.pressed,
+                imageLogSize == null && settingsStyles.disabled,
+              ]}
+            >
+              <Ionicons name="trash-outline" size={18} color={imageLogSize != null ? colors.red : colors.textSecondary} />
+              <Text style={[styles.actionButtonText, { color: imageLogSize != null ? colors.red : colors.textSecondary }]}>
                 {t('clear')}
               </Text>
             </Pressable>
