@@ -17,6 +17,7 @@ jest.mock('../../services/imageCacheService', () => ({
   cacheAllSizes: jest.fn().mockResolvedValue(undefined),
   cacheEntityCoverArt: jest.fn(),
   teardownImageCache: jest.fn(),
+  wipeImageCacheForLogout: jest.fn(),
 }));
 jest.mock('../../services/musicCacheService', () => ({
   teardownMusicCache: jest.fn(),

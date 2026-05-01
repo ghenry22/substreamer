@@ -1,9 +1,11 @@
 import { File, Paths } from 'expo-file-system';
 import { create } from 'zustand';
 
-const FLAG_FILE_NAME = 'image-cache-diagnostics-enabled';
-const LOG_FILE_NAME = 'image-cache-diagnostics.log';
-const OLD_LOG_FILE_NAME = 'image-cache-diagnostics.old.log';
+import {
+  IMAGE_CACHE_DIAG_FLAG_FILE as FLAG_FILE_NAME,
+  IMAGE_CACHE_DIAG_LOG_FILE as LOG_FILE_NAME,
+  IMAGE_CACHE_DIAG_OLD_LOG_FILE as OLD_LOG_FILE_NAME,
+} from '../services/imageCacheLogger';
 
 interface ImageCacheDiagnosticsState {
   enabled: boolean;

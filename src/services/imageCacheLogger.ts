@@ -17,9 +17,14 @@
 
 import { File, Paths } from 'expo-file-system';
 
-const FLAG_FILE = 'image-cache-diagnostics-enabled';
-const LOG_FILE = 'image-cache-diagnostics.log';
-const OLD_LOG_FILE = 'image-cache-diagnostics.old.log';
+/** Filename of the empty file that gates diagnostic logging. Created and
+ *  deleted by `imageCacheDiagnosticsStore.setEnabled()`. */
+export const IMAGE_CACHE_DIAG_FLAG_FILE = 'image-cache-diagnostics-enabled';
+/** Active log file written by {@link logImageCache}. Inspectable + shareable
+ *  via Settings → Logging → Image Cache Diagnostics. */
+export const IMAGE_CACHE_DIAG_LOG_FILE = 'image-cache-diagnostics.log';
+/** Rotated log retained from the previous {@link MAX_LOG_BYTES}-cap rotation. */
+export const IMAGE_CACHE_DIAG_OLD_LOG_FILE = 'image-cache-diagnostics.old.log';
 const MAX_LOG_BYTES = 512 * 1024;
 
 let writeQueue: Promise<void> = Promise.resolve();
@@ -27,13 +32,13 @@ let writeQueue: Promise<void> = Promise.resolve();
 export function logImageCache(message: string): void {
   writeQueue = writeQueue.then(async () => {
     try {
-      const flagFile = new File(Paths.document, FLAG_FILE);
+      const flagFile = new File(Paths.document, IMAGE_CACHE_DIAG_FLAG_FILE);
       if (!flagFile.exists) return;
-      const logFile = new File(Paths.document, LOG_FILE);
+      const logFile = new File(Paths.document, IMAGE_CACHE_DIAG_LOG_FILE);
       const line = `[${new Date().toISOString()}] ${message}\n`;
       let existing = logFile.exists ? await logFile.text() : '';
       if (existing.length + line.length > MAX_LOG_BYTES) {
-        const oldLog = new File(Paths.document, OLD_LOG_FILE);
+        const oldLog = new File(Paths.document, IMAGE_CACHE_DIAG_OLD_LOG_FILE);
         if (oldLog.exists) {
           try { oldLog.delete(); } catch { /* best-effort */ }
         }

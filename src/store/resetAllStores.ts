@@ -7,12 +7,11 @@
 
 import { kvStorage, clearKvStorage } from './persistence';
 import { clearDetailTables } from './persistence/detailTables';
-import { clearAllCachedImages } from './persistence/imageCacheTable';
 import { clearPendingScrobbles } from './persistence/pendingScrobbleTable';
 import { clearScrobbles } from './persistence/scrobbleTable';
 import { clearMusicCacheTables } from './musicCacheStore';
 import { teardownMusicCache } from '../services/musicCacheService';
-import { teardownImageCache } from '../services/imageCacheService';
+import { teardownImageCache, wipeImageCacheForLogout } from '../services/imageCacheService';
 
 // Persisted stores
 import { albumDetailStore } from './albumDetailStore';
@@ -142,9 +141,11 @@ export function resetAllStores(): void {
   // them here and drop the settings blob too.
   clearMusicCacheTables();
   kvStorage.removeItem('substreamer-music-cache-settings');
-  // imageCacheStore persists the `cached_images` table; truncate it here
-  // and drop its settings blob.
-  clearAllCachedImages();
+  // imageCacheStore persists the `cached_images` table; the service-owned
+  // wipe also drops in-memory queue/uriCache state and the on-disk dir
+  // without re-arming the AppState listener teardownImageCache just
+  // removed. Settings blob is a separate KV row.
+  wipeImageCacheForLogout();
   kvStorage.removeItem('substreamer-image-cache-settings');
   for (const store of allStores) {
     (store.setState as (state: unknown, replace: boolean) => void)(

@@ -10,6 +10,7 @@ import { GradientBackground } from '../components/GradientBackground';
 import { BottomChrome } from '../components/BottomChrome';
 import { useTheme } from '../hooks/useTheme';
 import { settingsStyles } from '../styles/settingsStyles';
+import { IMAGE_CACHE_DIAG_LOG_FILE } from '../services/imageCacheLogger';
 import { audioDiagnosticsStore } from '../store/audioDiagnosticsStore';
 import { imageCacheDiagnosticsStore } from '../store/imageCacheDiagnosticsStore';
 import { remoteControlDiagnosticsStore } from '../store/remoteControlDiagnosticsStore';
@@ -18,7 +19,7 @@ import { formatBytes } from '../utils/formatters';
 const LOG_FILE = new File(Paths.document, 'migration-log.txt');
 const DIAG_LOG_FILE = new File(Paths.document, 'audio-diagnostics.log');
 const REMOTE_LOG_FILE = new File(Paths.document, 'remote-control-diagnostics.log');
-const IMAGE_LOG_FILE = new File(Paths.document, 'image-cache-diagnostics.log');
+const IMAGE_LOG_FILE = new File(Paths.document, IMAGE_CACHE_DIAG_LOG_FILE);
 
 export function MigrationLogScreen() {
   const { colors } = useTheme();
