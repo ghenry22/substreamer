@@ -15,6 +15,7 @@ import { type ThemeColors } from '../constants/theme';
 export type PlayerTab = 'player' | 'queue' | 'info' | 'lyrics';
 
 const ICON_SIZE = 26;
+export const PLAYER_TAB_BAR_HEIGHT = 52;
 
 interface PlayerTabBarProps {
   activeTab: PlayerTab;
@@ -106,7 +107,7 @@ export const PlayerTabBar = memo(function PlayerTabBar({
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    height: 52,
+    height: PLAYER_TAB_BAR_HEIGHT,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   tab: {

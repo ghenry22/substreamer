@@ -1,5 +1,7 @@
 jest.mock('../../store/persistence/kvStorage', () => require('../../store/persistence/__mocks__/kvStorage'));
 
+const mockedSafeAreaInsets = { top: 44, bottom: 34, left: 0, right: 0 };
+
 jest.mock('../../hooks/useTheme', () => ({
   useTheme: () => ({
     theme: 'dark',
@@ -90,7 +92,7 @@ jest.mock('react-native-gesture-handler', () => {
 });
 
 jest.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: () => ({ top: 44, bottom: 34, left: 0, right: 0 }),
+  useSafeAreaInsets: () => mockedSafeAreaInsets,
 }));
 
 jest.mock('../../components/CachedImage', () => {
@@ -229,7 +231,9 @@ jest.mock('@shopify/flash-list', () => {
 
 import React from 'react';
 import { render, fireEvent, act } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 
+import { PLAYER_TAB_BAR_HEIGHT } from '../../components/PlayerTabBar';
 import { playerStore } from '../../store/playerStore';
 import { type Child } from '../../services/subsonicService';
 
@@ -363,6 +367,17 @@ describe('PlayerView', () => {
     expect(getByText('play-back')).toBeTruthy();
     expect(getByText('pause')).toBeTruthy(); // playing state shows pause
     expect(getByText('play-forward')).toBeTruthy();
+  });
+
+  it('wraps the player tab in a scroll view with bottom inset padding', () => {
+    const { getByTestId } = render(<PlayerView />);
+
+    const scrollView = getByTestId('player-scroll-view');
+    const contentContainerStyle = StyleSheet.flatten(scrollView.props.contentContainerStyle);
+    const expectedPadding = PLAYER_TAB_BAR_HEIGHT + Math.max(mockedSafeAreaInsets.bottom, 16);
+
+    expect(contentContainerStyle.flexGrow).toBe(1);
+    expect(contentContainerStyle.paddingBottom).toBe(expectedPadding);
   });
 
   it('renders play icon when paused', () => {
