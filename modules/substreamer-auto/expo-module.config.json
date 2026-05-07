@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["SubstreamerAutoModule"]
+  },
+  "android": {
+    "modules": ["com.ghenry22.substream2.auto.SubstreamerAutoModule"]
+  }
+}

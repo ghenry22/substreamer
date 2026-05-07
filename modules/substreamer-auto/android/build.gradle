@@ -1,0 +1,26 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.ghenry22.substream2.auto'
+version = '0.7.10'
+
+android {
+  namespace "com.ghenry22.substream2.auto"
+  defaultConfig {
+    versionCode 1
+    versionName "0.7.10"
+  }
+  lintOptions {
+    abortOnError false
+  }
+}
+
+dependencies {
+    implementation project(':expo-modules-core')
+    
+    // --- ADD THESE TWO LINES FOR ANDROID AUTO ---
+    implementation 'androidx.media3:media3-session:1.1.1'
+    implementation 'com.google.guava:guava:31.1-android'
+}
