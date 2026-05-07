@@ -52,6 +52,13 @@ import kotlinx.coroutines.flow.flow
 import timber.log.Timber
 import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
+import androidx.media3.common.MediaMetadata
+import androidx.media3.session.LibraryResult
+import androidx.media3.session.MediaLibraryService.LibraryParams
+import androidx.media3.session.MediaLibraryService.MediaLibrarySession
+import com.google.common.collect.ImmutableList
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.SettableFuture
 
 @OptIn(UnstableApi::class)
 @MainThread
@@ -1428,6 +1435,55 @@ class MusicService : HeadlessJsMediaService() {
                 emit(MusicEvents.BUTTON_SET_RATING, this)
             }
             return super.onSetRating(session, controller, rating)
+        }
+
+        override fun onGetLibraryRoot(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            params: LibraryParams?
+        ): ListenableFuture<LibraryResult<MediaItem>> {
+            val rootItem = MediaItem.Builder()
+                .setMediaId("root")
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle("Substreamer") 
+                        .setIsBrowsable(true)
+                        .setIsPlayable(false)
+                        .build()
+                )
+                .build()
+            return Futures.immediateFuture(LibraryResult.ofItem(rootItem, null))
+        }
+
+        override fun onGetChildren(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            parentId: String,
+            page: Int,
+            pageSize: Int,
+            params: LibraryParams?
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+            val future = SettableFuture.create<LibraryResult<ImmutableList<MediaItem>>>()
+            
+            if (parentId == "root") {
+                val rootMenu = mutableListOf<MediaItem>()
+                future.set(LibraryResult.ofItemList(rootMenu, params))
+            } else {
+                try {
+                    val moduleClass = Class.forName("com.ghenry22.substream2.auto.SubstreamerAutoModule")
+                    val companionInstance = moduleClass.getField("Companion").get(null)
+                    val method = companionInstance.javaClass.getMethod(
+                        "requestDataFromTS", 
+                        String::class.java, 
+                        SettableFuture::class.java
+                    )
+                    method.invoke(companionInstance, parentId, future)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    future.setException(e)
+                }
+            }
+            return future
         }
     }
 
