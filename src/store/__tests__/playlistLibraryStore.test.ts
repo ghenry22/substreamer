@@ -1,10 +1,12 @@
 jest.mock('../persistence/kvStorage', () => require('../persistence/__mocks__/kvStorage'));
 jest.mock('../../services/subsonicService');
 
-import { ensureCoverArtAuth, getAllPlaylists } from '../../services/subsonicService';
+import { ensureCoverArtAuth, getAllPlaylists, getPlaylist, PlaylistWithSongs } from '../../services/subsonicService';
 import { playlistLibraryStore } from '../playlistLibraryStore';
 
 const mockGetAllPlaylists = getAllPlaylists as jest.MockedFunction<typeof getAllPlaylists>;
+const mockGetPlaylist = getPlaylist as jest.MockedFunction<typeof getPlaylist>;
+
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -12,6 +14,8 @@ beforeEach(() => {
 });
 
 const makePlaylist = (id: string, name: string) => ({ id, name } as any);
+const makePlaylistWithSongs = (id: string, name: string, entry: { id: string }[]) => ({ id, name, entry } as any);
+
 
 describe('playlistLibraryStore', () => {
   describe('fetchAllPlaylists', () => {
@@ -25,6 +29,27 @@ describe('playlistLibraryStore', () => {
       expect(state.playlists).toHaveLength(1);
       expect(state.loading).toBe(false);
       expect(state.lastFetchedAt).toBeGreaterThan(0);
+    });
+
+    it('fetches and stores playlists with entries', async () => {
+      mockGetAllPlaylists.mockResolvedValue([makePlaylist('p1', 'Chill')]);
+      mockGetPlaylist.mockResolvedValue(makePlaylistWithSongs('p1', 'Chill', [{ id: 's1' }, { id: 's2' }]));
+
+      await playlistLibraryStore.getState().fetchAllPlaylistsWithSongs();
+
+      expect(ensureCoverArtAuth).toHaveBeenCalled();
+      const state = playlistLibraryStore.getState();
+      expect(state.playlists).toHaveLength(1);
+      expect(state.loading).toBe(false);
+      expect(state.lastFetchedAt).toBeGreaterThan(0);
+
+      const playlistWithSongs = state.playlists[0] as PlaylistWithSongs;
+
+      expect(playlistWithSongs).toBeDefined();
+      expect(playlistWithSongs.entry).toBeDefined();
+      if (playlistWithSongs.entry)
+        expect(playlistWithSongs.entry.length).toBe(2)
+      
     });
 
     it('prevents duplicate fetches', async () => {

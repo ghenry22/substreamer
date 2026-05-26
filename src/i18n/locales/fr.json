@@ -910,5 +910,10 @@
   "storageNoLimit": "Sans limite",
   "storageLegendImages": "Images",
   "storageLegendMusic": "Musique",
-  "storageLegendFree": "Disponible"
+  "storageLegendFree": "Disponible",
+  "showSongInPlaylistOption" : "Afficher si une musique est dans une playlist",
+  "showSongInPlaylist": "Afficher",
+  "hideSongInPlaylist": "Cacher",
+  "numberOfTimesInPlaylist": "Présente {{count}} fois",
+  "failedToLoadPlaylistsEntries": "Impossible de charger les musiques des playlists"
 }
