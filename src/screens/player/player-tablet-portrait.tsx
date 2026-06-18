@@ -2,7 +2,7 @@ import Ionicons from "@react-native-vector-icons/ionicons/static";
 import MaterialCommunityIcons from "@react-native-vector-icons/material-design-icons/static";
 import { Stack, useNavigation, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
@@ -17,6 +17,7 @@ import { Pressable as GHPressable } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import ArtistLink from '@/components/ArtistLink';
 import { BookmarkButton } from '@/components/BookmarkButton';
 import { CachedImage } from '@/components/CachedImage';
 import { FavoriteButton } from '@/components/FavoriteButton';
@@ -233,9 +234,34 @@ export function PlayerTabletPortrait() {
                     <MarqueeText style={[styles.trackTitle, { color: colors.textPrimary }]}>
                       {currentTrack.title}
                     </MarqueeText>
-                    <Text style={[styles.trackArtist, { color: colors.textSecondary }]} numberOfLines={1}>
-                      {currentTrack.artist ?? t('unknownArtist')}
-                    </Text>
+                    {currentTrack.artists && currentTrack.artists.length > 0 ? (
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                        {currentTrack.artists.map((artist, i, arr) => (
+                          <Fragment key={artist.id}>
+                            <ArtistLink
+                              artistId={artist.id}
+                              artistName={artist.name}
+                              offline={offlineMode}
+                            />
+                            {i < arr.length - 1 && (
+                              <Text style={[styles.trackArtist, { color: colors.textSecondary }]}>
+                                {' · '}
+                              </Text>
+                            )}
+                          </Fragment>
+                        ))}
+                      </View>
+                    ) : currentTrack.artistId ? (
+                      <ArtistLink
+                        artistId={currentTrack.artistId}
+                        artistName={currentTrack.artist ?? t('unknownArtist')}
+                        offline={offlineMode}
+                      />
+                    ) : (
+                      <Text style={[styles.trackArtist, { color: colors.textSecondary }]} numberOfLines={1}>
+                        {currentTrack.artist ?? t('unknownArtist')}
+                      </Text>
+                    )}
                     <CastButton />
                   </View>
                   <FavoriteButton trackId={currentTrack.id} style={styles.favoriteButton} />

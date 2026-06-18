@@ -1,5 +1,5 @@
 import { Stack, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -15,6 +15,7 @@ import { LIST_DRAW_DISTANCE } from '../constants/layout';
 import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import ArtistLink from '../components/ArtistLink';
 import { CachedImage } from '../components/CachedImage';
 import { EmptyState } from '../components/EmptyState';
 import { DownloadButton } from '../components/DownloadButton';
@@ -233,18 +234,29 @@ export function AlbumDetailScreen() {
           </MarqueeText>
           <View style={styles.subtitleRow}>
             <View style={styles.subtitleText}>
-              {album.artistId && !offlineMode ? (
-                <Pressable
-                  onPress={() => router.push(`/artist/${album.artistId}`)}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('goToArtist')}
-                  style={({ pressed }) => pressed && styles.artistNamePressed}
-                >
-                  <Text style={[styles.artistName, { color: colors.textSecondary }]}>
-                    {album.artist ?? album.displayArtist ?? t('unknownArtist')}
-                  </Text>
-                </Pressable>
+              {album.artists && album.artists.length > 0 ? (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                  {album.artists.map((artist, i, arr) => (
+                    <Fragment key={artist.id}>
+                      <ArtistLink
+                        artistId={artist.id}
+                        artistName={artist.name}
+                        offline={offlineMode}
+                      />
+                      {i < arr.length - 1 && (
+                        <Text style={[styles.artistName, { color: colors.textSecondary }]}>
+                          {' · '}
+                        </Text>
+                      )}
+                    </Fragment>
+                  ))}
+                </View>
+              ) : album.artistId ? (
+                <ArtistLink
+                  artistId={album.artistId}
+                  artistName={album.artist ?? album.displayArtist ?? t('unknownArtist')}
+                  offline={offlineMode}
+                />
               ) : (
                 <Text style={[styles.artistName, { color: colors.textSecondary }]}>
                   {album.artist ?? album.displayArtist ?? t('unknownArtist')}
@@ -436,9 +448,6 @@ const styles = StyleSheet.create({
   },
   artistName: {
     fontSize: 16,
-  },
-  artistNamePressed: {
-    opacity: 0.6,
   },
   trackItemWrap: {
     // No padding here — TrackRow now provides 16px internal horizontal

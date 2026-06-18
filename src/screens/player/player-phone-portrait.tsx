@@ -2,7 +2,7 @@ import Ionicons from "@react-native-vector-icons/ionicons/static";
 import { FlashList } from '@shopify/flash-list';
 import { Stack, useNavigation, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -24,6 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
 import { AlbumInfoContent } from '@/components/AlbumInfoContent';
+import ArtistLink from '@/components/ArtistLink';
 import { LyricsContent } from '@/components/LyricsContent';
 import { BookmarkButton } from '@/components/BookmarkButton';
 import { CachedImage } from '@/components/CachedImage';
@@ -437,6 +438,8 @@ const PlayerContent = memo(function PlayerContent({
   shuffling,
 }: PlayerContentProps) {
   const { t } = useTranslation();
+  const router = useRouter();
+  const offlineMode = offlineModeStore((s) => s.offlineMode);
   const songCoverArtId = useSongCoverArt(currentTrack);
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -534,12 +537,36 @@ const PlayerContent = memo(function PlayerContent({
             <MarqueeText style={marqueeStyle}>
               {currentTrack.title}
             </MarqueeText>
-            <Text
-              style={[styles.trackArtist, { color: colors.textSecondary, fontSize: m.artistFont }]}
-              numberOfLines={1}
-            >
-              {currentTrack.artist ?? t('unknownArtist')}
-            </Text>
+            {currentTrack.artists && currentTrack.artists.length > 0 ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                {currentTrack.artists.map((artist, i, arr) => (
+                  <Fragment key={artist.id}>
+                    <ArtistLink
+                      artistId={artist.id}
+                      artistName={artist.name}
+                      fontSize={m.artistFont}
+                      offline={offlineMode}
+                    />
+                    {i < arr.length - 1 && (
+                      <Text style={[styles.trackArtist, { color: colors.textSecondary, fontSize: m.artistFont }]}>
+                        {' · '}
+                      </Text>
+                    )}
+                  </Fragment>
+                ))}
+              </View>
+            ) : currentTrack.artistId ? (
+              <ArtistLink
+                artistId={currentTrack.artistId}
+                artistName={currentTrack.artist ?? t('unknownArtist')}
+                fontSize={m.artistFont}
+                offline={offlineMode}
+              />
+            ) : (
+              <Text style={[styles.trackArtist, { color: colors.textSecondary, fontSize: m.artistFont }]} numberOfLines={1}>
+                {currentTrack.artist ?? t('unknownArtist')}
+              </Text>
+            )}
             <CastButton />
           </View>
           <FavoriteButton trackId={currentTrack.id} style={styles.favoriteButton} />
