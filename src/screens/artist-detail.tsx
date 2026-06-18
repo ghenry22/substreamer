@@ -164,7 +164,17 @@ export function ArtistDetailScreen() {
 
   /* ---- Derived values ---- */
   const albums = artist?.album ?? [];
-  const similarArtists = artistInfo?.similarArtist ?? [];
+  // Deduplicate by id — some backends (e.g. Navidrome) can return the same
+  // artist multiple times in similarArtist, which causes visible gaps when
+  // FlashList allocates space for the duplicate but React skips rendering it.
+  const similarArtists = useMemo(() => {
+    const seen = new Set<string>();
+    return (artistInfo?.similarArtist ?? []).filter((a) => {
+      if (seen.has(a.id)) return false;
+      seen.add(a.id);
+      return true;
+    });
+  }, [artistInfo?.similarArtist]);
 
   const sortedAlbums = useMemo(() => {
     if (albums.length === 0) return albums;
