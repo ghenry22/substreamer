@@ -41,8 +41,17 @@ import {
 } from './queuePersistenceService';
 import {
   ensureCoverArtAuth,
+  isRadioChild,
+  radioStationIdFromChildId,
   type Child,
 } from './subsonicService';
+import {
+  radioReconnectDelayMs,
+  shouldRadioReconnect,
+} from './radioReconnect';
+import { radioStore } from '../store/radioStore';
+import { radioNowPlayingStore } from '../store/radioNowPlayingStore';
+import { startIcyPolling, stopIcyPolling } from './icyMetadataService';
 import {
   buildPlayableQueue,
   mapRepeatMode,
@@ -96,6 +105,18 @@ let pendingResumePosition: { trackId: string; position: number } | null = null;
 let activeScrobbleIndex: number | null = null;
 let activeScrobbleDone = false;
 let lastMilestoneValue = 0;
+
+/* --- Radio auto-reconnect: consecutive failed reconnects for the current
+ * radio track. Reset when playback recovers or the track changes. --- */
+let radioReconnectAttempt = 0;
+let radioReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+function cancelRadioReconnect(): void {
+  if (radioReconnectTimer) {
+    clearTimeout(radioReconnectTimer);
+    radioReconnectTimer = null;
+  }
+}
 
 /** Report a completed play once per playthrough, guarded by `activeScrobbleDone`. */
 function reportPlay(trackIndex: number): void {
@@ -152,6 +173,8 @@ export async function initPlayer(): Promise<void> {
     if (state === 'playing') {
       if (store.error) store.setError(null);
       if (store.retrying) store.setRetrying(false);
+      // Playback recovered — a future radio drop starts a fresh backoff ladder.
+      radioReconnectAttempt = 0;
     }
   });
 
@@ -185,6 +208,18 @@ export async function initPlayer(): Promise<void> {
     } else {
       playerStore.getState().setCurrentTrack(null, null);
     }
+    // Radio bookkeeping: a station change resets the reconnect ladder and the
+    // ICY now-playing side-channel; leaving radio stops both.
+    cancelRadioReconnect();
+    radioReconnectAttempt = 0;
+    const newTrack = playerStore.getState().currentTrack;
+    if (newTrack && isRadioChild(newTrack)) {
+      radioStore.getState().setLastPlayed(radioStationIdFromChildId(newTrack.id));
+      startIcyPolling(newTrack.id, newTrack.radioStreamUrl);
+    } else {
+      stopIcyPolling();
+      radioNowPlayingStore.getState().clear();
+    }
     // Start a fresh playthrough for the incoming track.
     activeScrobbleIndex = index != null && index >= 0 ? index : null;
     activeScrobbleDone = false;
@@ -215,10 +250,29 @@ export async function initPlayer(): Promise<void> {
   });
 
   // --- Errors. Transient errors are auto-retried natively; surface the error
-  // so the UI can offer a manual "Retry" (→ tp.retry()). ---
+  // so the UI can offer a manual "Retry" (→ tp.retry()). Live radio drops are
+  // routine (stream hiccup, network hand-off), so those reconnect automatically
+  // with backoff before falling back to the manual Retry. ---
   tp.onError((error) => {
     const store = playerStore.getState();
     store.setError(error.message ?? i18n.t('playbackErrorOccurred'));
+    const track = store.currentTrack;
+    if (track && isRadioChild(track) && shouldRadioReconnect(radioReconnectAttempt)) {
+      const attempt = radioReconnectAttempt++;
+      store.setRetrying(true);
+      const expectedId = track.id;
+      cancelRadioReconnect();
+      radioReconnectTimer = setTimeout(() => {
+        radioReconnectTimer = null;
+        // Only reconnect if the user is still on the same station.
+        if (playerStore.getState().currentTrack?.id === expectedId) {
+          tp.retry();
+        } else {
+          playerStore.getState().setRetrying(false);
+        }
+      }, radioReconnectDelayMs(attempt));
+      return;
+    }
     store.setRetrying(false);
   });
 

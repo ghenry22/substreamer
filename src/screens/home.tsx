@@ -45,7 +45,11 @@ import { musicCacheStore } from '../store/musicCacheStore';
 import { LIST_LENGTH_DISPLAY_CAP } from '../store/layoutPreferencesStore';
 import { offlineModeStore } from '../store/offlineModeStore';
 import { playlistLibraryStore } from '../store/playlistLibraryStore';
+import { radioStore } from '../store/radioStore';
+import { playTrack } from '../services/playerService';
+import { RADIO_ID_PREFIX, radioStationToChild } from '../services/subsonicService';
 import { searchStore } from '../store/searchStore';
+import { selectionAsync } from '../utils/haptics';
 
 import { absoluteFill } from '../utils/styles';
 const CARD_WIDTH = 150;
@@ -226,6 +230,58 @@ function AlbumSection({
         />
       )}
     </View>
+  );
+}
+
+/** "Continue listening" — one-tap resume of the last played radio station.
+ *  Hidden until a station has been played and is still on the server list. */
+function LastStationCard({ colors }: { colors: ReturnType<typeof useTheme>['colors'] }) {
+  const { t } = useTranslation();
+  const lastPlayedStationId = radioStore((s) => s.lastPlayedStationId);
+  const stations = radioStore((s) => s.stations);
+
+  const station = useMemo(
+    () => stations.find((s) => s.id === lastPlayedStationId) ?? null,
+    [stations, lastPlayedStationId],
+  );
+
+  const handlePlay = useCallback(() => {
+    if (!station) return;
+    selectionAsync();
+    // The whole station list becomes the queue (same as the radio screen) so
+    // next/previous hops between stations.
+    const children = radioStore.getState().stations.map(radioStationToChild);
+    const child = children.find((c) => c.id === `${RADIO_ID_PREFIX}${station.id}`);
+    if (child) playTrack(child, children);
+  }, [station]);
+
+  if (!station) return null;
+
+  return (
+    <Pressable
+      onPress={handlePlay}
+      style={({ pressed }) => [
+        styles.radioCard,
+        styles.lastStationCard,
+        { backgroundColor: colors.card + 'B3' },
+        pressed && styles.listeningCardPressed,
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={t('playRadioStation', { name: station.name })}
+    >
+      <View style={[styles.radioIconCircle, { backgroundColor: colors.primary + '18' }]}>
+        <Ionicons name="play" size={20} color={colors.primary} />
+      </View>
+      <View style={styles.radioTextBlock}>
+        <Text style={[styles.radioTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+          {station.name}
+        </Text>
+        <Text style={[styles.radioSubtitle, { color: colors.textSecondary }]}>
+          {t('lastPlayedStation')}
+        </Text>
+      </View>
+      <Ionicons name="radio-outline" size={20} color={colors.textSecondary} />
+    </Pressable>
   );
 }
 
@@ -586,6 +642,7 @@ export function HomeScreen() {
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
               </Pressable>
+              <LastStationCard colors={colors} />
             </View>
           )}
           <ResumeBookmarksSection />
@@ -719,6 +776,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 16,
+  },
+  lastStationCard: {
+    marginTop: 12,
   },
   radioIconCircle: {
     width: 36,

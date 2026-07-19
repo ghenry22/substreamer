@@ -88,6 +88,13 @@ export const radioStationToChild = jest.fn(
   }),
 );
 export const getInternetRadioStations = jest.fn().mockResolvedValue(null);
+export const isRadioId = (id: string) => id.startsWith(RADIO_ID_PREFIX);
+export const radioStationIdFromChildId = (childId: string) =>
+  childId.slice(RADIO_ID_PREFIX.length);
+export const stationLogoUrl = jest.fn().mockReturnValue(null);
+export const createRadioStation = jest.fn().mockResolvedValue({ ok: true });
+export const updateRadioStation = jest.fn().mockResolvedValue({ ok: true });
+export const deleteRadioStation = jest.fn().mockResolvedValue({ ok: true });
 export const createShare = jest.fn().mockResolvedValue(null);
 export const updateShare = jest.fn().mockResolvedValue(undefined);
 export const deleteShare = jest.fn().mockResolvedValue(false);

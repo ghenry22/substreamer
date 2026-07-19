@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 
 import { useTheme } from '../hooks/useTheme';
+import { isRadioId } from '../services/subsonicService';
 import { buildAutoName, capturePlayerSnapshot, commitBookmark } from '../services/bookmarkService';
 import { bookmarkSheetStore } from '../store/bookmarkSheetStore';
 import { bookmarksStore } from '../store/bookmarksStore';
@@ -29,6 +30,7 @@ export const BookmarkButton = memo(function BookmarkButton({
   const { colors } = useTheme();
   const autoName = bookmarksStore((s) => s.autoName);
   const queueLength = playerStore((s) => s.queue.length);
+  const isRadio = playerStore((s) => (s.currentTrack ? isRadioId(s.currentTrack.id) : false));
   const disabled = queueLength === 0;
 
   const handlePress = useCallback(() => {
@@ -45,6 +47,9 @@ export const BookmarkButton = memo(function BookmarkButton({
       bookmarkSheetStore.getState().showCreate(suggested, snapshot);
     }
   }, [autoName, t, i18n.language]);
+
+  // A live stream has no resumable position — bookmarking makes no sense.
+  if (isRadio) return null;
 
   return (
     <Pressable

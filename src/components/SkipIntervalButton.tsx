@@ -17,7 +17,9 @@ import { useTranslation } from 'react-i18next';
 import { useTheme } from '../hooks/useTheme';
 import { useTransitionComplete } from '../hooks/useTransitionComplete';
 import { skipByInterval } from '../services/playerService';
+import { isRadioId } from '../services/subsonicService';
 import { playbackSettingsStore } from '../store/playbackSettingsStore';
+import { playerStore } from '../store/playerStore';
 
 interface SkipIntervalButtonProps {
   direction: 'forward' | 'backward';
@@ -101,6 +103,7 @@ export const SkipIntervalButton = memo(function SkipIntervalButton({
   const interval = playbackSettingsStore((s) =>
     direction === 'forward' ? s.skipForwardInterval : s.skipBackwardInterval,
   );
+  const isRadio = playerStore((s) => (s.currentTrack ? isRadioId(s.currentTrack.id) : false));
 
   // U21: react-native-svg#2878 — iOS Fabric topSvgLayout race during
   // navigation transitions. Defer SVG mount until the player transition
@@ -122,6 +125,9 @@ export const SkipIntervalButton = memo(function SkipIntervalButton({
 
   // Font size: smaller for 2-digit numbers to fit inside the arc
   const fontSize = interval >= 10 ? 7.5 : 9;
+
+  // Seeking has no meaning on a live stream.
+  if (isRadio) return null;
 
   if (!transitionComplete) {
     return (

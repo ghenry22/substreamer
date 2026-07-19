@@ -57,6 +57,14 @@ describe('childToTrack — internet radio', () => {
     expect(getStreamUrl).not.toHaveBeenCalled();
   });
 
+  it('passes the embedded station logo through as lock-screen artwork', () => {
+    const withLogo = {
+      ...radioChild,
+      radioLogoUrl: 'https://jazzfm.example/favicon.ico',
+    } as Child;
+    expect(childToTrack(withLogo)?.artworkUrl).toBe('https://jazzfm.example/favicon.ico');
+  });
+
   it('returns null for a radio child in offline mode', () => {
     mockOffline.offlineMode = true;
     expect(childToTrack(radioChild)).toBeNull();

@@ -10,17 +10,27 @@ export interface RadioState {
   loading: boolean;
   /** True once a fetch has completed (success or failure) this session. */
   loaded: boolean;
+  /** Station id (server id, not the prefixed child id) last played — drives
+   *  the "continue listening" card on Home. */
+  lastPlayedStationId: string | null;
+  /** Locally pinned station ids — the Subsonic API has no star for radio
+   *  stations, so favorites live only on this device. */
+  favoriteStationIds: string[];
   fetchStations: () => Promise<void>;
+  setLastPlayed: (stationId: string) => void;
+  toggleFavorite: (stationId: string) => void;
 }
 
 const PERSIST_KEY = 'substreamer-radio';
 
 export const radioStore = create<RadioState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       stations: [],
       loading: false,
       loaded: false,
+      lastPlayedStationId: null,
+      favoriteStationIds: [],
 
       fetchStations: async () => {
         set({ loading: true });
@@ -32,12 +42,29 @@ export const radioStore = create<RadioState>()(
           set({ loading: false, loaded: true });
         }
       },
+
+      setLastPlayed: (stationId) => {
+        if (get().lastPlayedStationId !== stationId) {
+          set({ lastPlayedStationId: stationId });
+        }
+      },
+
+      toggleFavorite: (stationId) => {
+        const current = get().favoriteStationIds;
+        set({
+          favoriteStationIds: current.includes(stationId)
+            ? current.filter((id) => id !== stationId)
+            : [...current, stationId],
+        });
+      },
     }),
     {
       name: PERSIST_KEY,
       storage: createJSONStorage(() => kvStorage),
       partialize: (state) => ({
         stations: state.stations,
+        lastPlayedStationId: state.lastPlayedStationId,
+        favoriteStationIds: state.favoriteStationIds,
       }),
     }
   )

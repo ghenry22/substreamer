@@ -13,7 +13,13 @@ const station = {
 };
 
 beforeEach(() => {
-  radioStore.setState({ stations: [], loading: false, loaded: false });
+  radioStore.setState({
+    stations: [],
+    loading: false,
+    loaded: false,
+    lastPlayedStationId: null,
+    favoriteStationIds: [],
+  });
   mockGetStations.mockReset();
 });
 
@@ -50,5 +56,30 @@ describe('radioStore.fetchStations', () => {
     resolveFetch([]);
     await promise;
     expect(radioStore.getState().loading).toBe(false);
+  });
+});
+
+describe('radioStore.setLastPlayed', () => {
+  it('records the station id', () => {
+    radioStore.getState().setLastPlayed('ir-1');
+    expect(radioStore.getState().lastPlayedStationId).toBe('ir-1');
+  });
+
+  it('is a no-op when the id is unchanged (no extra store writes)', () => {
+    radioStore.getState().setLastPlayed('ir-1');
+    const before = radioStore.getState();
+    radioStore.getState().setLastPlayed('ir-1');
+    expect(radioStore.getState()).toBe(before);
+  });
+});
+
+describe('radioStore.toggleFavorite', () => {
+  it('pins and unpins a station', () => {
+    radioStore.getState().toggleFavorite('ir-1');
+    expect(radioStore.getState().favoriteStationIds).toEqual(['ir-1']);
+    radioStore.getState().toggleFavorite('ir-2');
+    expect(radioStore.getState().favoriteStationIds).toEqual(['ir-1', 'ir-2']);
+    radioStore.getState().toggleFavorite('ir-1');
+    expect(radioStore.getState().favoriteStationIds).toEqual(['ir-2']);
   });
 });

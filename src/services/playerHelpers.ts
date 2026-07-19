@@ -105,6 +105,9 @@ export function childToTrack(
       url: child.radioStreamUrl,
       title: child.title,
       artist: child.artist ?? i18n.t('unknownArtist'),
+      // Station favicon as lock-screen artwork; the player falls back to its
+      // default artwork when the URL 404s.
+      artworkUrl: child.radioLogoUrl,
       duration: 0,
     };
   }

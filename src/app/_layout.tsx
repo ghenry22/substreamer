@@ -804,6 +804,10 @@ export default function RootLayout() {
           options={{ ...blurHeaderOptions, title: i18n.t('internetRadio'), headerBackTitle: i18n.t('back') }}
         />
         <Stack.Screen
+          name="radio-browser"
+          options={{ ...blurHeaderOptions, title: i18n.t('stationCatalog'), headerBackTitle: i18n.t('internetRadio') }}
+        />
+        <Stack.Screen
           name="settings-playback"
           options={{ ...blurHeaderOptions, title: i18n.t('soundPlayback'), headerBackTitle: i18n.t('settings') }}
         />

@@ -12,7 +12,9 @@ import { useTranslation } from 'react-i18next';
 
 import { PlaybackSpeedSheet } from './PlaybackSpeedSheet';
 import { useTheme } from '../hooks/useTheme';
+import { isRadioId } from '../services/subsonicService';
 import { playbackSettingsStore } from '../store/playbackSettingsStore';
+import { playerStore } from '../store/playerStore';
 
 /** Format rate into a compact label: 1 → "1x", 0.75 → ".75x", 1.25 → "1.25x". */
 function formatRate(rate: number): string {
@@ -25,6 +27,7 @@ export const PlaybackRateButton = memo(function PlaybackRateButton() {
   const { colors } = useTheme();
   const { t } = useTranslation();
   const playbackRate = playbackSettingsStore((s) => s.playbackRate);
+  const isRadio = playerStore((s) => (s.currentTrack ? isRadioId(s.currentTrack.id) : false));
   const [sheetVisible, setSheetVisible] = useState(false);
 
   const handlePress = useCallback(() => {
@@ -33,6 +36,9 @@ export const PlaybackRateButton = memo(function PlaybackRateButton() {
 
   const isDefault = playbackRate === 1;
   const labelColor = isDefault ? colors.textPrimary : colors.primary;
+
+  // Playback speed is meaningless on a live stream.
+  if (isRadio) return null;
 
   return (
     <>

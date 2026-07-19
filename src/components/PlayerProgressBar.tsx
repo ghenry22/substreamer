@@ -22,6 +22,9 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { type ThemeColors } from '../constants/theme';
+import { isRadioId } from '../services/subsonicService';
+import { radioNowPlayingStore } from '../store/radioNowPlayingStore';
+import { playerStore } from '../store/playerStore';
 import { formatTrackDuration } from '../utils/formatters';
 
 const TRACK_HEIGHT = 4;
@@ -65,6 +68,12 @@ export function PlayerProgressBar({
   onRetry,
 }: PlayerProgressBarProps) {
   const { t } = useTranslation();
+  // Live radio: every full-player surface renders this bar for the CURRENT
+  // track only, so the store lookup is safe here and saves threading a `live`
+  // prop through five player layouts. Live streams have no timeline — swap the
+  // seek bar for a LIVE indicator + ICY now-playing title.
+  const live = playerStore((s) => (s.currentTrack ? isRadioId(s.currentTrack.id) : false));
+  const nowPlaying = radioNowPlayingStore((s) => s.title);
   const trackWidth = useRef(0);
   const trackPageX = useRef(0);
   const trackRef = useRef<View>(null);
@@ -200,6 +209,55 @@ export function PlayerProgressBar({
       ? pendingSeekFraction * duration
       : position;
   const remaining = Math.max(0, duration - displayPosition);
+
+  if (live) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.liveRow}>
+          <View style={[styles.livePill, { backgroundColor: colors.red + '22' }]}>
+            <View style={[styles.liveDot, { backgroundColor: colors.red }]} />
+            <Text style={[styles.liveText, { color: colors.red }]}>{t('liveStream')}</Text>
+          </View>
+          {error != null && !retrying ? (
+            <View style={styles.centerStatus}>
+              <Text
+                style={[styles.statusLabel, { color: colors.red }]}
+                numberOfLines={1}
+              >
+                {error}
+              </Text>
+              {onRetry != null && (
+                <Pressable
+                  onPress={onRetry}
+                  hitSlop={8}
+                  style={({ pressed }) => [
+                    styles.retryButton,
+                    { borderColor: colors.red },
+                    pressed && styles.retryPressed,
+                  ]}
+                >
+                  <Text style={[styles.retryText, { color: colors.red }]}>
+                    {t('retry')}
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+          ) : retrying ? (
+            <Text style={[styles.statusLabel, { color: colors.red }]}>
+              {t('reconnecting')}
+            </Text>
+          ) : (
+            <Text
+              style={[styles.liveTitle, { color: colors.textSecondary }]}
+              numberOfLines={1}
+            >
+              {isBuffering ? t('buffering') : nowPlaying ?? ''}
+            </Text>
+          )}
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -364,5 +422,35 @@ const styles = StyleSheet.create({
   retryText: {
     fontSize: 12,
     fontWeight: '600',
+  },
+  liveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    // Match the seek bar's footprint (track hit area + time labels) closely
+    // enough that swapping modes doesn't shift the surrounding layout.
+    minHeight: TRACK_HEIGHT + 2 * TRACK_HIT_SLOP + 20,
+    gap: 10,
+  },
+  livePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  liveText: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  liveTitle: {
+    flex: 1,
+    fontSize: 13,
   },
 });

@@ -6,6 +6,7 @@ import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-nat
 import { useIsStarred } from '../hooks/useIsStarred';
 import { useTheme } from '../hooks/useTheme';
 import { toggleStar } from '../services/moreOptionsService';
+import { isRadioId } from '../services/subsonicService';
 import { offlineModeStore } from '../store/offlineModeStore';
 
 export interface FavoriteButtonProps {
@@ -29,6 +30,10 @@ export const FavoriteButton = memo(function FavoriteButton({
   const handleToggle = useCallback(() => {
     toggleStar('song', trackId);
   }, [trackId]);
+
+  // Radio stations can't be starred server-side — hide the heart entirely.
+  // (After the hooks: the guard must not change the hook call order.)
+  if (isRadioId(trackId)) return null;
 
   return (
     <Pressable
