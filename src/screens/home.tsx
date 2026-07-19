@@ -561,6 +561,33 @@ export function HomeScreen() {
             </Pressable>
           </View>
           <GenreChipSection genreCounts={genreCounts} colors={colors} />
+          {!offlineMode && (
+            <View style={styles.section}>
+              <Pressable
+                onPress={() => router.push('/radio')}
+                style={({ pressed }) => [
+                  styles.radioCard,
+                  { backgroundColor: colors.card + 'B3' },
+                  pressed && styles.listeningCardPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={t('openInternetRadio')}
+              >
+                <View style={[styles.radioIconCircle, { backgroundColor: colors.primary + '18' }]}>
+                  <Ionicons name="radio-outline" size={20} color={colors.primary} />
+                </View>
+                <View style={styles.radioTextBlock}>
+                  <Text style={[styles.radioTitle, { color: colors.textPrimary }]}>
+                    {t('internetRadio')}
+                  </Text>
+                  <Text style={[styles.radioSubtitle, { color: colors.textSecondary }]}>
+                    {t('internetRadioHomeHint')}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+              </Pressable>
+            </View>
+          )}
           <ResumeBookmarksSection />
           {albumSections.map((section) => {
             if (section.type === 'downloadedAlbums') {
@@ -684,6 +711,32 @@ const styles = StyleSheet.create({
   },
   listeningCardPressed: {
     opacity: 0.7,
+  },
+  radioCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  radioIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioTextBlock: {
+    flex: 1,
+  },
+  radioTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  radioSubtitle: {
+    fontSize: 13,
+    marginTop: 2,
   },
   statsRow: {
     flexDirection: 'row',

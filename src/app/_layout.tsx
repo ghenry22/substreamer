@@ -800,6 +800,10 @@ export default function RootLayout() {
           options={{ ...blurHeaderOptions, title: i18n.t('tunedIn'), headerBackTitle: i18n.t('back') }}
         />
         <Stack.Screen
+          name="radio"
+          options={{ ...blurHeaderOptions, title: i18n.t('internetRadio'), headerBackTitle: i18n.t('back') }}
+        />
+        <Stack.Screen
           name="settings-playback"
           options={{ ...blurHeaderOptions, title: i18n.t('soundPlayback'), headerBackTitle: i18n.t('settings') }}
         />

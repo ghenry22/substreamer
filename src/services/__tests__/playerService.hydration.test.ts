@@ -118,6 +118,10 @@ jest.mock('../subsonicService', () => ({
   getStreamUrl: jest.fn(() => subsonicMocks.streamUrl),
   getCoverArtUrl: jest.fn(() => subsonicMocks.coverArtUrl),
   ensureCoverArtAuth: jest.fn(() => Promise.resolve()),
+  isRadioChild: (child: { id?: string; radioStreamUrl?: unknown }) =>
+    typeof child?.id === 'string' &&
+    child.id.startsWith('internet-radio:') &&
+    typeof child.radioStreamUrl === 'string',
 }));
 
 const mockGetPersistedQueue = jest.fn().mockReturnValue(null);

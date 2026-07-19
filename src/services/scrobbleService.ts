@@ -14,7 +14,7 @@ import { offlineModeStore } from '../store/offlineModeStore';
 import { pendingScrobbleStore } from '../store/pendingScrobbleStore';
 import { scrobbleExclusionStore } from '../store/scrobbleExclusionStore';
 import { applyLocalPlay } from './playStatsService';
-import { getApi, type Child } from './subsonicService';
+import { getApi, isRadioChild, type Child } from './subsonicService';
 
 /**
  * Hook invoked at the end of a scrobble batch when at least one submission
@@ -94,6 +94,8 @@ export function initScrobbleService(): void {
  * Skipped silently when the song matches a scrobble exclusion.
  */
 export async function sendNowPlaying(song: Child, playlistId?: string): Promise<void> {
+  // Internet radio streams aren't server songs — nothing to scrobble.
+  if (isRadioChild(song)) return;
   if (isExcluded(song, playlistId)) return;
   const api = getApi();
   if (!api) return;
@@ -111,6 +113,8 @@ export async function sendNowPlaying(song: Child, playlistId?: string): Promise<
  */
 export function addCompletedScrobble(song: Child, playlistId?: string): void {
   if (!song?.id || !song.title) return;
+  // Internet radio streams aren't server songs — nothing to scrobble.
+  if (isRadioChild(song)) return;
   if (isExcluded(song, playlistId)) return;
   // Eagerly bump local play-count + last-played across every store that
   // holds a copy of this song or its album so UI reflects the play before

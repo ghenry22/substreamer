@@ -18,7 +18,7 @@ import { resolveSongCoverArt } from '../hooks/useSongCoverArt';
 import { resolveCachedImageUri } from './imageCacheService';
 import { logImageCache } from './imageCacheLogger';
 import { getLocalTrackUri } from './musicCacheService';
-import { getCoverArtUrl, getStreamUrl, type Child } from './subsonicService';
+import { getCoverArtUrl, getStreamUrl, isRadioChild, type Child } from './subsonicService';
 
 /** Map our RepeatModeSetting to RNQP's RepeatMode string union. */
 export function mapRepeatMode(mode: RepeatModeSetting): RepeatMode {
@@ -96,6 +96,19 @@ export function childToTrack(
   child: Child,
   cachedArt?: string | null,
 ): TrackItem | null {
+  // Internet radio: the stream URL lives on the Child itself (no server
+  // stream URL, no local file). Live streams are online-only.
+  if (isRadioChild(child)) {
+    if (offlineModeStore.getState().offlineMode) return null;
+    return {
+      id: child.id,
+      url: child.radioStreamUrl,
+      title: child.title,
+      artist: child.artist ?? i18n.t('unknownArtist'),
+      duration: 0,
+    };
+  }
+
   const localUri = getLocalTrackUri(child.id);
   const offline = offlineModeStore.getState().offlineMode;
   if (!localUri && offline) return null;

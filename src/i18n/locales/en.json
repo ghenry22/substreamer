@@ -1094,5 +1094,12 @@
   "backupBookmarkCount_one": "{{count}} bookmark",
   "backupBookmarkCount_few": "{{count}} bookmarks",
   "backupBookmarkCount_many": "{{count}} bookmarks",
-  "backupBookmarkCount_other": "{{count}} bookmarks"
+  "backupBookmarkCount_other": "{{count}} bookmarks",
+  "internetRadio": "Internet Radio",
+  "internetRadioHomeHint": "Live station streams from your server",
+  "openInternetRadio": "Open Internet Radio",
+  "radioStations": "Stations",
+  "noRadioStations": "No radio stations",
+  "noRadioStationsHint": "Add internet radio stations on your server (in Navidrome: Radios), then pull to refresh.",
+  "playRadioStation": "Play station {{name}}"
 }
