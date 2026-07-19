@@ -92,7 +92,8 @@
             "enableMinifyInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": true,
             "useLegacyPackaging": true,
-            "usePrecompiledHeaders": true
+            "usePrecompiledHeaders": true,
+            "usesCleartextTraffic": true
           }
         }
       ],
