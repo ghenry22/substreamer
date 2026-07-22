@@ -1,9 +1,11 @@
-• Keyboard no longer hides text fields when searching
-• Faster app startup
-• Bluetooth, lock-screen, and now-playing control fixes
-• Added Japanese, plus translation updates
-• Sync libraries with over 10,000 albums
-• One-tap switch when your server is unreachable
-• Trust certificates and legacy auth when adding a server
-• Playback stability and cover-art fixes
-• Many more bug fixes and improvements
+• Android Auto support
+• Cast & Bluetooth audio output switching
+• Graphical equalizer + ReplayGain loudness
+• Gapless & crossfade playback
+• Speed control with pitch correction
+• Smarter search: fuzzy, voice & recent searches
+• Edit playlists: name, description & public/private
+• Sync 10,000+ album libraries
+• Faster startup; keyboard no longer hides fields
+• Fixed cover-art crashes
+• Many more fixes & improvements
