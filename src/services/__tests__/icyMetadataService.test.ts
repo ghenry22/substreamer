@@ -15,6 +15,12 @@ import {
 } from '../icyMetadataService';
 
 const { fetch: mockFetch } = jest.requireMock('expo/fetch') as { fetch: jest.Mock };
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- see playerService.test.ts: the
+// global __mocks__/react-native-queue-player.js is used automatically; requiring it directly (rather
+// than jest.requireMock) is what resolves to the SAME instance the source module imports.
+const { __castManager: mockCastManager } = require('react-native-queue-player') as {
+  __castManager: { getCurrentAudioRoute: jest.Mock };
+};
 
 const encoder = new TextEncoder();
 
@@ -48,6 +54,7 @@ afterEach(() => {
   stopIcyPolling();
   radioNowPlayingStore.getState().clear();
   mockFetch.mockReset();
+  mockCastManager.getCurrentAudioRoute.mockReturnValue({ kind: 'speaker', name: '' });
   jest.useRealTimers();
 });
 
@@ -150,6 +157,14 @@ describe('startIcyPolling / stopIcyPolling', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(mockFetch).not.toHaveBeenCalled();
     appStateStore.setState({ isActive: true });
+  });
+
+  it('skips polling while routed over Bluetooth', async () => {
+    appStateStore.setState({ isActive: true });
+    mockCastManager.getCurrentAudioRoute.mockReturnValue({ kind: 'bluetoothA2DP', name: 'Headset' });
+    startIcyPolling('internet-radio:ir-1', 'https://s/live');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it('stops polling for unsupported stations', async () => {

@@ -10,12 +10,30 @@
  * Stations that don't answer with `icy-metaint` are marked unsupported and
  * never re-polled until the station changes. Results land in
  * radioNowPlayingStore, which the player UI reads.
+ *
+ * Skipped entirely while the active audio route is Bluetooth: on combo
+ * Wi-Fi/BT chips, the burst of network traffic from opening this second
+ * connection can steal the radio's airtime from an active A2DP/SCO link
+ * long enough to produce an audible glitch in the actual playback — a cost
+ * not worth paying for a title update.
  */
 
 import { fetch as expoFetch } from 'expo/fetch';
+import { getCastManager, type AudioRouteKind } from 'react-native-queue-player';
 
 import { appStateStore } from '../store/appStateStore';
 import { radioNowPlayingStore } from '../store/radioNowPlayingStore';
+
+const BLUETOOTH_ROUTE_KINDS: ReadonlySet<AudioRouteKind> = new Set([
+  'bluetoothA2DP',
+  'bluetoothLE',
+  'bluetoothHFP',
+]);
+
+/** True while audio is routed over Bluetooth (A2DP/LE/HFP). */
+function isBluetoothRouteActive(): boolean {
+  return BLUETOOTH_ROUTE_KINDS.has(getCastManager().getCurrentAudioRoute().kind);
+}
 
 export const ICY_POLL_INTERVAL_MS = 20_000;
 /** Abort a single poll after this long regardless of progress. */
@@ -149,6 +167,8 @@ async function pollTick(trackId: string, streamUrl: string): Promise<void> {
   // Foreground only — the title isn't visible in the background and RNQP's
   // notification can't be updated anyway.
   if (!appStateStore.getState().isActive) return;
+  // Bluetooth output — skip; see file header.
+  if (isBluetoothRouteActive()) return;
   if (pollInFlight) return;
   pollInFlight = true;
   try {
