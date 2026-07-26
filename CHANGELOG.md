@@ -1,5 +1,15 @@
 # Changelog
 
+## [8.0.91] - 2026-07-23
+
+- chore: deps
+- chore: deps
+- ci: update coverage badge [skip ci]
+## [8.0.90] - 2026-07-23
+
+- fix(offline): downloaded items self-cache metadata and never auto-remove it
+- Updated release notes
+- ci: update coverage badge [skip ci]
 ## [8.0.89] - 2026-07-21
 
 - docs(agents): close issues via "Closes #N" in the commit, never gh issue close

@@ -538,6 +538,8 @@ describe('removeCachedItem', () => {
     musicCacheStore.setState({
       cachedItems: { a: makeItem('a', ['s1', 's2']) },
       cachedSongs: { s1: makeSong('s1'), s2: makeSong('s2') },
+      totalBytes: 2000,
+      totalFiles: 2,
     });
     // No REAL holder remains for either song → both orphan (atomic count+orphan
     // fused into orphanSongIfUnreferencedAsync).
@@ -558,6 +560,9 @@ describe('removeCachedItem', () => {
     const state = musicCacheStore.getState();
     expect(state.cachedItems['a']).toBeUndefined();
     expect(state.cachedSongs).toEqual({});
+    // Disk-usage aggregates decrement by the orphaned songs (2 × 1000 bytes).
+    expect(state.totalBytes).toBe(0);
+    expect(state.totalFiles).toBe(0);
   });
 
   it('keeps songs that still have a REAL holder (another item)', async () => {
@@ -567,6 +572,8 @@ describe('removeCachedItem', () => {
         b: makeItem('b', ['s1']),
       },
       cachedSongs: { s1: makeSong('s1'), s2: makeSong('s2') },
+      totalBytes: 2000,
+      totalFiles: 2,
     });
     // s1 still has a REAL holder ('b') → not orphaned; s2 has none → orphans.
     mockOrphanSongIfUnreferencedAsync.mockImplementation(async (songId: string) =>
@@ -587,6 +594,9 @@ describe('removeCachedItem', () => {
     expect(state.cachedItems['b']).toBeDefined();
     expect(state.cachedSongs['s1']).toBeDefined();
     expect(state.cachedSongs['s2']).toBeUndefined();
+    // Only s2 (1000 bytes) was freed; s1 still counts.
+    expect(state.totalBytes).toBe(1000);
+    expect(state.totalFiles).toBe(1);
   });
 
   it('returns empty array when item is unknown', async () => {
@@ -607,6 +617,8 @@ describe('removeCachedItemSong', () => {
     musicCacheStore.setState({
       cachedItems: { a: makeItem('a', ['s1', 's2', 's3']) },
       cachedSongs: { s1: makeSong('s1'), s2: makeSong('s2'), s3: makeSong('s3') },
+      totalBytes: 3000,
+      totalFiles: 3,
     });
     // After the edge is removed, s2 has no REAL holder left → orphan it.
     mockOrphanSongIfUnreferencedAsync.mockResolvedValue({
@@ -626,6 +638,9 @@ describe('removeCachedItemSong', () => {
     expect(state.cachedSongs['s2']).toBeUndefined();
     expect(state.cachedSongs['s1']).toBeDefined();
     expect(state.cachedSongs['s3']).toBeDefined();
+    // The single orphaned song (1000 bytes) is removed from the aggregates.
+    expect(state.totalBytes).toBe(2000);
+    expect(state.totalFiles).toBe(2);
   });
 
   it('removes edge but keeps song when a REAL holder remains', async () => {

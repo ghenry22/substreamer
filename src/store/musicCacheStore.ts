@@ -417,8 +417,21 @@ export const musicCacheStore = create<MusicCacheState>()((set, get) => ({
         if (h) nextItems[hid] = { ...h, songIds: h.songIds.filter((s) => !orphanSet.has(s)) };
       }
       const nextSongs = { ...prev.cachedSongs };
-      for (const songId of orphaned) delete nextSongs[songId];
-      return { cachedItems: nextItems, cachedSongs: nextSongs };
+      // Decrement the disk-usage aggregates by the orphaned songs' bytes/count
+      // (symmetric with addBytes/addFiles on download; boot recomputes from
+      // truth). Without this the card's file count + disk usage stay stale after
+      // a delete even though the item count and lists update.
+      let freedBytes = 0;
+      for (const songId of orphaned) {
+        freedBytes += prev.cachedSongs[songId]?.bytes ?? 0;
+        delete nextSongs[songId];
+      }
+      return {
+        cachedItems: nextItems,
+        cachedSongs: nextSongs,
+        totalBytes: Math.max(0, prev.totalBytes - freedBytes),
+        totalFiles: Math.max(0, prev.totalFiles - orphaned.length),
+      };
     });
     return orphaned;
   },
@@ -461,8 +474,16 @@ export const musicCacheStore = create<MusicCacheState>()((set, get) => ({
         const h = nextItems[hid];
         if (h) nextItems[hid] = { ...h, songIds: h.songIds.filter((s) => s !== orphanedSongId) };
       }
+      // Decrement disk-usage aggregates for the single orphaned song (see
+      // removeCachedItem).
+      const freedBytes = prev.cachedSongs[orphanedSongId]?.bytes ?? 0;
       const { [orphanedSongId]: _gone, ...restSongs } = prev.cachedSongs;
-      return { cachedItems: nextItems, cachedSongs: restSongs };
+      return {
+        cachedItems: nextItems,
+        cachedSongs: restSongs,
+        totalBytes: Math.max(0, prev.totalBytes - freedBytes),
+        totalFiles: Math.max(0, prev.totalFiles - 1),
+      };
     });
     return { orphanedSongId };
   },

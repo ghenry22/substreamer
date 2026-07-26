@@ -1,16 +1,1 @@
-• CarPlay — browse and play from your car
-• Cast, AirPlay and Bluetooth audio output switching
-• Graphical equalizer with ReplayGain loudness normalisation
-• Gapless and crossfade playback
-• Playback speed with pitch correction
-• Playback cache with look-ahead, plus a live cache-usage view
-• Smarter search: fuzzy and phonetic matching, voice search, and recent searches
-• Edit playlists — rename, description, and public/private
-• Configurable scrobble milestone
-• Sync libraries with 10,000+ albums
-• Keyboard no longer hides text fields when searching
-• Faster app startup and library tab switching
-• Downloaded tracks always play from device, never re-streamed
-• Back-edge swipe no longer conflicts with row actions
-• Player colour now follows the cover art
-• Many more bug fixes and improvements
+fix: downloaded album details lost after last update (hotfix)

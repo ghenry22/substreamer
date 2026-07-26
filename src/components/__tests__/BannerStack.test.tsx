@@ -60,8 +60,17 @@ jest.mock('../ImageCacheBanner', () => ({
   },
 }));
 
+jest.mock('../DownloadedMetadataBanner', () => ({
+  DownloadedMetadataBanner: () => {
+    const React = require('react');
+    const { Text } = require('react-native');
+    return React.createElement(Text, { testID: 'banner-downloaded-metadata' }, 'downloaded-metadata');
+  },
+}));
+
 import { BannerStack } from '../BannerStack';
 import { connectivityStore } from '../../store/connectivityStore';
+import { downloadedMetadataRefreshStore } from '../../store/downloadedMetadataRefreshStore';
 import { imageDownloadQueueStore } from '../../store/imageDownloadQueueStore';
 import { offlineModeStore } from '../../store/offlineModeStore';
 import { storageLimitStore } from '../../store/storageLimitStore';
@@ -74,6 +83,7 @@ function resetAll() {
   storageLimitStore.setState({ isStorageFull: false } as any);
   syncStatusStore.setState({ detailSyncPhase: 'idle' });
   imageDownloadQueueStore.setState({ cycleId: null, cycleTotal: 0, cycleProcessed: 0 } as any);
+  downloadedMetadataRefreshStore.setState({ active: false, total: 0, done: 0 } as any);
 }
 
 beforeEach(resetAll);
@@ -201,5 +211,25 @@ describe('BannerStack — priority selection', () => {
     const { queryByTestId } = render(<BannerStack />);
     expect(queryByTestId('banner-library-sync')).not.toBeNull();
     expect(queryByTestId('banner-image-cache')).toBeNull();
+  });
+
+  it('shows downloaded-metadata banner when a refresh is active and nothing higher is', () => {
+    downloadedMetadataRefreshStore.setState({ active: true, total: 20, done: 5 } as any);
+    const { queryByTestId } = render(<BannerStack />);
+    expect(queryByTestId('banner-downloaded-metadata')).not.toBeNull();
+  });
+
+  it('does not show downloaded-metadata banner when total is 0', () => {
+    downloadedMetadataRefreshStore.setState({ active: true, total: 0, done: 0 } as any);
+    const { queryByTestId } = render(<BannerStack />);
+    expect(queryByTestId('banner-downloaded-metadata')).toBeNull();
+  });
+
+  it('image-cache refresh suppresses downloaded-metadata banner (lower priority)', () => {
+    imageDownloadQueueStore.setState({ cycleId: 'cyc-1', cycleTotal: 100, cycleProcessed: 25 } as any);
+    downloadedMetadataRefreshStore.setState({ active: true, total: 20, done: 5 } as any);
+    const { queryByTestId } = render(<BannerStack />);
+    expect(queryByTestId('banner-image-cache')).not.toBeNull();
+    expect(queryByTestId('banner-downloaded-metadata')).toBeNull();
   });
 });

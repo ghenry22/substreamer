@@ -29,6 +29,7 @@ import { fetch } from 'expo/fetch';
 
 import { deleteDirectoryAsync, deleteFileAsync, existsAsync, listDirectoryAsync, listDirectoryWithSizesAsync } from 'expo-async-fs';
 import { resizeImageToFileAsync } from 'expo-image-resize';
+import { withTimeout } from '../utils/withTimeout';
 import {
   getLastReconcileMs,
   imageCacheStore,
@@ -135,8 +136,40 @@ const MIME_TO_EXT: Record<string, string> = {
   'image/webp': '.webp',
 };
 
+/**
+ * Detect a NON-image response body. Some Subsonic servers answer `getCoverArt`
+ * for a missing/invalid cover with an HTTP-200 **error envelope** — XML
+ * (`<subsonic-response>` / `<?xml`) or JSON (`{...}`) — instead of image bytes.
+ * Writing that text as an image file makes ImageIO/expo-image fail to decode on
+ * every render (`createImageAtIndex … -62`).
+ *
+ * We detect the ERROR shape (starts with `<` or `{`) rather than allow-listing
+ * image magic bytes — so ANY real image type is accepted (jpg/png/webp/gif/…,
+ * whatever the server sends), and only the text error envelopes are rejected.
+ * Real image bytes never begin with `<` or `{`.
+ */
+function isNonImageErrorBody(bytes: Uint8Array): boolean {
+  for (let i = 0; i < bytes.length && i < 16; i++) {
+    const c = bytes[i];
+    // Skip leading whitespace + a UTF-8 BOM before the first meaningful byte.
+    if (
+      c === 0x20 || c === 0x09 || c === 0x0a || c === 0x0d ||
+      c === 0xef || c === 0xbb || c === 0xbf
+    ) {
+      continue;
+    }
+    return c === 0x3c /* '<' → XML */ || c === 0x7b /* '{' → JSON */;
+  }
+  return false;
+}
+
 /** JPEG quality for locally generated resize variants. */
 const RESIZE_COMPRESS = 0.9;
+
+/** Sanity timeout for a cover-art SOURCE download (see the transport phase).
+ *  Generous — covers can be large on a slow link — but bounded so an awaited
+ *  cover fetch can't stall a music download indefinitely. */
+const SOURCE_FETCH_TIMEOUT_MS = 30_000;
 
 /* ------------------------------------------------------------------ */
 /*  Module state                                                       */
@@ -376,13 +409,71 @@ function isPurgeAllowedNow(): boolean {
   return !offline && conn.hasConnection && conn.isServerReachable;
 }
 
+// Memoized set of cover-art ids belonging to DOWNLOADED items (albums,
+// playlists, individually-downloaded songs) AND their per-track covers.
+// Rebuilt only when `cachedItems`/`cachedSongs`/the cover-art mode change. Used
+// to protect downloaded covers from the automated purge paths — a downloaded
+// item's cached cover (including a downloaded playlist's/album's individual
+// track thumbnails in per-track mode) must never be evicted by a transient
+// server error; offline is a filtered view of this data.
+let _dlCoverItemsSrc: unknown = null;
+let _dlCoverSongsSrc: unknown = null;
+let _dlCoverMode: string | null = null;
+let _dlCoverIds = new Set<string>();
+function downloadedCoverArtIds(): Set<string> {
+  // Lazy require to avoid an import cycle (musicCacheStore → services → here).
+  const { musicCacheStore } = require('../store/musicCacheStore');
+  const { layoutPreferencesStore } = require('../store/layoutPreferencesStore');
+  const state = musicCacheStore.getState();
+  const cachedItems = state.cachedItems;
+  const cachedSongs = state.cachedSongs;
+  const mode = layoutPreferencesStore.getState().songCoverArtMode;
+  if (cachedItems !== _dlCoverItemsSrc || cachedSongs !== _dlCoverSongsSrc || mode !== _dlCoverMode) {
+    const next = new Set<string>();
+    // Item-level covers (album/playlist/song/favorites holders).
+    for (const item of Object.values(cachedItems) as Array<{ coverArtId?: string }>) {
+      if (item.coverArtId) next.add(item.coverArtId);
+    }
+    // Per-track covers of every downloaded song, resolved mode-aware (album mode:
+    // parent album's cover so tracks share one file; per-track: the song's own
+    // cover) — mirrors the recache path so a downloaded playlist's/album's track
+    // thumbnails are protected too, not just the item-level cover.
+    for (const s of Object.values(cachedSongs) as Array<{
+      coverArt?: string | null;
+      albumId?: string | null;
+    }>) {
+      const id = resolveSongCoverArt(s);
+      if (id) next.add(id);
+    }
+    _dlCoverIds = next;
+    _dlCoverItemsSrc = cachedItems;
+    _dlCoverSongsSrc = cachedSongs;
+    _dlCoverMode = mode;
+  }
+  return _dlCoverIds;
+}
+
+/** True when a coverArtId belongs to a downloaded item (never auto-purge it). */
+function isDownloadedCover(coverArtId: string): boolean {
+  return downloadedCoverArtIds().has(coverArtId);
+}
+
 /**
  * Delete every on-disk variant and DB row for a coverArtId, and evict
  * its URI-cache entries. Used by the sentinel sweep, the 404 short-
  * circuit, the source-download connectivity-gated purge, and the
  * variant-resize threshold purge.
+ *
+ * NO-OP for downloaded items: a downloaded item's cover is required for offline
+ * rendering and must never be evicted by an automated path (transient 404/5xx,
+ * resize hiccup). Only the manual "clear image cache" / logout wipe it.
  */
 async function purgeCoverArtRows(coverArtId: string): Promise<{ files: number }> {
+  if (isDownloadedCover(coverArtId)) {
+    logImageCache(`purge skipped (downloaded item): ${coverArtId}`);
+    variantFailureCount.delete(coverArtId);
+    return { files: 0 };
+  }
   const result = await deleteCachedImagesForCoverArt(coverArtId);
   try {
     const subDir = new Directory(ensureCacheDir(), coverArtPathKey(coverArtId));
@@ -752,6 +843,7 @@ export async function reconcileImageCache(source: string = 'auto'): Promise<void
   if (!isMassInsert) {
     const post = await listCachedImagesForBrowser('all');
     let droppedCount = 0;
+    const staleDownloadedCovers = new Set<string>();
     for (const entry of post) {
       // Disk paths are sanitised; SQL rows keep the original coverArtId.
       const onDiskDirName = coverArtPathKey(entry.coverArtId);
@@ -759,6 +851,19 @@ export async function reconcileImageCache(source: string = 'auto'): Promise<void
       // If Pass 1 couldn't list this dir, we have no reliable view of it —
       // leave its rows alone rather than dropping on incomplete info.
       if (fileMap === undefined) continue;
+      // Downloaded item's cover with a missing file (OS eviction, external
+      // wipe): do NOT drop the row — re-cache it instead so the offline copy
+      // is restored. Never leave a downloaded cover unrecoverable.
+      if (isDownloadedCover(entry.coverArtId)) {
+        for (const file of entry.files) {
+          if (seenOnDisk.has(diskKey(entry.coverArtId, file.size))) continue;
+          const onDiskSize = fileMap.get(`${file.size}.${file.ext}`);
+          if (onDiskSize !== undefined && onDiskSize > 0) continue;
+          staleDownloadedCovers.add(entry.coverArtId);
+          break;
+        }
+        continue;
+      }
       for (const file of entry.files) {
         if (seenOnDisk.has(diskKey(entry.coverArtId, file.size))) continue;
         const onDiskSize = fileMap.get(`${file.size}.${file.ext}`);
@@ -771,7 +876,14 @@ export async function reconcileImageCache(source: string = 'auto'): Promise<void
         droppedCount++;
       }
     }
-    logImageCache(`reconcile pass2 dropped=${droppedCount}`);
+    // Re-cache downloaded covers whose files went missing (online-gated inside
+    // ensureCached; no-op offline — the row is kept so it recovers on reconnect).
+    for (const coverArtId of staleDownloadedCovers) {
+      void ensureCached(coverArtId);
+    }
+    logImageCache(
+      `reconcile pass2 dropped=${droppedCount} downloaded-recache=${staleDownloadedCovers.size}`,
+    );
     // Always recalc at the end so callers don't have to. If neither pass
     // changed anything, this is a cheap aggregate query that re-syncs
     // the store with the unchanged DB — safe to over-call.
@@ -1369,10 +1481,25 @@ async function downloadSourceImage(
   // Transport phase: any throw here is a network/DNS/TLS failure with no
   // Response — server-reachability is unknown, so the row must be
   // preserved. Connectivity service surfaces the outage separately.
+  //
+  // Sanity timeout: the download-enqueue flows now AWAIT the cover before the
+  // audio binaries, so a hung cover fetch (server accepts the socket but never
+  // sends) must not block a music download or wedge a queue slot. Generous
+  // (30s) so a slow-but-working cover on a poor connection still completes; the
+  // AbortSignal cancels the in-flight request on timeout.
   let response: Awaited<ReturnType<typeof fetch>>;
   try {
     logImageCache(`download id=${coverArtId} start url=${url}`);
-    response = await fetch(url);
+    const fetched = await withTimeout(
+      (signal) => fetch(url, { signal }),
+      SOURCE_FETCH_TIMEOUT_MS,
+    );
+    if (fetched === 'timeout') {
+      // Reachability unknown (same as a transport error) — preserve the row.
+      logImageCache(`download id=${coverArtId} fetch-timeout preserved`);
+      return null;
+    }
+    response = fetched;
   } catch (e) {
     logImageCache(
       `download id=${coverArtId} transport-error preserved err=${errMessage(e)}`,
@@ -1422,8 +1549,34 @@ async function downloadSourceImage(
   const tmpName = `${fileName}.tmp`;
 
   try {
+    // Bound the BODY read too: `withTimeout` above only covered the header
+    // fetch, so a server that sends headers then stalls the body would hang the
+    // (now awaited) download flow indefinitely. Same budget; a stall preserves
+    // the row (network-ambiguous, like the transport timeout) rather than purge.
+    // NB: `arrayBuffer()` can't be aborted, so on timeout the read is left
+    // orphaned (harmless — it settles or GCs); the race just unblocks the caller.
+    const body = await withTimeout(() => response.arrayBuffer(), SOURCE_FETCH_TIMEOUT_MS);
+    if (body === 'timeout') {
+      logImageCache(`download id=${coverArtId} body-timeout preserved`);
+      return null;
+    }
+    const bytes = new Uint8Array(body);
+
+    // HTTP 200 but an XML/JSON error envelope instead of image bytes (some
+    // servers return `<subsonic-response>` for a missing cover). Never cache
+    // text as an image file — it fails to decode on every render. Flag the cover
+    // as remote-bad so CachedImage shows the placeholder instead of re-fetching
+    // the same URL, and purge any prior poisoned row (guarded for downloaded items).
+    if (isNonImageErrorBody(bytes)) {
+      logImageCache(
+        `download id=${coverArtId} non-image body bytes=${bytes.length} ct=${contentType}`,
+      );
+      await reportBadRemote(coverArtId);
+      if (isPurgeAllowedNow()) await purgeCoverArtRows(coverArtId);
+      return null;
+    }
+
     const tmpFile = new File(subDir, tmpName);
-    const bytes = new Uint8Array(await response.arrayBuffer());
     tmpFile.write(bytes);
 
     const dest = new File(subDir, fileName);

@@ -18,16 +18,21 @@
  *   7. Image-cache refresh progress (ImageCacheBanner) — transient
  *      user-initiated cover-art refresh cycle; ranks below library-sync
  *      progress because metadata catch-up is the higher-priority signal
+ *   8. Downloaded-metadata refresh progress (DownloadedMetadataBanner) —
+ *      transient re-cache of downloaded items' detail + covers (startup
+ *      backfill or manual button); lowest priority, purely informational
  */
 
 import { memo } from 'react';
 
 import { ConnectivityBanner } from './ConnectivityBanner';
+import { DownloadedMetadataBanner } from './DownloadedMetadataBanner';
 import { ImageCacheBanner } from './ImageCacheBanner';
 import { LibrarySyncBanner } from './LibrarySyncBanner';
 import { PersistenceDegradedBanner } from './PersistenceDegradedBanner';
 import { StorageFullBanner } from './StorageFullBanner';
 import { connectivityStore } from '../store/connectivityStore';
+import { downloadedMetadataRefreshStore } from '../store/downloadedMetadataRefreshStore';
 import { imageDownloadQueueStore } from '../store/imageDownloadQueueStore';
 import { offlineModeStore } from '../store/offlineModeStore';
 import { isDbHealthy } from '../store/persistence';
@@ -43,6 +48,8 @@ export const BannerStack = memo(function BannerStack() {
   const imageQueueCycleId = imageDownloadQueueStore((s) => s.cycleId);
   const imageQueueTotal = imageDownloadQueueStore((s) => s.cycleTotal);
   const imageQueuePhase = imageDownloadQueueStore((s) => s.phase);
+  const metaRefreshActive = downloadedMetadataRefreshStore((s) => s.active);
+  const metaRefreshTotal = downloadedMetadataRefreshStore((s) => s.total);
 
   // Persistence-degraded is sticky and captured at module load. If SQLite
   // failed to open, surface this above everything else so the user knows
@@ -82,6 +89,12 @@ export const BannerStack = memo(function BannerStack() {
   // slot — otherwise a dismissed error would suppress lower-priority banners.
   if (imageQueueCycleId !== null && imageQueueTotal > 0 && imageQueuePhase !== 'dismissed') {
     return <ImageCacheBanner />;
+  }
+
+  // Lowest priority: the downloaded-metadata re-cache pass (startup backfill or
+  // manual button). Purely informational, so it yields to every banner above.
+  if (metaRefreshActive && metaRefreshTotal > 0) {
+    return <DownloadedMetadataBanner />;
   }
   return null;
 });

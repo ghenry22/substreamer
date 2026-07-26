@@ -17,11 +17,13 @@ import {
 } from '../../store/musicCacheStore';
 import { offlineModeStore } from '../../store/offlineModeStore';
 import { playlistLibraryStore } from '../../store/playlistLibraryStore';
+import { downloadedMetadataRefreshStore } from '../../store/downloadedMetadataRefreshStore';
 import {
   canDownloadFullLibrary,
   enqueueFullLibraryDownload,
 } from '../../services/fullLibraryDownloadService';
 import { clearQueuedDownloads } from '../../services/musicCacheService';
+import { refreshDownloadedMetadata } from '../../services/downloadedMetadataService';
 import { fireAndForget } from '../../utils/fireAndForget';
 import { formatBytes } from '../../utils/formatters';
 import { SettingsSectionTitle } from './SettingsSectionTitle';
@@ -44,8 +46,28 @@ export function DownloadedMusicCard() {
 
   // Full-library download progress / availability.
   const fullLib = fullLibraryDownloadStore();
-  const online =
-    !offlineModeStore((s) => s.offlineMode) && connectivityStore((s) => s.isServerReachable);
+  const offlineMode = offlineModeStore((s) => s.offlineMode);
+  const online = !offlineMode && connectivityStore((s) => s.isServerReachable);
+
+  // Downloaded-metadata refresh progress (re-cache detail + cover art).
+  const metaRefreshActive = downloadedMetadataRefreshStore((s) => s.active);
+  const metaRefreshDone = downloadedMetadataRefreshStore((s) => s.done);
+  const metaRefreshTotal = downloadedMetadataRefreshStore((s) => s.total);
+
+  const handleRefreshMetadata = useCallback(() => {
+    // Button stays enabled unless offline mode, but a refresh needs a reachable
+    // server — otherwise every fetch just stalls on a timeout. Give feedback for
+    // both offline mode and a currently-unreachable server rather than firing a
+    // doomed pass. (Same message: "connect to your server…".)
+    if (offlineMode || !connectivityStore.getState().isServerReachable) {
+      alert(t('refreshDownloadedMetadata'), t('refreshMetadataOffline'));
+      return;
+    }
+    fireAndForget(
+      refreshDownloadedMetadata({ mode: 'all' }),
+      'settings.refreshDownloadedMetadata',
+    );
+  }, [offlineMode, alert, t]);
 
   const handleSelect = useCallback((value: MaxConcurrentDownloads) => {
     musicCacheStore.getState().setMaxConcurrentDownloads(value);
@@ -164,6 +186,32 @@ export function DownloadedMusicCard() {
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+          </Pressable>
+
+          {/* Refresh metadata — re-caches detail + cover art for downloaded items
+              so offline never loses their metadata. Always shown; disabled only
+              in offline mode. */}
+          <Pressable
+            onPress={handleRefreshMetadata}
+            disabled={offlineMode || metaRefreshActive}
+            style={({ pressed }) => [
+              settingsStyles.navRow,
+              { borderTopColor: colors.border },
+              (offlineMode || pressed) && settingsStyles.pressed,
+            ]}
+          >
+            <View style={settingsStyles.navRowLeft}>
+              <Ionicons name="sync-outline" size={18} color={colors.textPrimary} />
+              <Text style={[settingsStyles.navRowText, { color: colors.textPrimary }]}>
+                {metaRefreshActive
+                  ? t('refreshingMetadataProgress', {
+                      done: metaRefreshDone,
+                      total: metaRefreshTotal,
+                    })
+                  : t('refreshDownloadedMetadata')}
+              </Text>
+            </View>
+            {metaRefreshActive && <ActivityIndicator size="small" color={colors.primary} />}
           </Pressable>
 
           {/* Download Full Library — one-shot that queues every album + playlist */}

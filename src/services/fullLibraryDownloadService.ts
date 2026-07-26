@@ -60,16 +60,19 @@ export async function enqueueFullLibraryDownload(): Promise<void> {
     // end so a partial outage doesn't silently drop part of the library.
     fullLibraryDownloadStore.getState().setPhase('queueing');
 
+    // `awaitCover: false` — don't serialize this loop on each item's cover
+    // download; the image queue fetches covers in parallel and they're
+    // purge-protected, so the offline copy still completes.
     for (const album of albums) {
       if (!fullLibraryDownloadStore.getState().active) return; // cancelled
-      await enqueueAlbumDownload(album.id).catch(() => { failed += 1; });
+      await enqueueAlbumDownload(album.id, { awaitCover: false }).catch(() => { failed += 1; });
       fullLibraryDownloadStore.getState().incAlbum();
     }
 
     // Playlists last — their songs are mostly already cached from the albums.
     for (const playlist of playlists) {
       if (!fullLibraryDownloadStore.getState().active) return; // cancelled
-      await enqueuePlaylistDownload(playlist.id).catch(() => { failed += 1; });
+      await enqueuePlaylistDownload(playlist.id, { awaitCover: false }).catch(() => { failed += 1; });
       fullLibraryDownloadStore.getState().incPlaylist();
     }
 

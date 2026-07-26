@@ -72,10 +72,11 @@ jest.mock('../../store/albumLibraryStore', () => ({
 }));
 
 // Row-based startup gate reads the library_albums COUNT.
+const mockDeleteLibraryAlbums = jest.fn((_ids: readonly string[]) => Promise.resolve());
 jest.mock('../../store/persistence/libraryAlbumsTable', () => ({
   __esModule: true,
   countLibraryAlbumsAsync: () => Promise.resolve(libraryTableState.rowCount),
-  deleteLibraryAlbumsAsync: () => Promise.resolve(),
+  deleteLibraryAlbumsAsync: (ids: readonly string[]) => mockDeleteLibraryAlbums(ids),
 }));
 
 // Walk engine reads the detail cache and fetches missing albums through
@@ -210,9 +211,12 @@ jest.mock('../musicCacheService', () => ({
 }));
 
 const mockCachedItems: Record<string, unknown> = {};
+const mockCachedSongs: Record<string, unknown> = {};
 jest.mock('../../store/musicCacheStore', () => ({
   __esModule: true,
-  musicCacheStore: { getState: () => ({ cachedItems: mockCachedItems }) },
+  musicCacheStore: {
+    getState: () => ({ cachedItems: mockCachedItems, cachedSongs: mockCachedSongs }),
+  },
 }));
 
 const mockConnectivity = { hasConnection: true, isServerReachable: true };
@@ -280,6 +284,8 @@ beforeEach(() => {
   mockPlaylistDetail.fetchPlaylist.mockResolvedValue(null);
   mockSyncCachedItemTracks.mockClear();
   for (const k of Object.keys(mockCachedItems)) delete mockCachedItems[k];
+  for (const k of Object.keys(mockCachedSongs)) delete mockCachedSongs[k];
+  mockDeleteLibraryAlbums.mockClear();
   mockConnectivity.hasConnection = true;
   mockConnectivity.isServerReachable = true;
   mockFetchAlbum.mockClear();
@@ -946,6 +952,45 @@ describe('dataSyncService — reconcileAlbumLibrary', () => {
     mockDetailState.albums = { a1: {}, a2: {} };
     reconcileAlbumLibrary(['a1', 'a2'], ['a2', 'a3']);
     expect(mockRemoveEntries).toHaveBeenCalledWith(['a1']);
+  });
+
+  it('does NOT reap a downloaded album that vanishes from the server list', () => {
+    mockDetailState.albums = { a1: {}, a2: {}, a3: {} };
+    mockCachedItems.a2 = {}; // a2 is downloaded → its detail + list row must survive
+    reconcileAlbumLibrary(['a1', 'a2', 'a3'], ['a1', 'a3']);
+    expect(mockRemoveEntries).not.toHaveBeenCalled();
+  });
+
+  it('reaps only the NON-downloaded removals', () => {
+    mockDetailState.albums = { a1: {}, a2: {}, a3: {}, a4: {} };
+    mockCachedItems.a2 = {}; // downloaded — kept
+    reconcileAlbumLibrary(['a1', 'a2', 'a3', 'a4'], ['a1']);
+    expect(mockRemoveEntries).toHaveBeenCalledWith(['a3', 'a4']);
+  });
+
+  it('a non-downloaded removal drops BOTH detail and list row', () => {
+    mockDetailState.albums = { a1: {} };
+    reconcileAlbumLibrary(['a1'], []);
+    expect(mockRemoveEntries).toHaveBeenCalledWith(['a1']);
+    expect(mockDeleteLibraryAlbums).toHaveBeenCalledWith(['a1']);
+  });
+
+  it("keeps a downloaded single song's parent-album DETAIL but drops its list row", () => {
+    mockDetailState.albums = { albX: {} };
+    mockCachedItems['song:s1'] = { type: 'song', parentAlbumId: 'albX' };
+    reconcileAlbumLibrary(['albX'], []); // albX vanished from the server list
+    // Detail is protected (offline "go to album" from the song still works)...
+    expect(mockRemoveEntries).not.toHaveBeenCalled();
+    // ...but the lean list row is dropped so it doesn't resurrect in browse.
+    expect(mockDeleteLibraryAlbums).toHaveBeenCalledWith(['albX']);
+  });
+
+  it("keeps a favorited song's parent-album detail but drops its list row", () => {
+    mockCachedItems.__starred__ = { type: 'favorites', songIds: ['s9'] };
+    mockCachedSongs.s9 = { albumId: 'albF' };
+    reconcileAlbumLibrary(['albF'], []);
+    expect(mockRemoveEntries).not.toHaveBeenCalled();
+    expect(mockDeleteLibraryAlbums).toHaveBeenCalledWith(['albF']);
   });
 });
 

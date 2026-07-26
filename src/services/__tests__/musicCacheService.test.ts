@@ -1230,6 +1230,20 @@ describe('enqueueSongDownload', () => {
     await enqueueSongDownload(makeChild('s1'));
     expect(musicCacheStore.getState().downloadQueue).toHaveLength(1);
   });
+
+  it('fetches the parent-album detail when it is missing', async () => {
+    mockCheckStorageLimit.mockReturnValue(true);
+    await enqueueSongDownload(makeChild('s1', { albumId: 'a1' }));
+    expect(mockFetchAlbum).toHaveBeenCalledWith('a1', { prefetchCovers: true });
+  });
+
+  it('skips the parent-album fetch when its detail is already cached', async () => {
+    mockCheckStorageLimit.mockReturnValue(true);
+    mockAlbumDetailAlbums.value = { a1: { album: { id: 'a1' } } };
+    await enqueueSongDownload(makeChild('s1', { albumId: 'a1' }));
+    // Detail already present → no redundant round-trip (mirrors backfill 'missing').
+    expect(mockFetchAlbum).not.toHaveBeenCalled();
+  });
 });
 
 /* ------------------------------------------------------------------ */

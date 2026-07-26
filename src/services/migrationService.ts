@@ -2290,6 +2290,25 @@ const MIGRATION_TASKS: MigrationTask[] = [
     },
   },
 
+  {
+    id: 33,
+    name: 'Repair downloaded items’ missing metadata',
+    run: async (log) => {
+      // 8.0.89 made album detail on-demand; downloaded albums whose detail
+      // wasn't (re)populated lost their offline track list. Flag a one-time
+      // backfill — the online startup flow (dataSyncService) re-caches detail +
+      // cover art for every downloaded album/playlist that's missing it, when the
+      // server is actually reachable, and clears the flag on success. Enqueue-only
+      // here: NO network inside the splash-blocking migration run.
+      try {
+        await kvStorage.setItem('substreamer-dl-metadata-backfill', 'pending');
+        log('[m33] flagged downloaded-metadata backfill');
+      } catch (e) {
+        log(`[m33] flag failed: ${errMessage(e)}`);
+      }
+    },
+  },
+
   // -------------------------------------------------------------------
   // TEMPLATE – How to add a new migration task:
   //

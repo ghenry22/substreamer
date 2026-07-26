@@ -64,6 +64,7 @@ import {
   prefetchCoverArt,
 } from './imageCacheService';
 import { coverArtForAlbum, coverArtForPlaylist } from '../utils/coverArtId';
+import { runPool } from '../utils/promisePool';
 import { albumCoverArtById, resolveSongCoverArt } from '../hooks/useSongCoverArt';
 
 /* ------------------------------------------------------------------ */
@@ -751,7 +752,36 @@ function cacheTrackCoverArt(tracks: Child[]): void {
 }
 
 /** Enqueue an album download. */
-export async function enqueueAlbumDownload(albumId: string): Promise<void> {
+/**
+ * Cache an item's cover source before its audio binaries so a downloaded item
+ * renders offline even if the audio transfer is interrupted. `awaitCover: false`
+ * (the bulk "download full library" path) fetches it fire-and-forget instead —
+ * the image queue downloads covers in parallel and they're purge-protected, so
+ * we don't serialize the per-album queueing loop on a (possibly slow) cover.
+ */
+async function ensureCoverBeforeBinary(
+  coverId: string | undefined,
+  awaitCover: boolean,
+): Promise<void> {
+  if (!coverId) return;
+  if (awaitCover) {
+    try {
+      await ensureCached(coverId);
+    } catch {
+      /* best-effort */
+    }
+  } else {
+    ensureCached(coverId).catch(() => {
+      /* best-effort */
+    });
+  }
+}
+
+export async function enqueueAlbumDownload(
+  albumId: string,
+  opts?: { awaitCover?: boolean },
+): Promise<void> {
+  const awaitCover = opts?.awaitCover !== false;
   const state = musicCacheStore.getState();
   const existing = state.cachedItems[albumId];
   if (state.downloadQueue.some((q) => q.itemId === albumId)) return;
@@ -823,7 +853,7 @@ export async function enqueueAlbumDownload(albumId: string): Promise<void> {
     // (see src/utils/coverArtId.ts) — so the warmed/stored key matches what
     // the grid renders and resolves on OpenSubsonic servers. (#202)
     const topUpCover = coverArtForAlbum(album);
-    if (topUpCover) ensureCached(topUpCover).catch(() => { /* non-critical */ });
+    await ensureCoverBeforeBinary(topUpCover, awaitCover);
     cacheTrackCoverArt(missingSongs);
 
     musicCacheStore.getState().enqueueTopUp({
@@ -841,7 +871,7 @@ export async function enqueueAlbumDownload(albumId: string): Promise<void> {
   }
 
   const albumCover = coverArtForAlbum(album);
-  if (albumCover) ensureCached(albumCover).catch(() => { /* non-critical */ });
+  await ensureCoverBeforeBinary(albumCover, awaitCover);
   cacheTrackCoverArt(album.song);
 
   musicCacheStore.getState().enqueue({
@@ -858,7 +888,11 @@ export async function enqueueAlbumDownload(albumId: string): Promise<void> {
 }
 
 /** Enqueue a playlist download. */
-export async function enqueuePlaylistDownload(playlistId: string): Promise<void> {
+export async function enqueuePlaylistDownload(
+  playlistId: string,
+  opts?: { awaitCover?: boolean },
+): Promise<void> {
+  const awaitCover = opts?.awaitCover !== false;
   const state = musicCacheStore.getState();
   if (playlistId in state.cachedItems) return;
   if (state.downloadQueue.some((q) => q.itemId === playlistId)) return;
@@ -872,7 +906,7 @@ export async function enqueuePlaylistDownload(playlistId: string): Promise<void>
 
   // Cover art keys off the playlist's `coverArt` value (see coverArtId.ts). (#202)
   const playlistCover = coverArtForPlaylist(playlist);
-  if (playlistCover) ensureCached(playlistCover).catch(() => { /* non-critical */ });
+  await ensureCoverBeforeBinary(playlistCover, awaitCover);
   cacheTrackCoverArt(playlist.entry);
 
   musicCacheStore.getState().enqueue({
@@ -898,31 +932,45 @@ export async function enqueuePlaylistDownload(playlistId: string): Promise<void>
 export async function enqueueSongDownload(song: Child): Promise<void> {
   if (!song?.id) return;
   const itemId = `song:${song.id}`;
-  const state = musicCacheStore.getState();
-  if (itemId in state.cachedItems) return;
-  if (state.downloadQueue.some((q) => q.itemId === itemId)) return;
+  if (itemId in musicCacheStore.getState().cachedItems) return;
+  if (musicCacheStore.getState().downloadQueue.some((q) => q.itemId === itemId)) return;
 
+  await ensureCoverArtAuth();
+
+  // Metadata-before-binary: ensure the song's PARENT ALBUM detail + the song's
+  // cover art are cached up front, so the album this song belongs to is fully
+  // available offline even if the binary is interrupted. Only fetch when the
+  // detail isn't already cached (mirrors the backfill's `missing` mode) — this
+  // avoids a redundant round-trip when the album was already downloaded or the
+  // song is being re-added. Best-effort. This is the download-side half of the
+  // "downloads carry their own metadata" invariant.
+  if (song.albumId && !albumDetailStore.getState().albums[song.albumId]) {
+    try {
+      await albumDetailStore.getState().fetchAlbum(song.albumId, { prefetchCovers: true });
+    } catch { /* best-effort — parent album detail is a bonus for the song */ }
+  }
+  const songCover = resolveSongCoverArt(song);
+  if (songCover) {
+    try { await ensureCached(songCover); } catch { /* best-effort */ }
+  }
+
+  const state = musicCacheStore.getState();
   // If the underlying song is already fully cached, don't transfer bytes —
-  // just create the `song:` item + edge so it shows up in the browser. We
-  // also take this opportunity to refresh the underlying `cached_songs`
-  // row's envelope with whatever the caller supplied: if the song came
-  // from a screen that just round-tripped getSong/getAlbum, the Child
-  // here can be richer than what we stored at original download time.
+  // just create the `song:` item + edge so it shows up in the browser, and
+  // refresh the `cached_songs` envelope with whatever the caller supplied.
   if (song.id in state.cachedSongs) {
     const existing = state.cachedSongs[song.id];
-    if (song) {
-      musicCacheStore.getState().upsertCachedSong({
-        ...existing,
-        rawJson: JSON.stringify(song),
-      });
-    }
+    musicCacheStore.getState().upsertCachedSong({
+      ...existing,
+      rawJson: JSON.stringify(song),
+    });
     musicCacheStore.getState().upsertCachedItem(
       {
         itemId,
         type: 'song',
         name: song.title ?? existing.title,
         artist: song.artist ?? existing.artist,
-        coverArtId: resolveSongCoverArt(song),
+        coverArtId: songCover,
         expectedSongCount: 1,
         parentAlbumId: song.albumId ?? existing.albumId,
         lastSyncAt: Date.now(),
@@ -937,10 +985,7 @@ export async function enqueueSongDownload(song: Child): Promise<void> {
     return;
   }
 
-  await ensureCoverArtAuth();
-  cacheTrackCoverArt([song]);
-
-  // Re-check after the await (see enqueueAlbumDownload) — avoid a duplicate row.
+  // Re-check after the awaits (see enqueueAlbumDownload) — avoid a duplicate row.
   if (musicCacheStore.getState().downloadQueue.some((q) => q.itemId === itemId)) return;
 
   musicCacheStore.getState().enqueue({
@@ -948,7 +993,7 @@ export async function enqueueSongDownload(song: Child): Promise<void> {
     type: 'song',
     name: song.title ?? 'Unknown',
     artist: song.artist,
-    coverArtId: resolveSongCoverArt(song),
+    coverArtId: songCover,
     totalSongs: 1,
     songsJson: JSON.stringify([song]),
   });
@@ -2134,6 +2179,23 @@ export async function enqueueStarredSongsDownload(): Promise<void> {
 
   await ensureCoverArtAuth();
   cacheTrackCoverArt(songs);
+
+  // Ensure the parent-album detail of each favorited song is cached so the album
+  // a favorite belongs to is available offline. Throttled + fire-and-forget (a
+  // large favorites set can span many albums) so it caches alongside the audio
+  // rather than blocking the whole download on N getAlbum calls.
+  const parentAlbumIds = [
+    ...new Set(songs.map((s) => s.albumId).filter((id): id is string => !!id)),
+  ];
+  if (parentAlbumIds.length > 0) {
+    void runPool(
+      parentAlbumIds,
+      async (id) => {
+        await albumDetailStore.getState().fetchAlbum(id, { prefetchCovers: true });
+      },
+      { concurrency: 3 },
+    );
+  }
 
   musicCacheStore.getState().enqueue({
     itemId: STARRED_SONGS_ITEM_ID,

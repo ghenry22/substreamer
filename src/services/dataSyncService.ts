@@ -25,6 +25,9 @@ import { connectivityStore } from '../store/connectivityStore';
 import { scanStatusStore } from '../store/scanStatusStore';
 import { authStore } from '../store/authStore';
 import { runWhenIdle } from '../utils/runWhenIdle';
+import { kvStorage } from '../store/persistence';
+import { downloadedMetadataRefreshStore } from '../store/downloadedMetadataRefreshStore';
+import { refreshDownloadedMetadata } from './downloadedMetadataService';
 import { serverInfoStore } from '../store/serverInfoStore';
 import { syncStatusStore, type SyncScope } from '../store/syncStatusStore';
 import { fireAndForget } from '../utils/fireAndForget';
@@ -336,6 +339,50 @@ async function startupOrResumeFlow(): Promise<void> {
       }
       genreStore.getState().fetchGenres();
 
+      // One-time repair for the 8.0.89 on-demand-detail regression: re-cache
+      // detail + cover art for downloaded items missing it. Flagged by migration
+      // #33; runs once the server is genuinely reachable.
+      //
+      // RESUME, don't restart: `missing` mode only fetches detail that's still
+      // absent, so an interrupted run's completed work is never redone — each
+      // launch picks up just the stragglers. The flag clears to 'done' only when
+      // NOTHING is left missing. To avoid looping forever on permanently-
+      // unfetchable items (deleted albums, chronic errors), a pass that makes NO
+      // progress counts toward a cap; after MAX passes we give up (on-demand
+      // browse + the manual "Refresh metadata" button still cover the rest).
+      {
+        const conn = connectivityStore.getState();
+        if (
+          !offlineModeStore.getState().offlineMode &&
+          conn.hasConnection &&
+          conn.isServerReachable &&
+          !downloadedMetadataRefreshStore.getState().active
+        ) {
+          fireAndForget(
+            (async () => {
+              const KEY = 'substreamer-dl-metadata-backfill';
+              const MAX_NO_PROGRESS_PASSES = 3;
+              const flag = await kvStorage.getItem(KEY);
+              if (flag === null || flag === 'done') return;
+              const noProgress = /^\d+$/.test(flag) ? Number(flag) : 0;
+              if (noProgress >= MAX_NO_PROGRESS_PASSES) {
+                await kvStorage.setItem(KEY, 'done');
+                return;
+              }
+              const { attempted, remaining } = await refreshDownloadedMetadata({ mode: 'missing' });
+              if (remaining === 0) {
+                await kvStorage.setItem(KEY, 'done'); // every downloaded item has detail
+              } else if (remaining < attempted) {
+                await kvStorage.setItem(KEY, 'pending'); // progress → resume next launch
+              } else {
+                await kvStorage.setItem(KEY, String(noProgress + 1)); // stuck → bound retries
+              }
+            })(),
+            'sync.downloadedMetadataBackfill',
+          );
+        }
+      }
+
       // Wait for the library fetch before launching the detail walk. If a
       // walk was stalled from the previous session we run that recovery
       // path instead — same engine either way.
@@ -645,21 +692,57 @@ export function reconcileAlbumLibrary(
   const newSet = new Set(newIds);
   const oldSet = new Set(oldIds);
 
-  const removed: string[] = [];
+  const cachedItems = musicCacheStore.getState().cachedItems;
+  const cachedSongs = musicCacheStore.getState().cachedSongs;
+  // Parent albums whose DETAIL backs a downloaded item's offline view but which
+  // aren't themselves downloaded as albums: the parent album of a downloaded
+  // single song, and the parent albums of favorited songs. Their album_details
+  // must survive a server-side removal (so offline "go to album" from the song
+  // still works), but their `library_albums` row may go — they weren't
+  // downloaded as albums, so they shouldn't resurrect in the browse list.
+  const protectedDetailAlbumIds = new Set<string>();
+  for (const item of Object.values(cachedItems)) {
+    if (item.type === 'song' && item.parentAlbumId) {
+      protectedDetailAlbumIds.add(item.parentAlbumId);
+    } else if (item.type === 'favorites') {
+      for (const songId of item.songIds ?? []) {
+        const parent = cachedSongs[songId]?.albumId;
+        if (parent) protectedDetailAlbumIds.add(parent);
+      }
+    }
+  }
+
+  const removedDetail: string[] = []; // album_details (+ song-index cascade) to drop
+  const removedRows: string[] = []; // lean `library_albums` list rows to drop
   for (const id of oldIds) {
-    if (!newSet.has(id)) removed.push(id);
+    if (newSet.has(id)) continue;
+    // Downloaded albums are NEVER reaped: their detail is the sole offline source
+    // of the track list, and the album downloaded-filter renders from the
+    // `library_albums` row — so a server-removed-but-downloaded album keeps BOTH
+    // (mirrors the playlist guard above). Offline is a filtered view over this
+    // cached data; automated sync must not delete it.
+    if (id in cachedItems) continue;
+    // Parent album of a downloaded song/favorite: keep the DETAIL, drop the row.
+    if (protectedDetailAlbumIds.has(id)) {
+      removedRows.push(id);
+      continue;
+    }
+    removedDetail.push(id);
+    removedRows.push(id);
   }
   const added: string[] = [];
   for (const id of newIds) {
     if (!oldSet.has(id)) added.push(id);
   }
 
-  if (removed.length > 0) {
+  if (removedDetail.length > 0) {
     // `removeEntries` on the detail store cascades the song-index delete.
-    albumDetailStore.getState().removeEntries(removed);
-    // Also delete the lean list rows — without this, a server-deleted album
-    // would resurrect on the next `library_albums` hydrate.
-    fireAndForget(deleteLibraryAlbumsAsync(removed), 'sync.reconcileRemovals');
+    albumDetailStore.getState().removeEntries(removedDetail);
+  }
+  if (removedRows.length > 0) {
+    // Delete the lean list rows — without this, a server-deleted album would
+    // resurrect on the next `library_albums` hydrate.
+    fireAndForget(deleteLibraryAlbumsAsync(removedRows), 'sync.reconcileRemovals');
   }
 
   if (added.length > 0 && !offlineModeStore.getState().offlineMode) {
