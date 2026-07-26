@@ -695,6 +695,98 @@ describe('onTrackChange', () => {
   });
 });
 
+describe('internet radio — always live, never from the cache', () => {
+  const makeStation = (id: string): Child =>
+    ({
+      id: `internet-radio:${id}`,
+      isDir: false,
+      title: `Station ${id}`,
+      artist: 'Internet Radio',
+      duration: 0,
+      radioStreamUrl: `https://stream.example/${id}`,
+    }) as Child;
+
+  /** Point the mocked playerStore at a station, as onTrackChange would. */
+  const setCurrentStation = (station: Child) => {
+    const { playerStore } = require('../../store/playerStore');
+    (playerStore.getState as jest.Mock).mockReturnValue({
+      ...defaultPlayerState(),
+      currentTrack: station,
+    });
+  };
+
+  it('gives each tap on a station a fresh stream URL', async () => {
+    const stations = [makeStation('a'), makeStation('b')];
+    await playTrack(stations[0], stations);
+    const firstUrl = mockTP.setQueue.mock.calls[0][0][0].url;
+
+    await playTrack(stations[0], stations);
+    const secondUrl = mockTP.setQueue.mock.calls[1][0][0].url;
+
+    expect(firstUrl).toMatch(/^https:\/\/stream\.example\/a#live-/);
+    expect(secondUrl).not.toBe(firstUrl);
+  });
+
+  it('turns the lookahead prefetcher off for a radio queue and back on for songs', async () => {
+    const stations = [makeStation('a')];
+    await playTrack(stations[0], stations);
+    expect(mockTP.setLookaheadCache).toHaveBeenLastCalledWith(
+      expect.objectContaining({ enabled: false }),
+    );
+
+    const songs = [makeChild('t1')];
+    await playTrack(songs[0], songs);
+    expect(mockTP.setLookaheadCache).toHaveBeenLastCalledWith(
+      expect.objectContaining({ enabled: true }),
+    );
+  });
+
+  it('reconnects a dropped station live instead of resuming the failed item', async () => {
+    jest.useFakeTimers();
+    try {
+      const stations = [makeStation('a')];
+      await playTrack(stations[0], stations);
+      const firstUrl = mockTP.setQueue.mock.calls[0][0][0].url;
+      setCurrentStation(stations[0]);
+
+      emit('error', { message: 'stream dropped' });
+      jest.runOnlyPendingTimers();
+      // Back to real timers so the reload's awaits can settle.
+      jest.useRealTimers();
+      await new Promise((resolve) => setImmediate(resolve));
+
+      // tp.retry() would rebuild the item at the pre-failure position; radio
+      // reloads the station instead, under a new URL.
+      expect(mockTP.retry).not.toHaveBeenCalled();
+      expect(mockTP.setQueue).toHaveBeenCalledTimes(2);
+      expect(mockTP.setQueue.mock.calls[1][0][0].url).not.toBe(firstUrl);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('reloads the queue when a skip lands on a station already played under this URL', async () => {
+    const stations = [makeStation('a'), makeStation('b')];
+    await playTrack(stations[0], stations);
+    const [tracks] = mockTP.setQueue.mock.calls[0];
+    setCurrentStation(stations[0]);
+
+    // First visit: the URL is untouched, so play it as-is.
+    emit('trackChange', tracks[0], 0, 'queue-replaced');
+    expect(mockTP.setQueue).toHaveBeenCalledTimes(1);
+
+    // Skip away and back: that URL now holds cached audio → rebuild the queue.
+    setCurrentStation(stations[1]);
+    emit('trackChange', tracks[1], 1, 'user-skip-next');
+    setCurrentStation(stations[0]);
+    emit('trackChange', tracks[0], 0, 'user-skip-previous');
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(mockTP.setQueue).toHaveBeenCalledTimes(2);
+    expect(mockTP.setQueue.mock.calls[1][0][0].url).not.toBe(tracks[0].url);
+  });
+});
+
 describe('playback-report scrobble', () => {
   // Reset the per-play guard to track index 0 (queue-replaced ⇒ no completion
   // scrobble), then clear mocks so each case starts from a known state.

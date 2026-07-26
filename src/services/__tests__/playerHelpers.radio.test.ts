@@ -27,7 +27,7 @@ jest.mock('../../store/playbackSettingsStore', () => ({
   },
 }));
 
-import { buildPlayableQueue, childToTrack } from '../playerHelpers';
+import { buildPlayableQueue, childToTrack, liveStreamUrl } from '../playerHelpers';
 import { getStreamUrl, type Child } from '../subsonicService';
 
 const radioChild = {
@@ -44,17 +44,36 @@ beforeEach(() => {
   (getStreamUrl as jest.Mock).mockReturnValue('https://example.com/stream.mp3');
 });
 
+describe('liveStreamUrl', () => {
+  it('appends a unique fragment so the URL is never a repeat cache key', () => {
+    const first = liveStreamUrl('https://stream.example/live');
+    const second = liveStreamUrl('https://stream.example/live');
+    expect(first).toMatch(/^https:\/\/stream\.example\/live#live-/);
+    expect(second).not.toBe(first);
+  });
+
+  it('keeps an existing query string and replaces a previous fragment', () => {
+    const stamped = liveStreamUrl('https://stream.example/live?token=abc#live-old');
+    expect(stamped.split('#')[0]).toBe('https://stream.example/live?token=abc');
+    expect(stamped.match(/#/g)).toHaveLength(1);
+  });
+});
+
 describe('childToTrack — internet radio', () => {
   it('uses the embedded stream URL instead of a server stream URL', () => {
     const track = childToTrack(radioChild);
     expect(track).toEqual({
       id: 'internet-radio:ir-1',
-      url: 'https://stream.jazzfm.example/live',
+      url: expect.stringMatching(/^https:\/\/stream\.jazzfm\.example\/live#live-/),
       title: 'Jazz FM',
       artist: 'Internet Radio',
       duration: 0,
     });
     expect(getStreamUrl).not.toHaveBeenCalled();
+  });
+
+  it('gives every build of the same station a distinct cache key', () => {
+    expect(childToTrack(radioChild)?.url).not.toBe(childToTrack(radioChild)?.url);
   });
 
   it('passes the embedded station logo through as lock-screen artwork', () => {

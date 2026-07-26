@@ -1,0 +1,39 @@
+diff --git a/node_modules/react-native-queue-player/android/src/main/java/com/margelo/nitro/queueplayer/LookaheadCache.kt b/node_modules/react-native-queue-player/android/src/main/java/com/margelo/nitro/queueplayer/LookaheadCache.kt
+index 373636e..520ab2f 100644
+--- a/node_modules/react-native-queue-player/android/src/main/java/com/margelo/nitro/queueplayer/LookaheadCache.kt
++++ b/node_modules/react-native-queue-player/android/src/main/java/com/margelo/nitro/queueplayer/LookaheadCache.kt
+@@ -75,7 +75,8 @@ class LookaheadCache(
+ 
+   /**
+    * Wrap an upstream HTTP [DataSource.Factory] so every read first
+-   * checks [simpleCache] and writes downloaded chunks into it.
++   * checks [simpleCache]. Read-only: the prefetcher
++   * ([LookaheadCacheWriter]) is the single writer — see below.
+    *
+    * Caller must pass the bare HTTP factory (e.g. `DefaultHttpDataSource.Factory`),
+    * NOT a [androidx.media3.datasource.DefaultDataSource.Factory]:
+@@ -88,9 +89,24 @@ class LookaheadCache(
+    * `FLAG_IGNORE_CACHE_ON_ERROR` lets a corrupt cache entry
+    * transparently fall through to a re-download instead of
+    * surfacing a load error.
++   *
++   * PATCH (substreamer fork, internet-radio module): the playback path
++   * no longer writes into the cache
++   * (`setCacheWriteDataSinkFactory(null)` ⇒ `cacheIsReadOnly`).
++   * Live radio streams never end, so playback-side writes stored the
++   * stream to disk and Media3 then replayed those bytes the next time
++   * the same URL was opened — the user heard the previous listen
++   * instead of the live edge, and an hours-long session evicted the
++   * prefetched music. `FLAG_IGNORE_CACHE_FOR_UNSET_LENGTH_REQUESTS` is
++   * not usable here: progressive playback opens its DataSpec with
++   * `C.LENGTH_UNSET`, so that flag would disable the cache for every
++   * streamed track, not just live ones. Reads are unaffected, and the
++   * prefetcher still populates the cache, so the lookahead feature
++   * keeps working.
+    */
+   fun wrapDataSourceFactory(upstream: DataSource.Factory): DataSource.Factory =
+     cacheDataSourceFactory(upstream)
++      .setCacheWriteDataSinkFactory(null)
+ 
+   /**
+    * Build a [CacheDataSource.Factory] rooted at [simpleCache] +

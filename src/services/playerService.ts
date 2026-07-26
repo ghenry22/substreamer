@@ -24,6 +24,7 @@ import { backgroundPlaybackPromptStore } from '../store/backgroundPlaybackPrompt
 import { playbackToastStore } from '../store/playbackToastStore';
 import { playerStore } from '../store/playerStore';
 import { appStateStore } from '../store/appStateStore';
+import { offlineModeStore } from '../store/offlineModeStore';
 import { equalizerSettingsStore, EQ_CUSTOM_PRESET_LABEL } from '../store/equalizerSettingsStore';
 import { sleepTimerStore } from '../store/sleepTimerStore';
 import { shuffleArray } from '../utils/arrayHelpers';
@@ -105,6 +106,13 @@ let pendingResumePosition: { trackId: string; position: number } | null = null;
 let activeScrobbleIndex: number | null = null;
 let activeScrobbleDone = false;
 let lastMilestoneValue = 0;
+
+/* --- Live-stream URLs already played under the CURRENT native queue. A radio
+ * station streams into the player's disk cache while it plays, so re-opening
+ * the same URL replays those bytes (see `liveStreamUrl` in playerHelpers) —
+ * reaching a station in this set means the queue must be rebuilt to get a
+ * fresh URL. Cleared on every queue load. --- */
+const playedRadioUrls = new Set<string>();
 
 /* --- Radio auto-reconnect: consecutive failed reconnects for the current
  * radio track. Reset when playback recovers or the track changes. --- */
@@ -216,6 +224,16 @@ export async function initPlayer(): Promise<void> {
     if (newTrack && isRadioChild(newTrack)) {
       radioStore.getState().setLastPlayed(radioStationIdFromChildId(newTrack.id));
       startIcyPolling(newTrack.id, newTrack.radioStreamUrl);
+      // Second visit to this station within the same queue (skip-back from the
+      // lock screen / player buttons): its URL already carries cached audio, so
+      // reload the queue to mint a fresh one and reconnect at the live edge.
+      if (track?.url) {
+        if (playedRadioUrls.has(track.url)) {
+          void playTrack(newTrack, currentChildQueue);
+        } else {
+          playedRadioUrls.add(track.url);
+        }
+      }
     } else {
       stopIcyPolling();
       radioNowPlayingStore.getState().clear();
@@ -265,10 +283,20 @@ export async function initPlayer(): Promise<void> {
       radioReconnectTimer = setTimeout(() => {
         radioReconnectTimer = null;
         // Only reconnect if the user is still on the same station.
-        if (playerStore.getState().currentTrack?.id === expectedId) {
-          tp.retry();
-        } else {
+        const current = playerStore.getState().currentTrack;
+        if (!current || current.id !== expectedId) {
           playerStore.getState().setRetrying(false);
+          return;
+        }
+        // `tp.retry()` rebuilds the failed item at the pre-failure POSITION —
+        // meaningless on a live stream, where anything but "now" is old audio.
+        // Reload the station instead: fresh URL, position 0, live edge. Offline
+        // mode is the exception: a radio track can't be rebuilt there (the
+        // queue would come back empty), so fall back to the native retry.
+        if (offlineModeStore.getState().offlineMode) {
+          void tp.retry();
+        } else {
+          void playTrack(current, currentChildQueue);
         }
       }, radioReconnectDelayMs(attempt));
       return;
@@ -500,6 +528,8 @@ async function hydrateRestoredQueue(): Promise<void> {
       currentChildQueue = filteredQueue;
       playerStore.getState().setQueue(filteredQueue);
     }
+    playedRadioUrls.clear();
+    await applyLookaheadCacheConfig();
 
     // Translate the restored current track onto the filtered queue.
     let startIndex = 0;
@@ -571,10 +601,14 @@ export async function playTrack(
 
     currentChildQueue = filteredQueue;
     trackPlaylistMap.clear();
+    playedRadioUrls.clear();
     if (sourcePlaylistId) {
       for (const child of filteredQueue) trackPlaylistMap.set(child.id, sourcePlaylistId);
     }
     playerStore.getState().setQueue(filteredQueue);
+    // Before the native queue is loaded, so the prefetcher never schedules a
+    // download for a radio queue.
+    await applyLookaheadCacheConfig();
 
     const formats: Record<string, EffectiveFormat> = {};
     for (const child of filteredQueue) formats[child.id] = stampQueueFormat(child);
@@ -688,12 +722,17 @@ function refreshTrackSource(): void {
  * runtime-settable, live on both platforms). The disk budget and eviction
  * policy are fixed at `configure()` (`lookaheadCacheMaxSizeMb` /
  * `lookaheadCacheEvictionPolicy`), so they aren't part of this call. Called at
- * startup and whenever the user changes the cache settings.
+ * startup, whenever the user changes the cache settings, and after every queue
+ * load (a radio queue forces prefetch off — see below).
  */
 export async function applyLookaheadCacheConfig(): Promise<void> {
   const { lookaheadEnabled, lookaheadCount } = playbackSettingsStore.getState();
+  // Never prefetch a radio queue: the prefetcher would download stations that
+  // have no end, and whatever it stored would be stale audio by the time the
+  // user taps that station.
+  const radioQueue = currentChildQueue.some(isRadioChild);
   await tp.setLookaheadCache({
-    enabled: lookaheadEnabled,
+    enabled: lookaheadEnabled && !radioQueue,
     lookaheadCount,
   });
 }
