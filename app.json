@@ -92,7 +92,8 @@
             "enableMinifyInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": true,
             "useLegacyPackaging": true,
-            "usePrecompiledHeaders": true
+            "usePrecompiledHeaders": true,
+            "usesCleartextTraffic": true
           }
         }
       ],
@@ -120,9 +121,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "b3c7e72f-f01c-4110-8a30-a669b1d9bf34"
+        "projectId": "48d07d81-4b63-4dd0-894f-d316a5d266a6"
       }
     },
-    "owner": "ghenry22"
+    "owner": "lanzeros"
   }
 }

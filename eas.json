@@ -5,6 +5,16 @@
     "promptToConfigurePushNotifications": false
   },
   "build": {
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_USE_PRECOMPILED_MODULES": "0"
+      },
+      "android": {
+        "image": "latest",
+        "buildType": "apk"
+      }
+    },
     "production": {
       "autoIncrement": true,
       "env": {

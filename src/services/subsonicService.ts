@@ -8,6 +8,7 @@ import SubsonicAPI, {
   type ArtistWithAlbumsID3,
   type Child,
   type Genre,
+  type InternetRadioStation,
   type Playlist,
   type PlaylistWithSongs,
   type ScanStatus,
@@ -190,7 +191,7 @@ export function buildPingApi(url: string): SubsonicAPI | null {
   });
 }
 
-export type { AlbumID3, AlbumInfo, AlbumWithSongsID3, ArtistID3, ArtistInfo2, ArtistWithAlbumsID3, Child, Genre, Playlist, PlaylistWithSongs, ScanStatus, Share };
+export type { AlbumID3, AlbumInfo, AlbumWithSongsID3, ArtistID3, ArtistInfo2, ArtistWithAlbumsID3, Child, Genre, InternetRadioStation, Playlist, PlaylistWithSongs, ScanStatus, Share };
 
 // ------------------------------------------------------------------ //
 //  Various Artists pseudo-artist                                      //
@@ -1278,5 +1279,136 @@ export async function deleteShare(id: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Internet radio                                                     */
+/* ------------------------------------------------------------------ */
+
+/** ID prefix marking a queue Child synthesized from an internet radio
+ *  station — keeps radio ids from ever colliding with server song ids. */
+export const RADIO_ID_PREFIX = 'internet-radio:';
+
+/**
+ * A Child synthesized from an internet radio station so the standard
+ * queue/player pipeline can carry a live stream. The external stream URL
+ * rides along inside the object — it survives queue persistence (JSON)
+ * so a restored radio queue can rebuild its native track without a
+ * server-derived stream URL.
+ */
+export type RadioChild = Child & {
+  radioStreamUrl: string;
+  /** Derived station logo (favicon) — lock-screen artwork; may 404. */
+  radioLogoUrl?: string;
+};
+
+export function isRadioChild(child: Child): child is RadioChild {
+  return (
+    child.id.startsWith(RADIO_ID_PREFIX) &&
+    typeof (child as RadioChild).radioStreamUrl === 'string'
+  );
+}
+
+/** True for any queue/track id synthesized from an internet radio station.
+ *  Lets UI components (favorite/bookmark/rate/seek) hide themselves for live
+ *  streams without needing the full Child object. */
+export function isRadioId(id: string): boolean {
+  return id.startsWith(RADIO_ID_PREFIX);
+}
+
+/** Station id back out of a synthesized radio Child id. */
+export function radioStationIdFromChildId(childId: string): string {
+  return childId.slice(RADIO_ID_PREFIX.length);
+}
+
+/**
+ * Best-effort station logo: the /favicon.ico of the station's home page (or
+ * stream host as fallback). No Subsonic art exists for radio stations, so this
+ * is purely derived — callers must handle load failures with a placeholder.
+ */
+export function stationLogoUrl(station: InternetRadioStation): string | null {
+  const source = station.homePageUrl || station.streamUrl;
+  try {
+    const url = new URL(source);
+    return `${url.protocol}//${url.host}/favicon.ico`;
+  } catch {
+    return null;
+  }
+}
+
+export function radioStationToChild(station: InternetRadioStation): RadioChild {
+  return {
+    id: `${RADIO_ID_PREFIX}${station.id}`,
+    isDir: false,
+    title: station.name,
+    artist: i18n.t('internetRadio'),
+    duration: 0,
+    radioStreamUrl: station.streamUrl,
+    radioLogoUrl: stationLogoUrl(station) ?? undefined,
+  };
+}
+
+export async function getInternetRadioStations(): Promise<InternetRadioStation[] | null> {
+  const api = getApi();
+  if (!api) return null;
+  try {
+    const response = await api.getInternetRadioStations();
+    return response.internetRadioStations?.internetRadioStation ?? [];
+  } catch {
+    return null;
+  }
+}
+
+/** Result of a radio-station write. `error` carries the server's message
+ *  (e.g. Navidrome rejecting a non-admin user) for direct UI display. */
+export type RadioCrudResult = { ok: true } | { ok: false; error: string };
+
+function radioCrudError(e: unknown): RadioCrudResult {
+  return {
+    ok: false,
+    error: e instanceof Error && e.message ? e.message : i18n.t('radioStationSaveFailed'),
+  };
+}
+
+export async function createRadioStation(args: {
+  name: string;
+  streamUrl: string;
+  homepageUrl?: string;
+}): Promise<RadioCrudResult> {
+  const api = getApi();
+  if (!api) return { ok: false, error: i18n.t('radioStationSaveFailed') };
+  try {
+    await api.createInternetRadioStation(args);
+    return { ok: true };
+  } catch (e) {
+    return radioCrudError(e);
+  }
+}
+
+export async function updateRadioStation(args: {
+  id: string;
+  name: string;
+  streamUrl: string;
+  homepageUrl?: string;
+}): Promise<RadioCrudResult> {
+  const api = getApi();
+  if (!api) return { ok: false, error: i18n.t('radioStationSaveFailed') };
+  try {
+    await api.updateInternetRadioStation(args);
+    return { ok: true };
+  } catch (e) {
+    return radioCrudError(e);
+  }
+}
+
+export async function deleteRadioStation(id: string): Promise<RadioCrudResult> {
+  const api = getApi();
+  if (!api) return { ok: false, error: i18n.t('radioStationSaveFailed') };
+  try {
+    await api.deleteInternetRadioStation({ id });
+    return { ok: true };
+  } catch (e) {
+    return radioCrudError(e);
   }
 }

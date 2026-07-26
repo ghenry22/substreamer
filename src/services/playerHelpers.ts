@@ -18,7 +18,7 @@ import { resolveSongCoverArt } from '../hooks/useSongCoverArt';
 import { resolveCachedImageUri } from './imageCacheService';
 import { logImageCache } from './imageCacheLogger';
 import { getLocalTrackUri } from './musicCacheService';
-import { getCoverArtUrl, getStreamUrl, type Child } from './subsonicService';
+import { getCoverArtUrl, getStreamUrl, isRadioChild, type Child } from './subsonicService';
 
 /** Map our RepeatModeSetting to RNQP's RepeatMode string union. */
 export function mapRepeatMode(mode: RepeatModeSetting): RepeatMode {
@@ -80,6 +80,33 @@ export function stampQueueFormat(child: Child): EffectiveFormat {
   });
 }
 
+/** Monotonic counter so two stations built in the same millisecond still get
+ *  distinct live-stream URLs. */
+let liveStreamCounter = 0;
+
+/**
+ * Stamp a live stream URL with a one-shot fragment so it can never be served
+ * from the player's on-disk cache.
+ *
+ * RNQP wraps every remote read in a Media3 `CacheDataSource` keyed on the
+ * track URL (`LookaheadCache.wrapDataSourceFactory`, applied to the player's
+ * own `MediaSource.Factory`, not just the prefetcher). Media3 only bypasses
+ * that cache for unknown-length responses when
+ * `FLAG_IGNORE_CACHE_FOR_UNSET_LENGTH_REQUESTS` is set, which RNQP does not
+ * set — so a live stream is written to disk while it plays and replayed from
+ * those bytes the next time the same URL is opened. The user hears audio from
+ * the previous listen instead of the live edge.
+ *
+ * A fragment is never sent to the server (RFC 3986 §3.5 — `DefaultHttpDataSource`
+ * / `URLSession` request only path + query), so the stream request is
+ * byte-for-byte the same; only the cache key changes.
+ */
+export function liveStreamUrl(streamUrl: string): string {
+  liveStreamCounter += 1;
+  const base = streamUrl.split('#')[0];
+  return `${base}#live-${Date.now().toString(36)}-${liveStreamCounter}`;
+}
+
 /**
  * Convert a Child (Subsonic song) to an RNQP TrackItem.
  *
@@ -96,6 +123,22 @@ export function childToTrack(
   child: Child,
   cachedArt?: string | null,
 ): TrackItem | null {
+  // Internet radio: the stream URL lives on the Child itself (no server
+  // stream URL, no local file). Live streams are online-only.
+  if (isRadioChild(child)) {
+    if (offlineModeStore.getState().offlineMode) return null;
+    return {
+      id: child.id,
+      url: liveStreamUrl(child.radioStreamUrl),
+      title: child.title,
+      artist: child.artist ?? i18n.t('unknownArtist'),
+      // Station favicon as lock-screen artwork; the player falls back to its
+      // default artwork when the URL 404s.
+      artworkUrl: child.radioLogoUrl,
+      duration: 0,
+    };
+  }
+
   const localUri = getLocalTrackUri(child.id);
   const offline = offlineModeStore.getState().offlineMode;
   if (!localUri && offline) return null;

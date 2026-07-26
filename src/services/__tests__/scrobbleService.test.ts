@@ -64,6 +64,17 @@ describe('addCompletedScrobble', () => {
     expect(pendingScrobbleStore.getState().pendingScrobbles).toHaveLength(0);
   });
 
+  it('skips internet radio children entirely', () => {
+    addCompletedScrobble({
+      id: 'internet-radio:1',
+      title: 'Jazz FM',
+      isDir: false,
+      radioStreamUrl: 'https://stream.jazzfm.example/live',
+    } as any);
+    expect(pendingScrobbleStore.getState().pendingScrobbles).toHaveLength(0);
+    expect(mockApplyLocalPlay).not.toHaveBeenCalled();
+  });
+
   it('stores the time as a number', () => {
     addCompletedScrobble({ id: 's1', title: 'X', artist: 'A' } as any);
     const pending = pendingScrobbleStore.getState().pendingScrobbles[0];
@@ -153,6 +164,18 @@ describe('sendNowPlaying', () => {
     const mockScrobble = jest.fn().mockRejectedValue(new Error('network'));
     mockGetApi.mockReturnValue({ scrobble: mockScrobble });
     await expect(sendNowPlaying({ id: 'track-1', title: 'T', isDir: false } as any)).resolves.toBeUndefined();
+  });
+
+  it('skips internet radio children entirely', async () => {
+    const mockScrobble = jest.fn().mockResolvedValue(undefined);
+    mockGetApi.mockReturnValue({ scrobble: mockScrobble });
+    await sendNowPlaying({
+      id: 'internet-radio:1',
+      title: 'Jazz FM',
+      isDir: false,
+      radioStreamUrl: 'https://stream.jazzfm.example/live',
+    } as any);
+    expect(mockScrobble).not.toHaveBeenCalled();
   });
 });
 

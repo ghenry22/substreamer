@@ -72,6 +72,29 @@ export const startScan = jest.fn().mockResolvedValue(null);
 export const getGenres = jest.fn().mockResolvedValue(null);
 export const getSongsByGenre = jest.fn().mockResolvedValue(null);
 export const getShares = jest.fn().mockResolvedValue({ ok: false, reason: 'error', message: 'Not connected to a server.' });
+
+export const RADIO_ID_PREFIX = 'internet-radio:';
+export const isRadioChild = (child: { id: string }) =>
+  child.id.startsWith(RADIO_ID_PREFIX) &&
+  typeof (child as { radioStreamUrl?: unknown }).radioStreamUrl === 'string';
+export const radioStationToChild = jest.fn(
+  (station: { id: string; name: string; streamUrl: string }) => ({
+    id: `${RADIO_ID_PREFIX}${station.id}`,
+    isDir: false,
+    title: station.name,
+    artist: 'Internet Radio',
+    duration: 0,
+    radioStreamUrl: station.streamUrl,
+  }),
+);
+export const getInternetRadioStations = jest.fn().mockResolvedValue(null);
+export const isRadioId = (id: string) => id.startsWith(RADIO_ID_PREFIX);
+export const radioStationIdFromChildId = (childId: string) =>
+  childId.slice(RADIO_ID_PREFIX.length);
+export const stationLogoUrl = jest.fn().mockReturnValue(null);
+export const createRadioStation = jest.fn().mockResolvedValue({ ok: true });
+export const updateRadioStation = jest.fn().mockResolvedValue({ ok: true });
+export const deleteRadioStation = jest.fn().mockResolvedValue({ ok: true });
 export const createShare = jest.fn().mockResolvedValue(null);
 export const updateShare = jest.fn().mockResolvedValue(undefined);
 export const deleteShare = jest.fn().mockResolvedValue(false);

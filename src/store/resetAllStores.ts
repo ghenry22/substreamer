@@ -44,6 +44,7 @@ import { pendingScrobbleStore } from './pendingScrobbleStore';
 import { playbackSettingsStore } from './playbackSettingsStore';
 import { playlistDetailStore } from './playlistDetailStore';
 import { playlistLibraryStore } from './playlistLibraryStore';
+import { radioStore } from './radioStore';
 import { ratingStore } from './ratingStore';
 import { recentSearchStore } from './recentSearchStore';
 import { scanStatusStore } from './scanStatusStore';
@@ -101,6 +102,7 @@ const allStores = [
   playbackSettingsStore,
   playlistDetailStore,
   playlistLibraryStore,
+  radioStore,
   ratingStore,
   recentSearchStore,
   scanStatusStore,

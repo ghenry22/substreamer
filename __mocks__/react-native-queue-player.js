@@ -103,6 +103,11 @@ const trackPlayer = {
   onCacheStatusChange: makeSub('cacheStatus'),
 };
 
+const castManager = {
+  getCurrentAudioRoute: jest.fn(() => ({ kind: 'speaker', name: '' })),
+  onAudioRouteChange: jest.fn(() => () => {}),
+};
+
 const cast = {
   getSupportedProtocols: jest.fn(() => ['local']),
   isCastAvailable: jest.fn(() => false),
@@ -198,7 +203,7 @@ module.exports = {
   }),
   __equalizer: equalizer,
   getVisualizer: jest.fn(() => ({})),
-  getCastManager: jest.fn(() => ({})),
+  getCastManager: jest.fn(() => castManager),
   Cast: cast,
   // hooks
   useProgress: () => ({ position: 0, duration: 0, buffered: 0 }),
@@ -223,6 +228,7 @@ module.exports = {
   }),
   // test helpers
   __trackPlayer: trackPlayer,
+  __castManager: castManager,
   __emit: (name, ...args) => {
     (listeners[name] || []).forEach((cb) => cb(...args));
   },
