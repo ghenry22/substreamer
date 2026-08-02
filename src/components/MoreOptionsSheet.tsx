@@ -47,6 +47,7 @@ import {
   deletePlaylist,
   isVariousArtists,
   type AlbumID3,
+  type ArtistID3,
   type Child,
   type Playlist,
 } from '../services/subsonicService';
@@ -114,8 +115,8 @@ function isStarrable(entity: MoreOptionsEntity): boolean {
 }
 
 function hasArtistLink(entity: MoreOptionsEntity): boolean {
-  if (entity.type === 'song') return Boolean(entity.item.artistId);
-  if (entity.type === 'album') return Boolean(entity.item.artistId);
+  if (entity.type === 'song') return Boolean(entity.item.artistId) || Boolean((entity.item as Child).artists?.length);
+  if (entity.type === 'album') return Boolean(entity.item.artistId) || Boolean((entity.item as AlbumID3).artists?.length);
   return false;
 }
 
@@ -303,8 +304,10 @@ export function MoreOptionsSheet() {
   const [detailsVisible, setDetailsVisible] = useState(false);
   const [detailsAlbum, setDetailsAlbum] = useState<AlbumID3 | null>(null);
   const [detailsTrack, setDetailsTrack] = useState<Child | null>(null);
+  const [pickerArtists, setPickerArtists] = useState<ArtistID3[] | null>(null);
 
   const handleClose = useCallback(() => {
+    setPickerArtists(null);
     hide();
   }, [hide]);
 
@@ -418,20 +421,50 @@ export function MoreOptionsSheet() {
 
   const handleGoToArtist = useCallback(() => {
     if (!entity) return;
+
+    const artists = entity.type === 'song'
+      ? (entity.item as Child).artists
+      : entity.type === 'album'
+        ? (entity.item as AlbumID3).artists
+        : undefined;
+
+    // Multiple artists → drill into a picker page inside this same sheet
+    // (kept in the one Modal so the handoff is instant, no re-open animation).
+    if (artists && artists.length > 1) {
+      setPickerArtists(artists);
+      return;
+    }
+
     handleClose();
     if (source === 'player-tablet-landscape') {
       tabletLayoutStore.getState().setPlayerExpanded(false);
     }
+    // Prefer the single entry in the artists array; fall back to the legacy
+    // artistId field for servers that only populate it.
     const artistId =
-      entity.type === 'song'
+      artists?.[0]?.id ??
+      (entity.type === 'song'
         ? (entity.item as Child).artistId
         : entity.type === 'album'
           ? (entity.item as AlbumID3).artistId
-          : undefined;
+          : undefined);
     if (artistId) {
       router.push(`/artist/${artistId}`);
     }
   }, [entity, handleClose, source, router]);
+
+  const handleArtistPicked = useCallback((artistId: string) => {
+    setPickerArtists(null);
+    handleClose();
+    if (source === 'player-tablet-landscape') {
+      tabletLayoutStore.getState().setPlayerExpanded(false);
+    }
+    router.push(`/artist/${artistId}`);
+  }, [handleClose, source, router]);
+
+  const handleArtistPickerBack = useCallback(() => {
+    setPickerArtists(null);
+  }, []);
 
   const handleGoToAlbum = useCallback(() => {
     if (!entity || entity.type !== 'song') return;
@@ -684,7 +717,36 @@ export function MoreOptionsSheet() {
         onClose={handleClose}
         onCloseComplete={() => moreOptionsStore.getState()._signalCloseComplete()}
       >
-          {isPlayerSource && showAddQueueToPlaylist && (
+          {pickerArtists ? (
+            <>
+              {/* Multi-artist picker — drill-down page inside the same sheet */}
+              <MoreOptionsRow
+                icon={<Ionicons name="arrow-back" size={22} color={colors.textPrimary} style={styles.optionIcon} />}
+                label={t('back')}
+                onPress={handleArtistPickerBack}
+              />
+
+              <View style={styles.sectionDivider} />
+
+              <Text
+                style={[styles.sheetTitle, { color: colors.textPrimary }]}
+                numberOfLines={1}
+              >
+                {t('selectArtist')}
+              </Text>
+
+              {pickerArtists.map((artist) => (
+                <MoreOptionsRow
+                  key={artist.id}
+                  icon={<Ionicons name="person-outline" size={22} color={colors.textPrimary} style={styles.optionIcon} />}
+                  label={artist.name}
+                  onPress={() => handleArtistPicked(artist.id)}
+                />
+              ))}
+            </>
+          ) : (
+            <>
+            {isPlayerSource && showAddQueueToPlaylist && (
             <>
               {/* Player Queue: add the whole queue to a playlist, then a divider
                   before the per-entity options below. */}
@@ -973,6 +1035,8 @@ export function MoreOptionsSheet() {
                 />
               )}
             </>
+          </>
+          )}
       </BottomSheet>
 
       {detailsAlbum && (
