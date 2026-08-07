@@ -38,6 +38,12 @@ jobs:
       - name: TypeScript compilation check
         run: npx tsc --noEmit
 
+      - name: Test SideStore source generation
+        run: npm run test:sidestore-source
+
+      - name: Test SideStore IPA validation
+        run: npm run test:sidestore-ipa
+
       - name: Run tests with coverage
         run: npx jest --ci --coverage --coverageReporters=json-summary --coverageReporters=text
 

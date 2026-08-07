@@ -1,0 +1,121 @@
+name: Publish iOS SideStore
+
+on:
+  workflow_run:
+    workflows: ['Build iOS SideStore']
+    types: [completed]
+  pull_request_target:
+    branches: [master]
+    types: [closed]
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: sidestore-source-write
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
+      SOURCE_TAG: sidestore-source
+    steps:
+      - uses: actions/checkout@v5
+        with: { ref: master }
+      - name: Download exact build artifact
+        run: |
+          ARTIFACT_ID=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/artifacts" --jq '.artifacts[] | select(.name == "ios-sidestore-build" and (.expired | not)) | .id' | head -1)
+          if [ -z "$ARTIFACT_ID" ]; then
+            echo 'No build artifact; closed/draft/fork no-op run.'
+            echo NO_ARTIFACT=1 >> "$GITHUB_ENV"
+            exit 0
+          fi
+          mkdir artifact
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" > artifact.zip
+          unzip -q artifact.zip -d artifact
+      - name: Validate origin and current head
+        if: env.NO_ARTIFACT != '1'
+        env:
+          ORIGIN_EVENT: ${{ github.event.workflow_run.event }}
+          BUILD_SHA: ${{ github.event.workflow_run.head_sha }}
+          WORKFLOW_PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+          HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+        run: |
+          jq -e '.commitSHA == env.BUILD_SHA' artifact/build-manifest.json >/dev/null
+          CHANNEL=$(jq -r .channel artifact/build-manifest.json)
+          if [ "$CHANNEL" = main ]; then test "$ORIGIN_EVENT" = push; else test "$ORIGIN_EVENT" = pull_request; fi
+          if [ "$CHANNEL" = main ]; then
+            test "$ORIGIN_EVENT" = push
+            test "${{ github.event.workflow_run.head_branch }}" = master
+            CURRENT=$(gh api "repos/${GITHUB_REPOSITORY}/commits/master" --jq .sha)
+            test "$BUILD_SHA" = "$CURRENT" || { echo 'Skipping stale main build'; echo STALE=1 >> "$GITHUB_ENV"; }
+          else
+            PR=$(jq -r .prNumber artifact/build-manifest.json)
+            test -n "$WORKFLOW_PR_NUMBER"
+            test "$PR" = "$WORKFLOW_PR_NUMBER"
+            test "$HEAD_REPOSITORY" = "$GITHUB_REPOSITORY"
+            gh api "repos/${GITHUB_REPOSITORY}/pulls/$PR" > pr.json
+            jq -e '.state == "open" and (.draft|not) and .head.repo.full_name == "louismollick/substreamer"' pr.json >/dev/null
+            test "$(jq -r .head.sha pr.json)" = "$BUILD_SHA"
+          fi
+      - name: Validate and publish
+        if: env.NO_ARTIFACT != '1' && env.STALE != '1'
+        run: |
+          CHANNEL=$(jq -r .channel artifact/build-manifest.json)
+          PR=$(jq -r '.prNumber // empty' artifact/build-manifest.json)
+          VERSION=$(jq -r .version artifact/build-manifest.json)
+          BUILD=$(jq -r .buildVersion artifact/build-manifest.json)
+          if [ "$CHANNEL" = main ]; then TAG=sidestore-main; ASSET="Substreamer-Main-${VERSION}-${BUILD}.ipa"; OP=upsert-main; IPA=artifact/Substreamer-Main.ipa
+          else TAG="pr-${PR}-ios-preview"; ASSET="Substreamer-PR-${PR}-${VERSION}-${BUILD}.ipa"; OP=upsert-pr; IPA="artifact/Substreamer-PR-${PR}.ipa"; fi
+          python3 scripts/sidestore-ipa-metadata.py "$IPA" artifact/build-manifest.json "$GITHUB_REPOSITORY" "$TAG" "$ASSET" metadata.json
+          TAG_EXISTS=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq ".[] | select(.tag_name == \"$TAG\") | .id" | head -1)
+          if [ -n "$TAG_EXISTS" ]; then gh release edit "$TAG" --prerelease --title "Substreamer ${CHANNEL} SideStore builds"; else gh release create "$TAG" --prerelease --title "Substreamer ${CHANNEL} SideStore builds" --notes 'Unsigned SideStore builds.'; fi
+          gh release upload "$TAG" "$IPA#$ASSET" --clobber
+          mkdir source-download
+          SOURCE_RELEASE=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq ".[] | select(.tag_name == \"$SOURCE_TAG\") | .id" | head -1)
+          if [ -n "$SOURCE_RELEASE" ]; then
+            gh release download "$SOURCE_TAG" --pattern source.json --dir source-download
+            EXISTING=source-download/source.json
+          else
+            EXISTING=-
+          fi
+          node scripts/sidestore-source.js "$OP" "$EXISTING" metadata.json source.json
+          if [ -z "$SOURCE_RELEASE" ]; then gh release create "$SOURCE_TAG" --prerelease --title 'Substreamer SideStore Source' --notes 'Unified SideStore source.'; fi
+          gh release upload "$SOURCE_TAG" source.json --clobber
+          gh release view "$TAG" --json assets --jq '.assets | map(select(.name | endswith(".ipa"))) | sort_by(.createdAt) | reverse | .[2:][]?.name' | while read -r OLD; do gh release delete-asset "$TAG" "$OLD" --yes || true; done
+          if [ "$CHANNEL" = pr ]; then
+            MARKER='<!-- sidestore-preview -->'
+            SOURCE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${SOURCE_TAG}/source.json"
+            BODY=$(printf '%s\n%s\n\n%s' "$MARKER" 'iOS SideStore preview published.' "$SOURCE_URL")
+            COMMENT=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" --paginate --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | contains(\"$MARKER\"))) | .id" | tail -1)
+            if [ -n "$COMMENT" ]; then gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/$COMMENT" -f body="$BODY"; else gh pr comment "$PR" --body "$BODY"; fi
+          fi
+  cleanup:
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_TAG: sidestore-source
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@v5
+        with: { ref: master }
+      - name: Remove PR from source before deleting release
+        run: |
+          mkdir source-download
+          SOURCE_RELEASE=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq ".[] | select(.tag_name == \"$SOURCE_TAG\") | .id" | head -1)
+          if [ -z "$SOURCE_RELEASE" ]; then exit 0; fi
+          gh release download "$SOURCE_TAG" --pattern source.json --dir source-download
+          node scripts/sidestore-source.js remove-pr source-download/source.json "$PR_NUMBER" source.json
+          gh release upload "$SOURCE_TAG" source.json --clobber
+          TAG="pr-${PR_NUMBER}-ios-preview"
+          TAG_EXISTS=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq ".[] | select(.tag_name == \"$TAG\") | .id" | head -1)
+          if [ -n "$TAG_EXISTS" ]; then gh release delete "$TAG" --cleanup-tag --yes; fi

@@ -1,0 +1,87 @@
+name: Build iOS SideStore
+
+on:
+  pull_request:
+    branches: [master]
+    types: [opened, synchronize, reopened, ready_for_review, closed]
+    paths-ignore: &ignored
+      - '**/*.md'
+      - 'docs/**'
+      - 'fastlane/**'
+      - 'badges/**'
+      - '.github/FUNDING.yml'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/PULL_REQUEST_TEMPLATE.md'
+  push:
+    branches: [master]
+    paths-ignore: *ignored
+
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('ios-sidestore-pr-{0}', github.event.pull_request.number) || 'ios-sidestore-main' }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: github.event_name == 'push' || (github.event.action != 'closed' && !github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Resolve channel metadata
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          COMMIT_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [ "$EVENT_NAME" = pull_request ]; then
+            CHANNEL=pr
+            BUNDLE_ID="com.louismollick.substreamer.pr${PR_NUMBER}"
+            DISPLAY_NAME="Substreamer PR ${PR_NUMBER}"
+            VERSION="0.${PR_NUMBER}.${GITHUB_RUN_NUMBER}"
+            IPA_NAME="Substreamer-PR-${PR_NUMBER}.ipa"
+          else
+            CHANNEL=main
+            BUNDLE_ID=com.louismollick.substreamer.dev
+            DISPLAY_NAME=Substreamer
+            VERSION=$(jq -r '.expo.version' app.json)
+            IPA_NAME=Substreamer-Main.ipa
+          fi
+          BUILD_VERSION="$((1000 + GITHUB_RUN_NUMBER)).${GITHUB_RUN_ATTEMPT}"
+          if [ "$CHANNEL" = pr ]; then BUILD_VERSION="${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"; fi
+          {
+            echo "CHANNEL=$CHANNEL"; echo "BUNDLE_ID=$BUNDLE_ID"; echo "DISPLAY_NAME=$DISPLAY_NAME"
+            echo "VERSION=$VERSION"; echo "BUILD_VERSION=$BUILD_VERSION"; echo "IPA_NAME=$IPA_NAME"
+            echo "SUBSTREAMER_IOS_BUNDLE_IDENTIFIER=$BUNDLE_ID"
+            echo "SUBSTREAMER_IOS_DISPLAY_NAME=$DISPLAY_NAME"
+            echo "SUBSTREAMER_IOS_VERSION=$VERSION"
+            echo "SUBSTREAMER_IOS_BUILD_NUMBER=$BUILD_VERSION"
+            echo "SUBSTREAMER_IOS_IPA_PATH=$GITHUB_WORKSPACE/build/$IPA_NAME"
+          } >> "$GITHUB_ENV"
+          jq -n --arg channel "$CHANNEL" --arg sha "$COMMIT_SHA" --arg bundle "$BUNDLE_ID" \
+            --arg version "$VERSION" --arg build "$BUILD_VERSION" --argjson pr "${PR_NUMBER:-null}" \
+            --arg title "${PR_TITLE:-}" --arg url "${PR_URL:-}" \
+            '{channel:$channel,commitSHA:$sha,bundleIdentifier:$bundle,version:$version,buildVersion:$build}
+             + (if $channel == "pr" then {prNumber:$pr,title:$title,htmlURL:$url} else {} end)' > build-manifest.json
+      - name: Build and package unsigned IPA
+        run: scripts/build-sidestore-ipa.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-sidestore-build
+          path: |
+            build/${{ env.IPA_NAME }}
+            build-manifest.json
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
