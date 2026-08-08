@@ -59,7 +59,7 @@ jobs:
             # Skip only when a newer successful main build already exists.
             CURRENT_RUN_NUMBER=${{ github.event.workflow_run.run_number }}
             NEWER_SUCCESS_COUNT=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ios-sidestore-build.yml/runs?branch=master&event=push&per_page=100" \
-              --jq --argjson current "$CURRENT_RUN_NUMBER" '[.workflow_runs[] | select(.conclusion == "success" and .run_number > $current)] | length')
+              --jq "[.workflow_runs[] | select(.conclusion == \"success\" and .run_number > ${CURRENT_RUN_NUMBER})] | length")
             if [ "$NEWER_SUCCESS_COUNT" -gt 0 ]; then
               echo "Skipping stale main build: $NEWER_SUCCESS_COUNT newer successful build(s) exist"
               echo STALE=1 >> "$GITHUB_ENV"
