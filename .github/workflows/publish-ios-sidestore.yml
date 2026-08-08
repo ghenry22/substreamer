@@ -104,7 +104,10 @@ jobs:
           python3 scripts/sidestore-ipa-metadata.py "$IPA" artifact/build-manifest.json "$GITHUB_REPOSITORY" "$TAG" "$ASSET" metadata.json
           TAG_EXISTS=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq ".[] | select(.tag_name == \"$TAG\") | .id" | head -1)
           if [ -n "$TAG_EXISTS" ]; then gh release edit "$TAG" --prerelease --title "Substreamer ${CHANNEL} SideStore builds"; else gh release create "$TAG" --prerelease --title "Substreamer ${CHANNEL} SideStore builds" --notes 'Unsigned SideStore builds.'; fi
-          gh release upload "$TAG" "$IPA#$ASSET" --clobber
+          cp "$IPA" "$ASSET"
+          gh release upload "$TAG" "$ASSET" --clobber
+          LEGACY_ASSET="$(basename "$IPA")"
+          if [ "$LEGACY_ASSET" != "$ASSET" ]; then gh release delete-asset "$TAG" "$LEGACY_ASSET" --yes || true; fi
           mkdir source-download
           SOURCE_RELEASE=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq ".[] | select(.tag_name == \"$SOURCE_TAG\") | .id" | head -1)
           if [ -n "$SOURCE_RELEASE" ]; then
