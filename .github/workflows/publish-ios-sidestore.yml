@@ -54,8 +54,16 @@ jobs:
           if [ "$CHANNEL" = main ]; then
             test "$ORIGIN_EVENT" = push
             test "${{ github.event.workflow_run.head_branch }}" = master
-            CURRENT=$(gh api "repos/${GITHUB_REPOSITORY}/commits/master" --jq .sha)
-            test "$BUILD_SHA" = "$CURRENT" || { echo 'Skipping stale main build'; echo STALE=1 >> "$GITHUB_ENV"; }
+            # Master may advance without a new SideStore build (e.g. coverage badge
+            # commits only touch badges/**, which ios-sidestore-build paths-ignores).
+            # Skip only when a newer successful main build already exists.
+            CURRENT_RUN_NUMBER=${{ github.event.workflow_run.run_number }}
+            NEWER_SUCCESS_COUNT=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ios-sidestore-build.yml/runs?branch=master&event=push&per_page=100" \
+              --jq --argjson current "$CURRENT_RUN_NUMBER" '[.workflow_runs[] | select(.conclusion == "success" and .run_number > $current)] | length')
+            if [ "$NEWER_SUCCESS_COUNT" -gt 0 ]; then
+              echo "Skipping stale main build: $NEWER_SUCCESS_COUNT newer successful build(s) exist"
+              echo STALE=1 >> "$GITHUB_ENV"
+            fi
           else
             PR=$(jq -r .prNumber artifact/build-manifest.json)
             test -n "$WORKFLOW_PR_NUMBER"
