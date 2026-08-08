@@ -80,8 +80,8 @@ jobs:
           PR=$(jq -r '.prNumber // empty' artifact/build-manifest.json)
           VERSION=$(jq -r .version artifact/build-manifest.json)
           BUILD=$(jq -r .buildVersion artifact/build-manifest.json)
-          if [ "$CHANNEL" = main ]; then TAG=sidestore-main; ASSET="Substreamer-Main-${VERSION}-${BUILD}.ipa"; OP=upsert-main; IPA=artifact/Substreamer-Main.ipa
-          else TAG="pr-${PR}-ios-preview"; ASSET="Substreamer-PR-${PR}-${VERSION}-${BUILD}.ipa"; OP=upsert-pr; IPA="artifact/Substreamer-PR-${PR}.ipa"; fi
+          if [ "$CHANNEL" = main ]; then TAG=sidestore-main; ASSET="Substreamer-Main-${VERSION}-${BUILD}.ipa"; OP=upsert-main; IPA=artifact/build/Substreamer-Main.ipa
+          else TAG="pr-${PR}-ios-preview"; ASSET="Substreamer-PR-${PR}-${VERSION}-${BUILD}.ipa"; OP=upsert-pr; IPA="artifact/build/Substreamer-PR-${PR}.ipa"; fi
           python3 scripts/sidestore-ipa-metadata.py "$IPA" artifact/build-manifest.json "$GITHUB_REPOSITORY" "$TAG" "$ASSET" metadata.json
           TAG_EXISTS=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq ".[] | select(.tag_name == \"$TAG\") | .id" | head -1)
           if [ -n "$TAG_EXISTS" ]; then gh release edit "$TAG" --prerelease --title "Substreamer ${CHANNEL} SideStore builds"; else gh release create "$TAG" --prerelease --title "Substreamer ${CHANNEL} SideStore builds" --notes 'Unsigned SideStore builds.'; fi
