@@ -4,6 +4,12 @@ on:
   workflow_run:
     workflows: ['Build iOS SideStore']
     types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Build iOS SideStore workflow run ID to publish
+        required: true
+        type: string
   pull_request_target:
     branches: [master]
     types: [closed]
@@ -19,12 +25,14 @@ concurrency:
 
 jobs:
   publish:
-    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    if: >-
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       GH_TOKEN: ${{ github.token }}
-      RUN_ID: ${{ github.event.workflow_run.id }}
+      RUN_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.run_id || github.event.workflow_run.id }}
       SOURCE_TAG: sidestore-source
     steps:
       - uses: actions/checkout@v5
@@ -42,22 +50,33 @@ jobs:
           unzip -q artifact.zip -d artifact
       - name: Validate origin and current head
         if: env.NO_ARTIFACT != '1'
-        env:
-          ORIGIN_EVENT: ${{ github.event.workflow_run.event }}
-          BUILD_SHA: ${{ github.event.workflow_run.head_sha }}
-          WORKFLOW_PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
-          HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
         run: |
+          if [ "${{ github.event_name }}" = workflow_dispatch ]; then
+            gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}" > build_run.json
+            ORIGIN_EVENT=$(jq -r .event build_run.json)
+            BUILD_SHA=$(jq -r .head_sha build_run.json)
+            BUILD_BRANCH=$(jq -r .head_branch build_run.json)
+            CURRENT_RUN_NUMBER=$(jq -r .run_number build_run.json)
+            WORKFLOW_PR_NUMBER=$(jq -r '.pull_requests[0].number // empty' build_run.json)
+            HEAD_REPOSITORY=$(jq -r '.head_repository.full_name // empty' build_run.json)
+          else
+            ORIGIN_EVENT="${{ github.event.workflow_run.event }}"
+            BUILD_SHA="${{ github.event.workflow_run.head_sha }}"
+            BUILD_BRANCH="${{ github.event.workflow_run.head_branch }}"
+            CURRENT_RUN_NUMBER=${{ github.event.workflow_run.run_number }}
+            WORKFLOW_PR_NUMBER="${{ github.event.workflow_run.pull_requests[0].number }}"
+            HEAD_REPOSITORY="${{ github.event.workflow_run.head_repository.full_name }}"
+          fi
+          export ORIGIN_EVENT BUILD_SHA BUILD_BRANCH WORKFLOW_PR_NUMBER HEAD_REPOSITORY CURRENT_RUN_NUMBER
           jq -e '.commitSHA == env.BUILD_SHA' artifact/build-manifest.json >/dev/null
           CHANNEL=$(jq -r .channel artifact/build-manifest.json)
           if [ "$CHANNEL" = main ]; then test "$ORIGIN_EVENT" = push; else test "$ORIGIN_EVENT" = pull_request; fi
           if [ "$CHANNEL" = main ]; then
             test "$ORIGIN_EVENT" = push
-            test "${{ github.event.workflow_run.head_branch }}" = master
+            test "$BUILD_BRANCH" = master
             # Master may advance without a new SideStore build (e.g. coverage badge
             # commits only touch badges/**, which ios-sidestore-build paths-ignores).
             # Skip only when a newer successful main build already exists.
-            CURRENT_RUN_NUMBER=${{ github.event.workflow_run.run_number }}
             NEWER_SUCCESS_COUNT=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ios-sidestore-build.yml/runs?branch=master&event=push&per_page=100" \
               --jq "[.workflow_runs[] | select(.conclusion == \"success\" and .run_number > ${CURRENT_RUN_NUMBER})] | length")
             if [ "$NEWER_SUCCESS_COUNT" -gt 0 ]; then
