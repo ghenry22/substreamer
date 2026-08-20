@@ -10,11 +10,17 @@
  * state — the bars freeze at their current height rather than vanishing,
  * so a paused track still reads as "the active one".
  *
+ * It renders NOTHING while the app is backgrounded or the screen is not focused.
+ * This is decoration, not data: with nothing on screen to read, frozen bars are
+ * three views and three shared values kept alive for no one. Unmounting also
+ * releases the Reanimated animations outright rather than parking them.
+ *
  * Each bar's animation runs on the native (UI) thread via Reanimated, so
  * the indicator does not impact JS thread responsiveness when many rows
  * are mounted (e.g. scrolling an album with the active track on screen).
  */
 
+import { useIsFocused } from "expo-router/react-navigation";
 import { memo, useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
@@ -95,7 +101,11 @@ export const NowPlayingIndicator = memo(function NowPlayingIndicator({
   // `withRepeat(-1)` keeps the UI thread busy and overheats the device during
   // background playback. Backgrounded, the bars freeze at the paused height.
   const isActive = useAppActive();
-  const shouldAnimate = isPlaying && isActive;
+  // Not focused means another screen is on top; the list underneath can stay mounted,
+  // so without this the bars keep animating on the UI thread where nobody can see them.
+  const isFocused = useIsFocused();
+  const visible = isActive && isFocused;
+  const shouldAnimate = isPlaying && visible;
 
   // Pre-create shared values for up to PHASE_OFFSETS.length bars. Each
   // bar's initial seed comes from `buildBarInitial` so the first frame
@@ -165,6 +175,9 @@ export const NowPlayingIndicator = memo(function NowPlayingIndicator({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Bail AFTER every hook, so hook order never changes between renders.
+  if (!visible) return null;
 
   // Bar geometry: equal-width bars with equal gaps, totalling `size`.
   const gap = Math.max(1, Math.floor(size / (barCount * 4)));
