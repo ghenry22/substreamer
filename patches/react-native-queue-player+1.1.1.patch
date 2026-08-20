@@ -1,0 +1,383 @@
+diff --git a/node_modules/react-native-queue-player/ios/Tests/NativeQueueWindowTests.swift b/node_modules/react-native-queue-player/ios/Tests/NativeQueueWindowTests.swift
+new file mode 100644
+index 0000000..e62f704
+--- /dev/null
++++ b/node_modules/react-native-queue-player/ios/Tests/NativeQueueWindowTests.swift
+@@ -0,0 +1,58 @@
++import AVFoundation
++import XCTest
++@testable import QueuePlayer
++
++final class NativeQueueWindowTests: XCTestCase {
++
++  func testLargeQueueIsCappedFromCurrentIndex() {
++    let range = NativeQueueWindow.range(currentIndex: 12, trackCount: 1_527)
++    XCTAssertEqual(range, 12 ..< 44)
++    XCTAssertEqual(range.count, NativeQueueWindow.gaplessCapacity)
++  }
++
++  func testWindowClampsAtLogicalQueueEnd() {
++    XCTAssertEqual(
++      NativeQueueWindow.range(currentIndex: 1_520, trackCount: 1_527),
++      1_520 ..< 1_527
++    )
++  }
++
++  func testInvalidCurrentIndexProducesEmptyWindow() {
++    XCTAssertTrue(NativeQueueWindow.range(currentIndex: -1, trackCount: 1_527).isEmpty)
++    XCTAssertTrue(NativeQueueWindow.range(currentIndex: 1_527, trackCount: 1_527).isEmpty)
++  }
++
++  func testCapacityAlwaysLeavesAnAutoAdvanceItem() {
++    XCTAssertEqual(
++      NativeQueueWindow.range(currentIndex: 4, trackCount: 10, capacity: 1),
++      4 ..< 6
++    )
++  }
++
++  /// Regression gate for the 1,500-item AVQueuePlayer main-thread stall.
++  /// TrackPlayer owns 1,527 logical positions but materialises only this
++  /// bounded range in the gapless engine; inserting the window must stay
++  /// below a human-perceptible one-second UI freeze on Simulator.
++  func testLargeLogicalQueueMaterialisesWithinResponsivenessBudget() {
++    let logicalTrackCount = 1_527
++    let range = NativeQueueWindow.range(
++      currentIndex: 12,
++      trackCount: logicalTrackCount
++    )
++    let items = range.map { index in
++      AVPlayerItem(url: URL(fileURLWithPath: "/dev/null/queue-\(index).mp3"))
++    }
++    let engine = GaplessEngine()
++
++    let started = CFAbsoluteTimeGetCurrent()
++    engine.setItems(items, startIndex: 0, startPositionSeconds: 0)
++    let elapsed = CFAbsoluteTimeGetCurrent() - started
++
++    XCTAssertEqual(engine.allMediaItems.count, NativeQueueWindow.gaplessCapacity)
++    XCTAssertLessThan(
++      elapsed,
++      1.0,
++      "Bounded gapless queue insertion blocked the main thread for \(elapsed)s"
++    )
++  }
++}
+diff --git a/node_modules/react-native-queue-player/ios/TrackPlayer.swift b/node_modules/react-native-queue-player/ios/TrackPlayer.swift
+index 4403228..bad3776 100644
+--- a/node_modules/react-native-queue-player/ios/TrackPlayer.swift
++++ b/node_modules/react-native-queue-player/ios/TrackPlayer.swift
+@@ -2,6 +2,24 @@ import AVFoundation
+ import NitroModules
+ import UIKit
+ 
++/// Bounds the number of logical queue positions materialised as
++/// `AVPlayerItem`s in the gapless engine. `TrackPlayer` remains the
++/// authoritative owner of the complete queue; AVQueuePlayer only needs a
++/// forward window large enough for gapless auto-advance.
++enum NativeQueueWindow {
++  static let gaplessCapacity = 32
++
++  static func range(
++    currentIndex: Int,
++    trackCount: Int,
++    capacity: Int = gaplessCapacity
++  ) -> Range<Int> {
++    guard currentIndex >= 0, currentIndex < trackCount else { return 0 ..< 0 }
++    let boundedCapacity = max(2, capacity)
++    return currentIndex ..< min(trackCount, currentIndex + boundedCapacity)
++  }
++}
++
+ /// iOS TrackPlayer — Nitro HybridObject holding the AVQueuePlayer
+ /// instance + runtime config. Lifecycle (configure / destroy),
+ /// transport, queue mutation, skip, gapless, events, audio session,
+@@ -1248,10 +1266,12 @@ class TrackPlayer: HybridTrackPlayerSpec {
+   //   1. `self.tracks` — the authoritative ordered TrackItem list.
+   //      AVQueuePlayer consumes items forward-only so skip-backward
+   //      rebuilds the player's queue from this list.
+-  //   2. The AVQueuePlayer instance's internal queue — mirrors
+-  //      `self.tracks` starting from `currentTrackIndex` onward.
+-  //      Surgical insert/remove calls keep it in sync without
+-  //      tearing down the currently-playing item when possible.
++  //   2. The active engine's internal queue. Crossfade keeps the
++  //      complete snapshot it needs for indexed transitions; gapless
++  //      materialises only a bounded forward window from
++  //      `currentTrackIndex`. Surgical mutation + replenishment keep
++  //      that window aligned without eagerly constructing thousands
++  //      of AVPlayerItems on the main thread.
+   //
+   // Thread safety: every mutation body hops to the main thread via
+   // `onMain`. AVFoundation is not documented as thread-safe for
+@@ -1279,6 +1299,67 @@ class TrackPlayer: HybridTrackPlayerSpec {
+     }
+   }
+ 
++  /// Logical range that should be materialised by the active engine from
++  /// [startIndex]. Gapless is bounded; crossfade keeps the existing full-tail
++  /// contract because its absolute indexed transitions depend on it.
++  private func nativeQueueRange(startingAt startIndex: Int) -> Range<Int> {
++    guard startIndex >= 0, startIndex < self.tracks.count else { return 0 ..< 0 }
++    if self.player != nil {
++      return NativeQueueWindow.range(
++        currentIndex: startIndex,
++        trackCount: self.tracks.count
++      )
++    }
++    return startIndex ..< self.tracks.count
++  }
++
++  /// Append the missing suffix of the bounded gapless window after an
++  /// auto-advance or surgical mutation. The complete logical queue remains in
++  /// QueueState; this method creates at most [gaplessCapacity - 1] items and,
++  /// during steady playback, exactly one item per track transition.
++  private func replenishGaplessQueueWindow() {
++    guard self.player != nil,
++          let engine = self.engine,
++          engine.currentMediaItem != nil,
++          self.currentTrackIndex >= 0,
++          self.currentTrackIndex < self.tracks.count else { return }
++
++    let desiredRange = NativeQueueWindow.range(
++      currentIndex: self.currentTrackIndex,
++      trackCount: self.tracks.count
++    )
++    let liveItems = engine.allMediaItems
++    guard !liveItems.isEmpty else { return }
++
++    let indexById = Dictionary(
++      uniqueKeysWithValues: self.queueItemIds.enumerated().map { ($0.element, $0.offset) }
++    )
++    let liveIndices = liveItems.compactMap { item in
++      item.queueItemId.flatMap { indexById[$0] }
++    }
++    let isOrdered = zip(liveIndices, liveIndices.dropFirst()).allSatisfy { $0 < $1 }
++    guard liveIndices.count == liveItems.count,
++          liveIndices.first == self.currentTrackIndex,
++          isOrdered else {
++      self.syncPlayerQueue(preserveCurrent: engine.currentMediaItem != nil)
++      return
++    }
++
++    let missingStart = (liveIndices.last ?? self.currentTrackIndex) + 1
++    guard missingStart < desiredRange.upperBound else { return }
++    let missingRange = missingStart ..< desiredRange.upperBound
++    let newItems = AVQueueBuilder.buildPlayerItems(
++      tracks: Array(self.tracks[missingRange]),
++      queueItemIds: Array(self.queueItemIds[missingRange]),
++      config: self.config,
++      cache: self.lookaheadCache
++    )
++    guard !newItems.isEmpty else { return }
++    if !engine.insertItems(newItems, after: liveItems.last) {
++      self.syncPlayerQueue(preserveCurrent: true)
++    }
++  }
++
+   /// Throwing variant of `onMain` — propagates a Swift `throw` from
+   /// the body up through the await so callers wrapping the call in
+   /// a `Promise<Void>.async` see the JS Promise reject with the
+@@ -1468,8 +1549,12 @@ class TrackPlayer: HybridTrackPlayerSpec {
+             return (at, nil)
+           }
+           let ids = newTracks.map { _ in UUID().uuidString }
++          let prebuildCount = self.player != nil
++            ? min(newTracks.count, NativeQueueWindow.gaplessCapacity - 1)
++            : newTracks.count
+           let items = AVQueueBuilder.buildPlayerItems(
+-            tracks: newTracks, queueItemIds: ids,
++            tracks: Array(newTracks.prefix(prebuildCount)),
++            queueItemIds: Array(ids.prefix(prebuildCount)),
+             config: self.config, cache: self.lookaheadCache)
+           return (at, (ids: ids, items: items))
+         }
+@@ -1571,6 +1656,53 @@ class TrackPlayer: HybridTrackPlayerSpec {
+       // Insertion at/before cur: player queue (cur-onward) is
+       // unchanged; only cur shifted forward (already applied via
+       // `currentIndexAfterAdd` above).
++      self.replenishGaplessQueueWindow()
++      return
++    }
++
++    if self.player != nil {
++      let desiredRange = NativeQueueWindow.range(
++        currentIndex: self.currentTrackIndex,
++        trackCount: self.tracks.count
++      )
++      // An insertion at or beyond the window's upper bound changes only the
++      // logical queue; it will be materialised later as playback advances.
++      guard at < desiredRange.upperBound else {
++        self.replenishGaplessQueueWindow()
++        return
++      }
++
++      let existing = engine.allMediaItems
++      let anchorId = self.queueItemIds[at - 1]
++      guard let afterItem = existing.first(where: { $0.queueItemId == anchorId }) else {
++        self.syncPlayerQueue(preserveCurrent: true)
++        return
++      }
++      let materialisedCount = min(newTracks.count, desiredRange.upperBound - at)
++      let newItems: [AVPlayerItem]
++      if let prebuilt {
++        newItems = Array(prebuilt.items.prefix(materialisedCount))
++      } else {
++        newItems = AVQueueBuilder.buildPlayerItems(
++          tracks: Array(newTracks.prefix(materialisedCount)),
++          queueItemIds: Array(newIds.prefix(materialisedCount)),
++          config: self.config,
++          cache: self.lookaheadCache
++        )
++      }
++      guard engine.insertItems(newItems, after: afterItem) else {
++        self.syncPlayerQueue(preserveCurrent: true)
++        return
++      }
++
++      // Items pushed past the bounded window by the insertion stay in the
++      // logical queue but must not accumulate in AVQueuePlayer.
++      let desiredIds = Set(self.queueItemIds[desiredRange])
++      for item in engine.allMediaItems {
++        guard let id = item.queueItemId, !desiredIds.contains(id) else { continue }
++        engine.remove(item)
++      }
++      self.replenishGaplessQueueWindow()
+       return
+     }
+ 
+@@ -1684,6 +1816,7 @@ class TrackPlayer: HybridTrackPlayerSpec {
+     for item in itemsToRemove {
+       engine.remove(item)
+     }
++    self.replenishGaplessQueueWindow()
+   }
+ 
+   func moveInQueue(fromIndex: Double, toIndex: Double) throws -> Promise<Void> {
+@@ -1828,29 +1961,31 @@ class TrackPlayer: HybridTrackPlayerSpec {
+       return
+     }
+ 
+-    // Build the full tail post-currentItem.
++    // A non-preserving sync always performs a full rebuild. Return before
++    // constructing the preserve-current tail — the old path built every
++    // post-current AVPlayerItem here, discarded it, then built the same queue
++    // again in fullRebuildPlayerQueue.
++    guard preserveCurrent, let currentItem = engine.currentMediaItem else {
++      return self.fullRebuildPlayerQueue()
++    }
++
++    let materialisedRange = self.nativeQueueRange(startingAt: self.currentTrackIndex)
+     let tailStart = self.currentTrackIndex + 1
+-    let tailEnd = self.tracks.count
+-    let tailTracks = Array(self.tracks[tailStart ..< tailEnd])
+-    let tailIds = Array(self.queueItemIds[tailStart ..< tailEnd])
++    let tailRange = tailStart ..< materialisedRange.upperBound
+     let tailItems = AVQueueBuilder.buildPlayerItems(
+-      tracks: tailTracks, queueItemIds: tailIds,
+-      config: self.config, cache: self.lookaheadCache)
+-
+-    if preserveCurrent, let currentItem = engine.currentMediaItem {
+-      for item in engine.allMediaItems where item !== currentItem {
+-        engine.remove(item)
+-      }
+-      let ok = engine.insertItems(tailItems, after: currentItem)
+-      if !ok {
+-        // Couldn't insert into the live queue — fall through to
+-        // full rebuild so authoritative state + player converge.
+-        return self.fullRebuildPlayerQueue()
+-      }
+-      return
++      tracks: Array(self.tracks[tailRange]),
++      queueItemIds: Array(self.queueItemIds[tailRange]),
++      config: self.config,
++      cache: self.lookaheadCache
++    )
++    for item in engine.allMediaItems where item !== currentItem {
++      engine.remove(item)
++    }
++    if !engine.insertItems(tailItems, after: currentItem) {
++      // Couldn't insert into the live queue — rebuild so authoritative
++      // state + player converge.
++      self.fullRebuildPlayerQueue()
+     }
+-
+-    self.fullRebuildPlayerQueue()
+   }
+ 
+   /// Drain + re-install the full `tracks[currentTrackIndex...]`
+@@ -1868,13 +2003,14 @@ class TrackPlayer: HybridTrackPlayerSpec {
+       return
+     }
+     rearmGaplessFlip()
+-    // Rebuild the full `tracks[cur...]` slice. AVURLAsset construction
+-    // cost is amortised by the lookahead-cache prefetcher for the
+-    // upcoming window; items beyond that are constructed lazily
+-    // (assets don't load until the engine queries them).
++    // Gapless rebuilds only its bounded forward window. The complete queue
++    // remains in QueueState and replenishGaplessQueueWindow appends the next
++    // item after each auto-advance. Crossfade retains its existing full-tail
++    // snapshot contract.
+     let cur = self.currentTrackIndex
+-    let slice = Array(self.tracks[cur ..< self.tracks.count])
+-    let sliceIds = Array(self.queueItemIds[cur ..< self.tracks.count])
++    let materialisedRange = self.nativeQueueRange(startingAt: cur)
++    let slice = Array(self.tracks[materialisedRange])
++    let sliceIds = Array(self.queueItemIds[materialisedRange])
+     let items = AVQueueBuilder.buildPlayerItems(
+       tracks: slice, queueItemIds: sliceIds,
+       config: self.config, cache: self.lookaheadCache)
+@@ -2572,17 +2708,32 @@ class TrackPlayer: HybridTrackPlayerSpec {
+ 
+     // Re-install canonical queue model.
+     if resumeIndex >= 0, resumeIndex < self.tracks.count {
+-      let items = AVQueueBuilder.buildPlayerItems(
+-        tracks: self.tracks,
+-        queueItemIds: self.queueItemIds,
+-        config: self.config,
+-        cache: self.lookaheadCache
+-      )
+-      newEngine.setItems(
+-        items,
+-        startIndex: resumeIndex,
+-        startPositionSeconds: resumePosition
+-      )
++      if self.player != nil {
++        let materialisedRange = self.nativeQueueRange(startingAt: resumeIndex)
++        let items = AVQueueBuilder.buildPlayerItems(
++          tracks: Array(self.tracks[materialisedRange]),
++          queueItemIds: Array(self.queueItemIds[materialisedRange]),
++          config: self.config,
++          cache: self.lookaheadCache
++        )
++        newEngine.setItems(
++          items,
++          startIndex: 0,
++          startPositionSeconds: resumePosition
++        )
++      } else {
++        let items = AVQueueBuilder.buildPlayerItems(
++          tracks: self.tracks,
++          queueItemIds: self.queueItemIds,
++          config: self.config,
++          cache: self.lookaheadCache
++        )
++        newEngine.setItems(
++          items,
++          startIndex: resumeIndex,
++          startPositionSeconds: resumePosition
++        )
++      }
+       // Honour pre-swap playing state so a mid-play
+       // setPlaybackMode keeps playing on the new engine. Without
+       // this, every immediate swap silently pauses the user —
+@@ -3324,6 +3475,11 @@ class TrackPlayer: HybridTrackPlayerSpec {
+     self.gaplessGapMeasuredAtNs = DispatchTime.now().uptimeNanoseconds
+     let reason = consumePendingReasonAndResyncIndex()
+     dispatchTrackChange(reason: reason)
++    // AVQueuePlayer consumes its current item on auto-advance. Restore the
++    // missing suffix now that currentTrackIndex has been resynchronised, so
++    // the bounded native queue stays full without ever materialising the
++    // complete logical queue.
++    self.replenishGaplessQueueWindow()
+     // Native auto-advance can change `currentTrackIndex` (via the
+     // matchTrackIndex resync) without going through any explicit
+     // mutation method. Recompute capabilities here so the boundary-
