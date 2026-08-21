@@ -41,11 +41,13 @@ export interface TrackRowProps {
   showCoverArt?: boolean;
   /** Show the album name with a disc icon below the artist name. */
   showAlbumName?: boolean;
+  /** Show the composer with a leading icon below the artist name (Album View). */
+  showComposer?: boolean;
   /** Context passed to the options sheet, which varies its actions by origin. */
   optionsSource?: MoreOptionsSource;
 }
 
-export const TrackRow = memo(function TrackRow({ track, trackNumber, colors, onPress, songs, playlistId, showCoverArt, showAlbumName, optionsSource }: TrackRowProps) {
+export const TrackRow = memo(function TrackRow({ track, trackNumber, colors, onPress, songs, playlistId, showCoverArt, showAlbumName, showComposer, optionsSource }: TrackRowProps) {
   const { t } = useTranslation();
   const duration = track.duration != null ? formatTrackDuration(track.duration) : '—';
   const starred = useIsStarred('song', track.id);
@@ -202,6 +204,20 @@ export const TrackRow = memo(function TrackRow({ track, trackNumber, colors, onP
               }
             />
           </View>
+          {showComposer && track.displayComposer ? (
+            <View style={styles.metaComposer}>
+              <Ionicons name="create-outline" size={14} color={colors.primary} />
+              <View style={styles.composerTextWrapper}>
+                <Text
+                  style={[styles.composerText, { color: colors.textSecondary }]}
+                  numberOfLines={1}
+                  accessibilityLabel={`${t('detailComposer')}: ${track.displayComposer}`}
+                >
+                  {track.displayComposer}
+                </Text>
+              </View>
+            </View>
+          ) : null}
           {showAlbumName && (
             <View style={styles.metaAlbum}>
               <Ionicons name="disc-outline" size={14} color={colors.primary} />
@@ -302,6 +318,19 @@ const styles = StyleSheet.create({
     marginLeft: 3,
   },
   albumText: {
+    fontSize: 12,
+  },
+  metaComposer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 3,
+    minWidth: 0,
+  },
+  composerTextWrapper: {
+    flex: 1,
+    marginLeft: 3,
+  },
+  composerText: {
     fontSize: 12,
   },
 });
