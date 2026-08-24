@@ -933,6 +933,7 @@ CREATE TABLE `queue_snapshot_song_moods` (
 CREATE TABLE `queue_snapshot_songs` (
 	`snapshot_id` text NOT NULL,
 	`pos` integer NOT NULL,
+	`origin` text,
 	`song_id` text NOT NULL,
 	`title` text,
 	`artist` text,

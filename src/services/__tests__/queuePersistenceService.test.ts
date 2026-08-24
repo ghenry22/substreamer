@@ -329,12 +329,13 @@ describe('the queue-change debounce', () => {
 
 describe('restore', () => {
   it('rebuilds complete Child objects, arrays included', async () => {
-    persistQueue([fullSong, song('s-2')], 1);
+    persistQueue([fullSong, song('s-2')], 1, ['manual', 'autoplay']);
     await flushDebounce();
 
     const restored = coldStart().getPersistedQueue();
     expect(restored?.currentTrackIndex).toBe(1);
     expect(restored?.queue.map((t) => t.id)).toEqual(['s-full', 's-2']);
+    expect(restored?.origins).toEqual(['manual', 'autoplay']);
 
     const track = restored!.queue[0];
     expect(track).toMatchObject({
@@ -445,7 +446,11 @@ describe('restore', () => {
     persistQueue(queue, 2);
     await flushDebounce();
 
-    expect(getPersistedQueue()).toEqual({ queue, currentTrackIndex: 2 });
+    expect(getPersistedQueue()).toEqual({
+      queue,
+      currentTrackIndex: 2,
+      origins: ['manual', 'manual', 'manual'],
+    });
   });
 });
 

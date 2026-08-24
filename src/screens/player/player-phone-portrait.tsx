@@ -43,6 +43,7 @@ import { SleepTimerButton } from '@/components/SleepTimerButton';
 import { SleepTimerCapsule } from '@/components/SleepTimerCapsule';
 import { PlaybackSourceBadge } from '@/components/PlaybackSourceBadge';
 import { QueueItemRow } from '@/components/QueueItemRow';
+import { AutoplayQueueFooter } from '@/components/AutoplayQueueFooter';
 import { closeOpenRow } from '@/components/SwipeableRow';
 import { type ThemeColors } from '@/constants/theme';
 import { useCanSkip } from '@/hooks/useCanSkip';
@@ -69,6 +70,7 @@ import { playbackSettingsStore } from '@/store/playbackSettingsStore';
 import { moreOptionsStore } from '@/store/moreOptionsStore';
 import { playerStore } from '@/store/playerStore';
 import { mixHexColors } from '@/utils/colors';
+import { isAutoplaySectionStart } from '@/utils/queueOrigins';
 
 
 import { absoluteFill } from '@/utils/styles';
@@ -94,6 +96,7 @@ export function PlayerPhonePortrait() {
   const songCoverArtId = useSongCoverArt(currentTrack);
   const currentTrackIndex = playerStore((s) => s.currentTrackIndex);
   const queue = playerStore((s) => s.queue);
+  const queueOrigins = playerStore((s) => s.queueOrigins);
   const queueLoading = playerStore((s) => s.queueLoading);
 
   const onClose = useCallback(() => router.back(), [router]);
@@ -262,12 +265,13 @@ export function PlayerPhonePortrait() {
         track={item}
         index={index}
         isActive={index === currentTrackIndex}
+        startsAutoplaySection={isAutoplaySectionStart(queueOrigins, currentTrackIndex, index)}
         colors={queueColors}
         onPress={handleQueueItemPress}
         onLongPress={handleQueueItemLongPress}
       />
     ),
-    [currentTrackIndex, queueColors, handleQueueItemPress, handleQueueItemLongPress],
+    [currentTrackIndex, queueOrigins, queueColors, handleQueueItemPress, handleQueueItemLongPress],
   );
 
   const keyExtractor = useCallback(
@@ -373,6 +377,7 @@ export function PlayerPhonePortrait() {
                 renderItem={renderQueueItem}
                 keyExtractor={keyExtractor}
                 ListHeaderComponent={queueListHeader}
+                ListFooterComponent={AutoplayQueueFooter}
                 onScrollBeginDrag={closeOpenRow}
                 drawDistance={200}
                 showsVerticalScrollIndicator={false}

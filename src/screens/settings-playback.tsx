@@ -19,7 +19,13 @@ import { StreamingCard } from '../components/settings/StreamingCard';
 import { StreamFormatSheet } from '../components/StreamFormatSheet';
 import { useTheme } from '../hooks/useTheme';
 import { useThemedAlert } from '../hooks/useThemedAlert';
-import { applyLookaheadCacheConfig, applyPlaybackMode, applyReplayGain, updateRemoteCapabilities } from '../services/playerService';
+import {
+  applyLookaheadCacheConfig,
+  applyPlaybackMode,
+  applyReplayGain,
+  setAutoplayEnabled,
+  updateRemoteCapabilities,
+} from '../services/playerService';
 import { playbackSettingsStore } from '../store/playbackSettingsStore';
 import { settingsStyles } from '../styles/settingsStyles';
 
@@ -47,6 +53,7 @@ export function SettingsPlaybackScreen() {
   const playbackMode = playbackSettingsStore((s) => s.playbackMode);
   const crossfadeDurationMs = playbackSettingsStore((s) => s.crossfadeDurationMs);
   const replayGainMode = playbackSettingsStore((s) => s.replayGainMode);
+  const autoplayEnabled = playbackSettingsStore((s) => s.autoplayEnabled);
 
   const isDefault =
     maxBitRate === null &&
@@ -63,7 +70,8 @@ export function SettingsPlaybackScreen() {
     lookaheadCount === 3 &&
     playbackMode === 'gapless' &&
     crossfadeDurationMs === 5000 &&
-    replayGainMode === 'off';
+    replayGainMode === 'off' &&
+    !autoplayEnabled;
 
   const handleResetDefaults = useCallback(() => {
     confirm({
@@ -88,6 +96,7 @@ export function SettingsPlaybackScreen() {
         s.setPlaybackMode('gapless');
         s.setCrossfadeDurationMs(5000);
         s.setReplayGainMode('off');
+        void setAutoplayEnabled(false);
         updateRemoteCapabilities();
         void applyLookaheadCacheConfig();
         void applyPlaybackMode();

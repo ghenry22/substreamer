@@ -953,6 +953,8 @@ export const queueSnapshotSongs = sqliteTable(
       .notNull()
       .references(() => queueSnapshots.id, { onDelete: 'cascade' }),
     pos: integer('pos').notNull(),
+    /** Live-queue ownership. NULL on old rows and bookmarks means manual. */
+    origin: text('origin'),
     songId: text('song_id').notNull(),
     title: text('title'),
     artist: text('artist'),

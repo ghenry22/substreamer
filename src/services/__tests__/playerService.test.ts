@@ -1,6 +1,10 @@
+let mockAppStateListener: ((next: string) => void) | undefined;
 jest.mock('react-native', () => ({
   AppState: {
-    addEventListener: jest.fn(() => ({ remove: jest.fn() })),
+    addEventListener: jest.fn((_event, listener) => {
+      mockAppStateListener = listener;
+      return { remove: jest.fn() };
+    }),
   },
   Platform: { OS: 'android' },
 }));
@@ -14,6 +18,7 @@ const mockSetProgress = jest.fn();
 const mockSetError = jest.fn();
 const mockSetRetrying = jest.fn();
 const mockSetQueueLoading = jest.fn();
+const mockSetAutoplayLoading = jest.fn();
 const mockSetQueueFormats = jest.fn();
 const mockAddQueueFormat = jest.fn();
 const mockClearQueueFormats = jest.fn();
@@ -39,6 +44,7 @@ jest.mock('../../store/playerStore', () => ({
       setError: mockSetError,
       setRetrying: mockSetRetrying,
       setQueueLoading: mockSetQueueLoading,
+      setAutoplayLoading: mockSetAutoplayLoading,
       setQueueFormats: mockSetQueueFormats,
       addQueueFormat: mockAddQueueFormat,
       clearQueueFormats: mockClearQueueFormats,
@@ -80,14 +86,29 @@ jest.mock('../../store/musicCacheStore', () => ({
 }));
 
 const mockOfflineMode = { offlineMode: false };
+let mockOfflineModeSubscriber:
+  | ((state: typeof mockOfflineMode, previous: typeof mockOfflineMode) => void)
+  | undefined;
 jest.mock('../../store/offlineModeStore', () => ({
-  offlineModeStore: { getState: jest.fn(() => mockOfflineMode) },
+  offlineModeStore: {
+    getState: jest.fn(() => mockOfflineMode),
+    subscribe: jest.fn((subscriber) => {
+      mockOfflineModeSubscriber = subscriber;
+      return jest.fn();
+    }),
+  },
 }));
 
 jest.mock('../subsonicService');
 
+const mockBuildAutoplayQueue = jest.fn().mockResolvedValue([]);
+jest.mock('../relatedTracksService', () => ({
+  buildAutoplayQueue: (...args: unknown[]) => mockBuildAutoplayQueue(...args),
+}));
+
 const mockPersistQueue = jest.fn();
 const mockPersistCurrentIndex = jest.fn();
+const mockFlushPosition = jest.fn();
 const mockClearPersistedQueue = jest.fn();
 const mockGetPersistedQueue = jest.fn().mockReturnValue(null);
 const mockGetPersistedPosition = jest.fn().mockReturnValue(null);
@@ -96,13 +117,17 @@ jest.mock('../queuePersistenceService', () => ({
   persistQueue: (...args: unknown[]) => mockPersistQueue(...args),
   persistCurrentIndex: (...args: unknown[]) => mockPersistCurrentIndex(...args),
   persistPositionIfDue: jest.fn(),
-  flushPosition: jest.fn(),
+  flushPosition: (...args: unknown[]) => mockFlushPosition(...args),
   clearPersistedQueue: () => mockClearPersistedQueue(),
   getPersistedQueue: () => mockGetPersistedQueue(),
   getPersistedPosition: () => mockGetPersistedPosition(),
 }));
 
 import { playbackSettingsStore } from '../../store/playbackSettingsStore';
+import { playerStore } from '../../store/playerStore';
+import { appStateStore } from '../../store/appStateStore';
+import { sleepTimerStore } from '../../store/sleepTimerStore';
+import { getLocalTrackUri } from '../musicCacheService';
 import { addCompletedScrobble, sendNowPlaying } from '../scrobbleService';
 import { getCoverArtUrl, getStreamUrl, type Child } from '../subsonicService';
 import {
@@ -118,6 +143,7 @@ import {
   clearQueue,
   addToQueue,
   removeFromQueue,
+  removeNonDownloadedTracks,
   cycleRepeatMode,
   applyPlaybackRate,
   shuffleQueue,
@@ -136,6 +162,7 @@ import {
   resetEqualizer,
   saveEqualizerPreset,
   deleteEqualizerPreset,
+  setAutoplayEnabled,
 } from '../playerService';
 import { equalizerSettingsStore, EQ_CUSTOM_PRESET_LABEL } from '../../store/equalizerSettingsStore';
 
@@ -173,10 +200,669 @@ const defaultPlayerState = () => ({
   setError: mockSetError,
   setRetrying: mockSetRetrying,
   setQueueLoading: mockSetQueueLoading,
+  setAutoplayLoading: mockSetAutoplayLoading,
   setQueueFormats: mockSetQueueFormats,
   addQueueFormat: mockAddQueueFormat,
   clearQueueFormats: mockClearQueueFormats,
   setTrackSource: mockSetTrackSource,
+});
+
+describe('Autoplay', () => {
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+  const playingAtEnd = (queue: Child[]) => ({
+    ...defaultPlayerState(),
+    playbackState: 'playing',
+    currentTrack: queue[queue.length - 1],
+    currentTrackIndex: queue.length - 1,
+    queue,
+  });
+
+  it('starts loading on the second-to-last track but not earlier', async () => {
+    const queue = [makeChild('a'), makeChild('b'), makeChild('c')];
+    await playTrack(queue[0], queue);
+    playbackSettingsStore.setState({ autoplayEnabled: true });
+    (playerStore.getState as jest.Mock).mockReturnValue({
+      ...defaultPlayerState(),
+      currentTrack: queue[0],
+      currentTrackIndex: 0,
+      queue,
+    });
+
+    emit('trackChange', { id: 'a' }, 0, 'auto-advance');
+    expect(mockBuildAutoplayQueue).not.toHaveBeenCalled();
+
+    (playerStore.getState as jest.Mock).mockReturnValue({
+      ...defaultPlayerState(),
+      currentTrack: queue[1],
+      currentTrackIndex: 1,
+      queue,
+    });
+    emit('trackChange', { id: 'b' }, 1, 'auto-advance');
+    await flush();
+
+    expect(mockBuildAutoplayQueue).toHaveBeenCalledTimes(1);
+    expect(mockBuildAutoplayQueue).toHaveBeenCalledWith(queue[1], {
+      currentQueue: queue,
+      currentTrackIndex: 1,
+    });
+  });
+
+  it('does not load recommendations while repeat mode owns queue continuation', async () => {
+    const queue = [makeChild('source')];
+    await playTrack(queue[0], queue);
+    playbackSettingsStore.setState({ autoplayEnabled: true, repeatMode: 'all' });
+    (playerStore.getState as jest.Mock).mockReturnValue(playingAtEnd(queue));
+
+    emit('trackChange', { id: 'source' }, 0, 'auto-advance');
+    emit('queueEnd');
+    await flush();
+
+    expect(mockBuildAutoplayQueue).not.toHaveBeenCalled();
+    expect(mockSetAutoplayLoading).not.toHaveBeenCalledWith(true);
+  });
+
+  it('appends one recommendation batch and persists its origins', async () => {
+    const queue = [makeChild('source')];
+    await playTrack(queue[0], queue);
+    (playerStore.getState as jest.Mock)
+      .mockReturnValue(playingAtEnd(queue));
+    mockBuildAutoplayQueue.mockResolvedValue([makeChild('auto-1'), makeChild('auto-2')]);
+
+    await setAutoplayEnabled(true);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(mockTP.addToQueue).toHaveBeenCalledWith([
+      expect.objectContaining({ id: 'auto-1' }),
+      expect.objectContaining({ id: 'auto-2' }),
+    ]);
+    expect(mockPersistQueue).toHaveBeenLastCalledWith(
+      expect.arrayContaining([expect.objectContaining({ id: 'auto-2' })]),
+      0,
+      ['manual', 'autoplay', 'autoplay'],
+    );
+  });
+
+  it('filters the source, manual future tracks, and duplicate recommendations', async () => {
+    const source = makeChild('source');
+    const manualFuture = makeChild('manual-future');
+    const recommendation = makeChild('recommendation');
+    const queue = [source, manualFuture];
+    await playTrack(source, queue);
+    (playerStore.getState as jest.Mock).mockReturnValue({
+      ...defaultPlayerState(),
+      currentTrack: source,
+      currentTrackIndex: 0,
+      queue,
+    });
+    mockBuildAutoplayQueue.mockResolvedValue([
+      source,
+      manualFuture,
+      recommendation,
+      recommendation,
+    ]);
+
+    await setAutoplayEnabled(true);
+    await flush();
+
+    expect(mockTP.addToQueue).toHaveBeenCalledWith([
+      expect.objectContaining({ id: recommendation.id }),
+    ]);
+  });
+
+  it('stops loading without mutating the queue when no recommendations are returned', async () => {
+    const queue = [makeChild('source')];
+    await playTrack(queue[0], queue);
+    (playerStore.getState as jest.Mock).mockReturnValue(playingAtEnd(queue));
+    mockBuildAutoplayQueue.mockResolvedValue([]);
+
+    await setAutoplayEnabled(true);
+    await flush();
+
+    expect(mockTP.addToQueue).not.toHaveBeenCalled();
+    expect(mockSetAutoplayLoading).toHaveBeenCalledWith(true);
+    expect(mockSetAutoplayLoading).toHaveBeenLastCalledWith(false);
+  });
+
+  it('stops loading without mutating the queue when recommendations are unplayable', async () => {
+    const queue = [makeChild('source')];
+    await playTrack(queue[0], queue);
+    (playerStore.getState as jest.Mock).mockReturnValue(playingAtEnd(queue));
+    mockBuildAutoplayQueue.mockResolvedValue([makeChild('unplayable')]);
+    (getStreamUrl as jest.Mock).mockReturnValue(null);
+
+    await setAutoplayEnabled(true);
+    await flush();
+
+    expect(mockTP.addToQueue).not.toHaveBeenCalled();
+    expect(mockSetAutoplayLoading).toHaveBeenLastCalledWith(false);
+  });
+
+  it('deduplicates refill triggers while recommendations are pending', async () => {
+    const queue = [makeChild('source')];
+    await playTrack(queue[0], queue);
+    (playerStore.getState as jest.Mock)
+      .mockReturnValue(playingAtEnd(queue));
+    let resolve!: (tracks: Child[]) => void;
+    mockBuildAutoplayQueue.mockReturnValue(new Promise((done) => { resolve = done; }));
+
+    await setAutoplayEnabled(true);
+    emit('trackChange', { id: 'source' }, 0, 'auto-advance');
+    emit('queueEnd');
+    expect(mockBuildAutoplayQueue).toHaveBeenCalledTimes(1);
+
+    resolve([makeChild('auto')]);
+    await new Promise((done) => setImmediate(done));
+    expect(mockTP.addToQueue).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a pending preload across same-queue advancement and resumes at queue end', async () => {
+    const first = makeChild('first');
+    const second = makeChild('second');
+    const recommendation = makeChild('recommendation');
+    const queue = [first, second];
+    await playTrack(first, queue);
+    (playerStore.getState as jest.Mock).mockReturnValue({
+      ...playingAtEnd(queue),
+      currentTrack: first,
+      currentTrackIndex: 0,
+    });
+    let resolveRequest!: (tracks: Child[]) => void;
+    mockBuildAutoplayQueue.mockReturnValueOnce(
+      new Promise((resolve) => { resolveRequest = resolve; }),
+    );
+
+    await setAutoplayEnabled(true);
+    (playerStore.getState as jest.Mock).mockReturnValue({
+      ...playingAtEnd(queue),
+      currentTrack: second,
+      currentTrackIndex: 1,
+    });
+    emit('trackChange', { id: second.id }, 1, 'user-skip-to-index');
+    emit('queueEnd');
+    resolveRequest([recommendation]);
+    await flush();
+
+    expect(mockBuildAutoplayQueue).toHaveBeenCalledTimes(1);
+    expect(mockBuildAutoplayQueue).toHaveBeenCalledWith(first, {
+      currentQueue: queue,
+      currentTrackIndex: 0,
+    });
+    expect(mockTP.addToQueue).toHaveBeenCalledTimes(1);
+    expect(mockTP.addToQueue).toHaveBeenCalledWith([
+      expect.objectContaining({ id: recommendation.id }),
+    ]);
+    expect(mockTP.skipToIndex).toHaveBeenCalledWith(2);
+    expect(mockTP.play).toHaveBeenCalled();
+  });
+
+  it('discards a pending preload when a new queue starts', async () => {
+    const source = makeChild('source');
+    const replacement = makeChild('replacement');
+    await playTrack(source, [source]);
+    (playerStore.getState as jest.Mock).mockReturnValue(playingAtEnd([source]));
+    let resolveRequest!: (tracks: Child[]) => void;
+    mockBuildAutoplayQueue.mockReturnValueOnce(
+      new Promise((resolve) => { resolveRequest = resolve; }),
+    );
+
+    await setAutoplayEnabled(true);
+    await playTrack(replacement, [replacement]);
+    resolveRequest([makeChild('stale')]);
+    await flush();
+
+    expect(mockBuildAutoplayQueue).toHaveBeenCalledTimes(1);
+    expect(mockTP.addToQueue).not.toHaveBeenCalled();
+  });
+
+  it('rolls back a stale append before Play Next inserts the manual track', async () => {
+    const queue = [makeChild('source')];
+    const autoplayTrack = makeChild('autoplay');
+    const manualTrack = makeChild('manual');
+    await playTrack(queue[0], queue);
+    (playerStore.getState as jest.Mock)
+      .mockReturnValue(playingAtEnd(queue));
+    mockBuildAutoplayQueue.mockResolvedValue([autoplayTrack]);
+    let resolveAppend!: () => void;
+    mockTP.addToQueue.mockImplementationOnce(
+      () => new Promise<void>((resolve) => { resolveAppend = resolve; }),
+    );
+
+    await setAutoplayEnabled(true);
+    await flush();
+    const playNextPromise = playSongNext(manualTrack);
+    await flush();
+    resolveAppend();
+    await playNextPromise;
+
+    expect(mockTP.removeFromQueue).toHaveBeenCalledWith([1]);
+    expect(mockTP.addToQueue).toHaveBeenLastCalledWith([
+      expect.objectContaining({ id: 'manual' }),
+    ], 1);
+    expect(mockPersistQueue).toHaveBeenLastCalledWith(
+      [queue[0], manualTrack],
+      0,
+      ['manual', 'manual'],
+    );
+  });
+
+  it('resumes appended playback when a request finishes after queue end', async () => {
+    const queue = [makeChild('source')];
+    await playTrack(queue[0], queue);
+    (playerStore.getState as jest.Mock)
+      .mockReturnValue(playingAtEnd(queue));
+    let resolve!: (tracks: Child[]) => void;
+    mockBuildAutoplayQueue.mockReturnValue(new Promise((done) => { resolve = done; }));
+
+    await setAutoplayEnabled(true);
+    emit('queueEnd');
+    resolve([makeChild('late-auto')]);
+    await new Promise((done) => setImmediate(done));
+
+    expect(mockTP.skipToIndex).toHaveBeenCalledWith(1);
+    expect(mockTP.play).toHaveBeenCalled();
+  });
+
+  it('keeps ordinary track changes on the one-update persistence path', async () => {
+    const queue = [makeChild('a'), makeChild('b')];
+    await playTrack(queue[0], queue);
+    (playerStore.getState as jest.Mock).mockReturnValue({
+      ...playingAtEnd(queue),
+      currentTrack: queue[0],
+      currentTrackIndex: 0,
+    });
+    mockPersistQueue.mockClear();
+    mockPersistCurrentIndex.mockClear();
+
+    emit('trackChange', { id: 'b' }, 1, 'auto-advance');
+
+    expect(mockPersistCurrentIndex).toHaveBeenCalledWith(1);
+    expect(mockPersistQueue).not.toHaveBeenCalled();
+  });
+
+  it('removes only future autoplay tracks when disabled', async () => {
+    const queue = [makeChild('source')];
+    await playTrack(queue[0], queue);
+    (playerStore.getState as jest.Mock)
+      .mockReturnValue(playingAtEnd(queue));
+    mockBuildAutoplayQueue.mockResolvedValue([makeChild('auto-1'), makeChild('auto-2')]);
+    await setAutoplayEnabled(true);
+    await new Promise((done) => setImmediate(done));
+
+    await setAutoplayEnabled(false);
+
+    expect(mockTP.removeFromQueue).toHaveBeenCalledWith([1, 2]);
+    expect(mockPersistQueue).toHaveBeenLastCalledWith([queue[0]], 0, ['manual']);
+  });
+
+  it('finishes autoplay removal before Play Next mutates the native queue', async () => {
+    const source = makeChild('source');
+    const autoplay = makeChild('autoplay');
+    const manual = makeChild('manual');
+    await playTrack(source, [source]);
+    (playerStore.getState as jest.Mock).mockReturnValue(playingAtEnd([source]));
+    mockBuildAutoplayQueue.mockResolvedValue([autoplay]);
+    await setAutoplayEnabled(true);
+    await flush();
+
+    let resolveRemoval!: () => void;
+    mockTP.removeFromQueue.mockImplementationOnce(
+      () => new Promise<void>((resolve) => { resolveRemoval = resolve; }),
+    );
+    mockTP.addToQueue.mockClear();
+
+    const disablePromise = setAutoplayEnabled(false);
+    await flush();
+    const playNextPromise = playSongNext(manual);
+    await flush();
+
+    expect(mockTP.addToQueue).not.toHaveBeenCalled();
+
+    resolveRemoval();
+    await disablePromise;
+    await playNextPromise;
+    expect(mockTP.addToQueue).toHaveBeenCalledWith([
+      expect.objectContaining({ id: 'manual' }),
+    ], 1);
+    expect(mockPersistQueue).toHaveBeenLastCalledWith(
+      [source, manual],
+      0,
+      ['manual', 'manual'],
+    );
+  });
+
+  it('finishes Play Next before autoplay removal calculates native indices', async () => {
+    const source = makeChild('source');
+    const autoplay = makeChild('autoplay');
+    const manual = makeChild('manual');
+    await playTrack(source, [source]);
+    (playerStore.getState as jest.Mock).mockReturnValue(playingAtEnd([source]));
+    mockBuildAutoplayQueue.mockResolvedValue([autoplay]);
+    await setAutoplayEnabled(true);
+    await flush();
+
+    let resolveAddition!: () => void;
+    mockTP.addToQueue.mockImplementationOnce(
+      () => new Promise<void>((resolve) => { resolveAddition = resolve; }),
+    );
+    mockTP.removeFromQueue.mockClear();
+
+    const playNextPromise = playSongNext(manual);
+    await flush();
+    const disablePromise = setAutoplayEnabled(false);
+    await flush();
+
+    expect(mockTP.removeFromQueue).not.toHaveBeenCalled();
+
+    resolveAddition();
+    await playNextPromise;
+    await disablePromise;
+    expect(mockTP.removeFromQueue).toHaveBeenCalledWith([2]);
+    expect(mockPersistQueue).toHaveBeenLastCalledWith(
+      [source, manual],
+      0,
+      ['manual', 'manual'],
+    );
+  });
+
+  it('waits for a pending Play Next before snapshotting autoplay recommendations', async () => {
+    const source = makeChild('source');
+    const manual = makeChild('manual');
+    const autoplay = makeChild('autoplay');
+    await playTrack(source, [source]);
+    (playerStore.getState as jest.Mock).mockReturnValue(playingAtEnd([source]));
+
+    let resolveAddition!: () => void;
+    mockTP.addToQueue.mockImplementationOnce(
+      () => new Promise<void>((resolve) => { resolveAddition = resolve; }),
+    );
+    const playNextPromise = playSongNext(manual);
+    await flush();
+
+    mockBuildAutoplayQueue.mockResolvedValue([manual, autoplay]);
+    await setAutoplayEnabled(true);
+    await flush();
+    const requestStartedBeforeAddition = mockBuildAutoplayQueue.mock.calls.length;
+
+    resolveAddition();
+    await playNextPromise;
+    await flush();
+
+    expect(requestStartedBeforeAddition).toBe(0);
+    expect(mockBuildAutoplayQueue).toHaveBeenCalledWith(source, {
+      currentQueue: [source, manual],
+      currentTrackIndex: 0,
+    });
+    expect(mockTP.addToQueue).toHaveBeenLastCalledWith([
+      expect.objectContaining({ id: autoplay.id }),
+    ]);
+    expect(mockPersistQueue).toHaveBeenLastCalledWith(
+      [source, manual, autoplay],
+      0,
+      ['manual', 'manual', 'autoplay'],
+    );
+  });
+
+  it('does not mutate the native queue when disabling with no future autoplay tracks', async () => {
+    const queue = [makeChild('source'), makeChild('manual')];
+    await playTrack(queue[0], queue);
+    (playerStore.getState as jest.Mock).mockReturnValue({
+      ...defaultPlayerState(),
+      currentTrack: queue[0],
+      currentTrackIndex: 0,
+      queue,
+    });
+    mockTP.removeFromQueue.mockClear();
+    mockPersistQueue.mockClear();
+
+    await setAutoplayEnabled(false);
+
+    expect(mockTP.removeFromQueue).not.toHaveBeenCalled();
+    expect(mockPersistQueue).not.toHaveBeenCalled();
+  });
+
+  it('preserves autoplay rows and restarts loading when re-enabled during removal', async () => {
+    const source = makeChild('source');
+    const existingAutoplay = makeChild('existing-autoplay');
+    await playTrack(source, [source]);
+    (playerStore.getState as jest.Mock).mockReturnValue(playingAtEnd([source]));
+    mockBuildAutoplayQueue.mockResolvedValueOnce([existingAutoplay]);
+    await setAutoplayEnabled(true);
+    await flush();
+
+    let resolveRemoval!: () => void;
+    mockTP.removeFromQueue.mockImplementationOnce(
+      () => new Promise<void>((resolve) => { resolveRemoval = resolve; }),
+    );
+    mockBuildAutoplayQueue.mockResolvedValueOnce([makeChild('replacement-autoplay')]);
+    const disablePromise = setAutoplayEnabled(false);
+    await flush();
+
+    await setAutoplayEnabled(true);
+    resolveRemoval();
+    await disablePromise;
+    await flush();
+
+    expect(mockPersistQueue).not.toHaveBeenLastCalledWith([source], 0, ['manual']);
+    expect(mockBuildAutoplayQueue).toHaveBeenCalledTimes(2);
+    expect(mockTP.addToQueue).toHaveBeenLastCalledWith([
+      expect.objectContaining({ id: 'replacement-autoplay' }),
+    ]);
+  });
+
+  it('keeps reached autoplay as history after Play Next, moving back, and disabling', async () => {
+    const source = makeChild('source');
+    const autoplayOne = makeChild('autoplay-1');
+    const autoplayTwo = makeChild('autoplay-2');
+    const manual = makeChild('manual');
+    await playTrack(source, [source]);
+    (playerStore.getState as jest.Mock)
+      .mockReturnValue(playingAtEnd([source]));
+    mockBuildAutoplayQueue.mockResolvedValue([autoplayOne, autoplayTwo]);
+    await setAutoplayEnabled(true);
+    await flush();
+
+    mockBuildAutoplayQueue.mockResolvedValue([]);
+    (playerStore.getState as jest.Mock).mockReturnValue({
+      ...defaultPlayerState(),
+      currentTrack: autoplayOne,
+      currentTrackIndex: 1,
+      queue: [source, autoplayOne, autoplayTwo],
+    });
+    emit('trackChange', { id: autoplayOne.id }, 1, 'auto-advance');
+    await flush();
+    await playSongNext(manual);
+
+    (playerStore.getState as jest.Mock).mockReturnValue({
+      ...defaultPlayerState(),
+      currentTrack: source,
+      currentTrackIndex: 0,
+      queue: [source, autoplayOne, manual, autoplayTwo],
+    });
+    emit('trackChange', { id: source.id }, 0, 'user-skip-previous');
+    await setAutoplayEnabled(false);
+
+    expect(mockTP.removeFromQueue).toHaveBeenLastCalledWith([3]);
+    const [persistedQueue, persistedIndex, persistedOrigins] =
+      mockPersistQueue.mock.calls.at(-1) as [Child[], number, string[]];
+    expect(persistedQueue.map((track) => track.id)).toEqual([
+      source.id,
+      autoplayOne.id,
+      manual.id,
+    ]);
+    expect(persistedIndex).toBe(0);
+    expect(persistedOrigins).toEqual(['manual', 'manual', 'manual']);
+  });
+
+  it('discards a pending online result and retries after offline mode changes', async () => {
+    const queue = [makeChild('source')];
+    await playTrack(queue[0], queue);
+    (playerStore.getState as jest.Mock)
+      .mockReturnValue(playingAtEnd(queue));
+    let resolve!: (tracks: Child[]) => void;
+    mockBuildAutoplayQueue
+      .mockReturnValueOnce(new Promise((done) => { resolve = done; }))
+      .mockResolvedValueOnce([makeChild('offline')]);
+    await setAutoplayEnabled(true);
+
+    (getLocalTrackUri as jest.Mock).mockReturnValue('/local/offline.mp3');
+    mockOfflineMode.offlineMode = true;
+    mockOfflineModeSubscriber?.(mockOfflineMode, { offlineMode: false });
+    resolve([makeChild('stale')]);
+    await flush();
+    await flush();
+
+    expect(mockBuildAutoplayQueue).toHaveBeenCalledTimes(2);
+    expect(mockTP.addToQueue).toHaveBeenCalledTimes(1);
+    expect(mockTP.addToQueue).toHaveBeenCalledWith([
+      expect.objectContaining({ id: 'offline' }),
+    ]);
+  });
+
+  it('retries a settled empty preload when switching back online', async () => {
+    const source = makeChild('source');
+    const online = makeChild('online');
+    await playTrack(source, [source]);
+    (playerStore.getState as jest.Mock).mockReturnValue(playingAtEnd([source]));
+    mockOfflineMode.offlineMode = true;
+    let resolveOffline!: (tracks: Child[]) => void;
+    mockBuildAutoplayQueue.mockReturnValueOnce(
+      new Promise((resolve) => { resolveOffline = resolve; }),
+    );
+
+    await setAutoplayEnabled(true);
+    emit('queueEnd');
+    resolveOffline([]);
+    await flush();
+    expect(mockBuildAutoplayQueue).toHaveBeenCalledTimes(1);
+
+    mockBuildAutoplayQueue.mockResolvedValueOnce([online]);
+    mockOfflineMode.offlineMode = false;
+    mockOfflineModeSubscriber?.(mockOfflineMode, { offlineMode: true });
+    await flush();
+    await flush();
+
+    expect(mockBuildAutoplayQueue).toHaveBeenCalledTimes(2);
+    expect(mockTP.addToQueue).toHaveBeenCalledWith([
+      expect.objectContaining({ id: online.id }),
+    ]);
+    expect(mockTP.skipToIndex).toHaveBeenCalledWith(1);
+    expect(mockTP.play).toHaveBeenCalled();
+  });
+
+  it('does not resume autoplay after manual navigation from a settled queue end', async () => {
+    const first = makeChild('first');
+    const last = makeChild('last');
+    const fresh = makeChild('fresh');
+    const queue = [first, last];
+    await playTrack(last, queue);
+    (playerStore.getState as jest.Mock).mockReturnValue(playingAtEnd(queue));
+    let resolveEnded!: (tracks: Child[]) => void;
+    mockBuildAutoplayQueue.mockReturnValueOnce(
+      new Promise((resolve) => { resolveEnded = resolve; }),
+    );
+
+    await setAutoplayEnabled(true);
+    emit('queueEnd');
+    resolveEnded([]);
+    await flush();
+
+    mockTP.skipToIndex.mockClear();
+    mockTP.play.mockClear();
+    mockBuildAutoplayQueue.mockResolvedValueOnce([fresh]);
+    (playerStore.getState as jest.Mock).mockReturnValue({
+      ...playingAtEnd(queue),
+      currentTrack: first,
+      currentTrackIndex: 0,
+    });
+    emit('trackChange', { id: first.id }, 0, 'user-skip-previous');
+    await flush();
+
+    expect(mockTP.addToQueue).toHaveBeenCalledWith([
+      expect.objectContaining({ id: fresh.id }),
+    ]);
+    expect(mockTP.skipToIndex).not.toHaveBeenCalled();
+    expect(mockTP.play).not.toHaveBeenCalled();
+  });
+});
+
+describe('sleep-timer state synchronization', () => {
+  afterEach(() => {
+    emit('sleepTimer', { active: false, endsAtEpochMs: null, endOfTrack: false });
+    jest.useRealTimers();
+  });
+
+  it('updates a foreground countdown and clears it with the native timer', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    appStateStore.setState({ isActive: true });
+
+    emit('sleepTimer', {
+      active: true,
+      endsAtEpochMs: Date.now() + 10_000,
+      endOfTrack: false,
+    });
+    expect(sleepTimerStore.getState()).toMatchObject({
+      endTime: Date.now() / 1000 + 10,
+      endOfTrack: false,
+      remaining: 10,
+    });
+
+    jest.advanceTimersByTime(1000);
+    expect(sleepTimerStore.getState().remaining).toBe(9);
+    emit('sleepTimer', { active: false, endsAtEpochMs: null, endOfTrack: false });
+    expect(sleepTimerStore.getState()).toMatchObject({
+      endTime: null,
+      endOfTrack: false,
+      remaining: null,
+    });
+  });
+
+  it('does not start a display interval while backgrounded', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    appStateStore.setState({ isActive: false });
+
+    emit('sleepTimer', {
+      active: true,
+      endsAtEpochMs: Date.now() + 10_000,
+      endOfTrack: false,
+    });
+    jest.advanceTimersByTime(1000);
+
+    expect(sleepTimerStore.getState().remaining).toBe(10);
+  });
+
+  it('stores end-of-track mode without a wall-clock countdown', () => {
+    emit('sleepTimer', { active: true, endsAtEpochMs: null, endOfTrack: true });
+    expect(sleepTimerStore.getState()).toMatchObject({
+      endTime: null,
+      endOfTrack: true,
+      remaining: null,
+    });
+  });
+
+  it('flushes playback on background and resumes a wall-clock countdown on foreground', () => {
+    jest.useFakeTimers();
+    const currentTrack = makeChild('current');
+    (playerStore.getState as jest.Mock).mockReturnValue({
+      ...defaultPlayerState(),
+      currentTrack,
+      position: 42,
+    });
+    sleepTimerStore.setState({ endTime: Date.now() / 1000 + 10, endOfTrack: false });
+
+    mockAppStateListener?.('background');
+    expect(mockFlushPosition).toHaveBeenCalledWith(42, currentTrack.id, currentTrack.duration);
+
+    mockAppStateListener?.('active');
+    expect(sleepTimerStore.getState().remaining).toBe(10);
+
+    sleepTimerStore.setState({ endTime: null, endOfTrack: false });
+    (playerStore.getState as jest.Mock).mockReturnValue(defaultPlayerState());
+    mockAppStateListener?.('active');
+    mockAppStateListener?.('background');
+    expect(mockFlushPosition).toHaveBeenCalledTimes(1);
+  });
 });
 
 beforeAll(async () => {
@@ -196,11 +882,11 @@ beforeEach(async () => {
   jest.spyOn(console, 'log').mockImplementation();
   jest.spyOn(console, 'warn').mockImplementation();
 
-  const { playerStore } = require('../../store/playerStore');
   (playerStore.getState as jest.Mock).mockReturnValue(defaultPlayerState());
 
   playbackSettingsStore.setState({
     repeatMode: 'off',
+    autoplayEnabled: false,
     playbackRate: 1,
     maxBitRate: null,
     streamFormat: 'raw',
@@ -212,9 +898,14 @@ beforeEach(async () => {
 
   (getCoverArtUrl as jest.Mock).mockReturnValue('https://example.com/art.jpg');
   (getStreamUrl as jest.Mock).mockReturnValue('https://example.com/stream.mp3');
+  (getLocalTrackUri as jest.Mock).mockReturnValue(null);
+  mockTP.getCurrentTrackIndex.mockReturnValue(-1);
+  mockTP.skipToIndex.mockResolvedValue(undefined);
+  mockTP.removeFromQueue.mockResolvedValue(undefined);
   mockGetPersistedQueue.mockReturnValue(null);
   mockGetPersistedPosition.mockReturnValue(null);
   mockOfflineMode.offlineMode = false;
+  mockBuildAutoplayQueue.mockResolvedValue([]);
 });
 
 describe('initPlayer', () => {
@@ -324,7 +1015,7 @@ describe('playTrack', () => {
   it('updates the queue in the store', async () => {
     const queue = [makeChild('t1')];
     await playTrack(queue[0], queue);
-    expect(mockSetQueue).toHaveBeenCalledWith(queue);
+    expect(mockSetQueue).toHaveBeenCalledWith(queue, ['manual']);
   });
 });
 
@@ -372,7 +1063,6 @@ describe('transport passthroughs', () => {
 
 describe('canSkipToPrevious', () => {
   it('false when no track / empty queue', () => {
-    const { playerStore } = require('../../store/playerStore');
     (playerStore.getState as jest.Mock).mockReturnValue({
       ...defaultPlayerState(), currentTrackIndex: null, queue: [],
     });
@@ -380,7 +1070,6 @@ describe('canSkipToPrevious', () => {
   });
 
   it('true when a track is loaded', () => {
-    const { playerStore } = require('../../store/playerStore');
     (playerStore.getState as jest.Mock).mockReturnValue({
       ...defaultPlayerState(), currentTrackIndex: 0, queue: [{ id: '1' }],
     });
@@ -393,7 +1082,7 @@ describe('clearQueue', () => {
     await clearQueue();
     expect(mockTP.clearQueue).toHaveBeenCalled();
     expect(mockSetCurrentTrack).toHaveBeenCalledWith(null);
-    expect(mockSetQueue).toHaveBeenCalledWith([]);
+    expect(mockSetQueue).toHaveBeenCalledWith([], []);
     expect(mockSetPlaybackState).toHaveBeenCalledWith('idle');
     expect(mockSetProgress).toHaveBeenCalledWith(0, 0, 0);
     expect(mockClearPersistedQueue).toHaveBeenCalled();
@@ -414,7 +1103,6 @@ describe('rebuildQueueForServerSwitch', () => {
     mockTP.play.mockClear();
     mockTP.seekTo.mockClear();
 
-    const { playerStore } = require('../../store/playerStore');
     (playerStore.getState as jest.Mock).mockReturnValue({
       ...defaultPlayerState(), currentTrackIndex: 1, position: 42, playbackState: 'playing', queue,
     });
@@ -435,7 +1123,6 @@ describe('rebuildQueueForServerSwitch', () => {
     const queue = [makeChild('t1')];
     await playTrack(queue[0], queue);
     mockTP.play.mockClear();
-    const { playerStore } = require('../../store/playerStore');
     (playerStore.getState as jest.Mock).mockReturnValue({
       ...defaultPlayerState(), currentTrackIndex: 0, playbackState: 'paused', queue,
     });
@@ -459,7 +1146,6 @@ describe('playSongNext', () => {
     const queue = [makeChild('a'), makeChild('b'), makeChild('c')];
     await playTrack(queue[1], queue);
     mockTP.addToQueue.mockClear();
-    const { playerStore } = require('../../store/playerStore');
     (playerStore.getState as jest.Mock).mockReturnValue({
       ...defaultPlayerState(), currentTrackIndex: 1, queue,
     });
@@ -474,7 +1160,6 @@ describe('playSongNext', () => {
     await playTrack(queue[0], queue);
     mockTP.setQueue.mockClear();
     mockTP.play.mockClear();
-    const { playerStore } = require('../../store/playerStore');
     (playerStore.getState as jest.Mock).mockReturnValue({
       ...defaultPlayerState(), currentTrackIndex: 0, queue,
     });
@@ -486,7 +1171,6 @@ describe('playSongNext', () => {
 
 describe('offline-mode queue building', () => {
   it('playTrack filters non-cached tracks when offline and refocuses on a cached one', async () => {
-    const { getLocalTrackUri } = require('../musicCacheService');
     (getLocalTrackUri as jest.Mock).mockImplementation((id: string) => (id === 't2' ? '/local/t2.mp3' : null));
     mockOfflineMode.offlineMode = true;
     await playTrack(makeChild('t1'), [makeChild('t1'), makeChild('t2'), makeChild('t3')]);
@@ -497,18 +1181,16 @@ describe('offline-mode queue building', () => {
   });
 
   it('playTrack clears + toasts when all tracks are non-cached offline', async () => {
-    const { getLocalTrackUri } = require('../musicCacheService');
     (getLocalTrackUri as jest.Mock).mockReturnValue(null);
     mockOfflineMode.offlineMode = true;
     mockTP.setQueue.mockClear();
     await playTrack(makeChild('t1'), [makeChild('t1'), makeChild('t2')]);
     expect(mockTP.setQueue).not.toHaveBeenCalled();
     expect(mockToastFail).toHaveBeenCalled();
-    expect(mockSetQueue).toHaveBeenCalledWith([]);
+    expect(mockSetQueue).toHaveBeenCalledWith([], []);
   });
 
   it('leaves non-cached tracks when online', async () => {
-    const { getLocalTrackUri } = require('../musicCacheService');
     (getLocalTrackUri as jest.Mock).mockReturnValue(null);
     mockOfflineMode.offlineMode = false;
     await playTrack(makeChild('t1'), [makeChild('t1'), makeChild('t2'), makeChild('t3')]);
@@ -559,11 +1241,136 @@ describe('removeFromQueue', () => {
     expect(mockTP.clearQueue).toHaveBeenCalled();
   });
 
-  it('removes by index batch when more than one track', async () => {
-    await playTrack(makeChild('a'), [makeChild('a'), makeChild('b')]);
+  it('skips off the active track before removing it', async () => {
+    const queue = [makeChild('a'), makeChild('b')];
+    await playTrack(queue[0], queue);
+    let nativeIndex = 0;
+    mockTP.getCurrentTrackIndex.mockImplementation(() => nativeIndex);
+    mockTP.skipToIndex.mockImplementationOnce(async (index: number) => {
+      nativeIndex = index;
+    });
+    mockTP.removeFromQueue.mockImplementationOnce(async () => {
+      nativeIndex = 0;
+    });
     mockTP.removeFromQueue.mockClear();
+    mockTP.skipToIndex.mockClear();
     await removeFromQueue(0);
+
+    expect(mockTP.skipToIndex).toHaveBeenCalledWith(1);
     expect(mockTP.removeFromQueue).toHaveBeenCalledWith([0]);
+    expect(mockSetCurrentTrack).toHaveBeenLastCalledWith(queue[1], 0);
+    expect(mockPersistQueue).toHaveBeenLastCalledWith(
+      [queue[1]],
+      0,
+      ['manual'],
+    );
+  });
+
+  it('skips backward before removing the active last track', async () => {
+    const queue = [makeChild('a'), makeChild('b')];
+    await playTrack(queue[1], queue);
+    let nativeIndex = 1;
+    mockTP.getCurrentTrackIndex.mockImplementation(() => nativeIndex);
+    mockTP.skipToIndex.mockImplementationOnce(async (index: number) => {
+      nativeIndex = index;
+    });
+    mockTP.removeFromQueue.mockClear();
+    mockTP.skipToIndex.mockClear();
+
+    await removeFromQueue(1);
+
+    expect(mockTP.skipToIndex).toHaveBeenCalledWith(0);
+    expect(mockTP.removeFromQueue).toHaveBeenCalledWith([1]);
+    expect(mockSetCurrentTrack).toHaveBeenLastCalledWith(queue[0], 0);
+    expect(mockPersistQueue).toHaveBeenLastCalledWith(
+      [queue[0]],
+      0,
+      ['manual'],
+    );
+  });
+
+  it('waits for a delayed active-track skip before removing the pinned row', async () => {
+    const queue = [makeChild('a'), makeChild('b')];
+    await playTrack(queue[0], queue);
+    emit('trackChange', { id: queue[0].id }, 0, 'queue-replaced');
+    jest.clearAllMocks();
+    let nativeIndex = 0;
+    mockTP.getCurrentTrackIndex.mockImplementation(() => nativeIndex);
+    mockTP.removeFromQueue.mockImplementationOnce(async () => {
+      nativeIndex = 0;
+    });
+    mockTP.removeFromQueue.mockClear();
+    mockTP.skipToIndex.mockClear();
+
+    const removalPromise = removeFromQueue(0);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(mockTP.skipToIndex).toHaveBeenCalledWith(1);
+    expect(mockTP.removeFromQueue).not.toHaveBeenCalled();
+
+    nativeIndex = 1;
+    emit('trackChange', { id: queue[1].id }, 1, 'auto-advance');
+    await removalPromise;
+
+    expect(addCompletedScrobble).not.toHaveBeenCalled();
+    expect(mockTP.removeFromQueue).toHaveBeenCalledWith([0]);
+    expect(mockPersistQueue).toHaveBeenLastCalledWith(
+      [queue[1]],
+      0,
+      ['manual'],
+    );
+  });
+
+  it('reports a failed removal when the active-track skip never confirms', async () => {
+    const queue = [makeChild('a'), makeChild('b')];
+    await playTrack(queue[0], queue);
+    jest.useFakeTimers({ doNotFake: ['setImmediate'] });
+    mockTP.getCurrentTrackIndex.mockReturnValue(0);
+    mockTP.removeFromQueue.mockClear();
+    mockToastFail.mockClear();
+
+    try {
+      const removalPromise = removeFromQueue(0);
+      await new Promise((resolve) => setImmediate(resolve));
+      jest.advanceTimersByTime(5000);
+      await removalPromise;
+
+      expect(mockTP.removeFromQueue).not.toHaveBeenCalled();
+      expect(mockToastFail).toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('scans offline removals after a pending Play Next commits', async () => {
+    const active = makeChild('active');
+    const remote = makeChild('remote');
+    const manual = makeChild('manual');
+    await playTrack(active, [active, remote]);
+    mockTP.getCurrentTrackIndex.mockReturnValue(0);
+    (getLocalTrackUri as jest.Mock).mockImplementation((id: string) =>
+      id === remote.id ? null : `/local/${id}.mp3`,
+    );
+
+    let resolveAddition!: () => void;
+    mockTP.addToQueue.mockImplementationOnce(
+      () => new Promise<void>((resolve) => { resolveAddition = resolve; }),
+    );
+    const playNextPromise = playSongNext(manual);
+    await new Promise((resolve) => setImmediate(resolve));
+    const cleanupPromise = removeNonDownloadedTracks();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    resolveAddition();
+    await playNextPromise;
+    await cleanupPromise;
+
+    expect(mockTP.removeFromQueue).toHaveBeenLastCalledWith([2]);
+    expect(mockPersistQueue).toHaveBeenLastCalledWith(
+      [active, manual],
+      0,
+      ['manual', 'manual'],
+    );
   });
 });
 
@@ -651,7 +1458,6 @@ describe('onStateChange', () => {
   });
 
   it('clears error + retrying when transitioning to playing', () => {
-    const { playerStore } = require('../../store/playerStore');
     (playerStore.getState as jest.Mock).mockReturnValue({
       ...defaultPlayerState(), error: 'boom', retrying: true,
     });
@@ -743,6 +1549,21 @@ describe('playback-report scrobble', () => {
     expect(addCompletedScrobble).toHaveBeenCalledWith(expect.objectContaining({ id: 't1' }), undefined);
   });
 
+  it('reports the retained active track after an earlier row is removed', async () => {
+    playbackSettingsStore.setState({ scrobbleTrigger: 100 } as any);
+    const before = makeChild('before');
+    const active = makeChild('active');
+    await playTrack(active, [before, active]);
+    emit('trackChange', { id: active.id }, 1, 'queue-replaced');
+    jest.clearAllMocks();
+    mockTP.getCurrentTrackIndex.mockReturnValueOnce(1).mockReturnValue(0);
+
+    await removeFromQueue(0);
+    emit('queueEnd');
+
+    expect(addCompletedScrobble).toHaveBeenCalledWith(active, undefined);
+  });
+
   it('re-scrobbles each repeat-one loop (milestone value wraps down)', async () => {
     await armPlay(50);
     emit('milestone', 50, 0); // loop 1
@@ -768,7 +1589,6 @@ describe('onError', () => {
 
 describe('onQueueEnd', () => {
   it('pins progress to the end of the current track', () => {
-    const { playerStore } = require('../../store/playerStore');
     (playerStore.getState as jest.Mock).mockReturnValue({
       ...defaultPlayerState(), currentTrack: makeChild('t1', { duration: 240 }),
     });
@@ -788,7 +1608,6 @@ describe('applyLocalPlayToPlayer', () => {
   it('updates playerStore.currentTrack when it is the scrobbled song', async () => {
     const track = makeChild('s1', { playCount: 7 });
     await playTrack(track, [track]);
-    const { playerStore } = require('../../store/playerStore');
     (playerStore.getState as jest.Mock).mockReturnValueOnce({
       ...defaultPlayerState(), currentTrack: track,
     });
@@ -801,7 +1620,6 @@ describe('applyLocalPlayToPlayer', () => {
   it('does not update when a different song is scrobbled', async () => {
     const playing = makeChild('current');
     await playTrack(playing, [playing]);
-    const { playerStore } = require('../../store/playerStore');
     (playerStore.getState as jest.Mock).mockReturnValueOnce({
       ...defaultPlayerState(), currentTrack: playing,
     });

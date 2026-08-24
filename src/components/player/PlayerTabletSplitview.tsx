@@ -19,6 +19,7 @@ import { MoreOptionsButton } from '@/components/MoreOptionsButton';
 import { PlaybackRateButton } from '@/components/PlaybackRateButton';
 import { PlayerProgressBar } from '@/components/PlayerProgressBar';
 import { QueueItemRow } from '@/components/QueueItemRow';
+import { AutoplayQueueFooter } from '@/components/AutoplayQueueFooter';
 import { RepeatButton } from '@/components/RepeatButton';
 import { ShuffleButton } from '@/components/ShuffleButton';
 import { ShuffleOverlay } from '@/components/ShuffleOverlay';
@@ -28,6 +29,7 @@ import { type ThemeColors } from '@/constants/theme';
 import { useCanSkip } from '@/hooks/useCanSkip';
 import { useSongCoverArt } from '@/hooks/useSongCoverArt';
 import { mixHexColors } from '@/utils/colors';
+import { isAutoplaySectionStart } from '@/utils/queueOrigins';
 import { usePlayerActions } from '@/hooks/usePlayerActions';
 import { usePlaybackState } from '@/hooks/usePlaybackState';
 import { useShuffleOverlay } from '@/hooks/useShuffleOverlay';
@@ -57,6 +59,7 @@ export function PlayerTabletSplitview() {
   const currentTrack = playerStore((s) => s.currentTrack);
   const currentTrackIndex = playerStore((s) => s.currentTrackIndex);
   const queue = playerStore((s) => s.queue);
+  const queueOrigins = playerStore((s) => s.queueOrigins);
   const queueLoading = playerStore((s) => s.queueLoading);
 
   const {
@@ -90,12 +93,13 @@ export function PlayerTabletSplitview() {
         track={item}
         index={index}
         isActive={index === currentTrackIndex}
+        startsAutoplaySection={isAutoplaySectionStart(queueOrigins, currentTrackIndex, index)}
         colors={queueColors}
         onPress={handleQueueItemPress}
         onLongPress={handleQueueItemLongPress}
       />
     ),
-    [currentTrackIndex, queueColors, handleQueueItemPress, handleQueueItemLongPress],
+    [currentTrackIndex, queueOrigins, queueColors, handleQueueItemPress, handleQueueItemLongPress],
   );
 
   const keyExtractor = useCallback(
@@ -181,6 +185,7 @@ export function PlayerTabletSplitview() {
           data={queue}
           renderItem={renderQueueItem}
           keyExtractor={keyExtractor}
+          ListFooterComponent={AutoplayQueueFooter}
           onScrollBeginDrag={closeOpenRow}
           drawDistance={200}
           showsVerticalScrollIndicator={false}

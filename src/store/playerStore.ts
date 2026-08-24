@@ -11,6 +11,7 @@ import type { TrackSource } from 'react-native-queue-player';
 
 import { type EffectiveFormat } from '../types/audio';
 import type { Child } from '../services/subsonicService';
+import type { QueueTrackOrigin } from '../types/queue';
 
 export type PlaybackStatus =
   | 'idle'
@@ -29,6 +30,10 @@ export interface PlayerState {
   playbackState: PlaybackStatus;
   /** The full queue of Child objects currently loaded. */
   queue: Child[];
+  /** Positional ownership aligned with `queue`. */
+  queueOrigins: QueueTrackOrigin[];
+  /** Whether a recommendation batch is currently being prepared. */
+  autoplayLoading: boolean;
   /** Current playback position in seconds. */
   position: number;
   /** Duration of the current track in seconds. */
@@ -49,7 +54,8 @@ export interface PlayerState {
   /* ---- Setters (called by playerService) ---- */
   setCurrentTrack: (track: Child | null, index?: number | null) => void;
   setPlaybackState: (state: PlaybackStatus) => void;
-  setQueue: (queue: Child[]) => void;
+  setQueue: (queue: Child[], origins?: QueueTrackOrigin[]) => void;
+  setAutoplayLoading: (loading: boolean) => void;
   setProgress: (position: number, duration: number, buffered: number) => void;
   setError: (error: string | null) => void;
   setRetrying: (retrying: boolean) => void;
@@ -65,6 +71,8 @@ export const playerStore = create<PlayerState>()((set) => ({
   currentTrackIndex: null,
   playbackState: 'idle',
   queue: [],
+  queueOrigins: [],
+  autoplayLoading: false,
   position: 0,
   duration: 0,
   bufferedPosition: 0,
@@ -81,7 +89,12 @@ export const playerStore = create<PlayerState>()((set) => ({
       ...(track ? {} : { trackSource: null }),
     }),
   setPlaybackState: (playbackState) => set({ playbackState }),
-  setQueue: (queue) => set({ queue }),
+  setQueue: (queue, origins) =>
+    set({
+      queue,
+      queueOrigins: origins?.length === queue.length ? origins : queue.map(() => 'manual'),
+    }),
+  setAutoplayLoading: (autoplayLoading) => set({ autoplayLoading }),
   setProgress: (position, duration, buffered) =>
     set((state) => ({
       position,

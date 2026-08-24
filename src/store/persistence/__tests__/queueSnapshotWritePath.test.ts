@@ -252,6 +252,21 @@ describe('replaceSnapshotTracks + readSnapshotSync', () => {
     expect(readSnapshotSync('nope')).toBeNull();
   });
 
+  it('stores live queue origins and treats missing values as manual', async () => {
+    await upsertSnapshot(liveMeta);
+    await replaceSnapshotTracks(
+      SNAPSHOT_LIVE_ID,
+      [song('manual'), song('automatic'), song('default')],
+      ['manual', 'autoplay'],
+    );
+
+    expect(readSnapshotSync(SNAPSHOT_LIVE_ID)?.origins).toEqual([
+      'manual',
+      'autoplay',
+      'manual',
+    ]);
+  });
+
   it('drops entries with no id rather than aborting the batch', async () => {
     await upsertSnapshot(liveMeta);
     await replaceSnapshotTracks(SNAPSHOT_LIVE_ID, [

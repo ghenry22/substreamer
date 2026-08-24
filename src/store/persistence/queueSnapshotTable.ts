@@ -29,6 +29,7 @@ import {
 } from '../../db/childSnapshot';
 
 import type { Child } from 'subsonic-api';
+import type { QueueTrackOrigin } from '../../types/queue';
 
 /** The single live-queue row's id. Bookmarks carry their own UUIDs. */
 export const SNAPSHOT_LIVE_ID = 'live';
@@ -51,6 +52,8 @@ export interface QueueSnapshotMeta {
 /** A snapshot with its songs rebuilt into real `Child` objects. */
 export interface QueueSnapshot extends QueueSnapshotMeta {
   tracks: Child[];
+  /** Positional ownership aligned with `tracks`; old/missing values are manual. */
+  origins: QueueTrackOrigin[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -106,16 +109,22 @@ export async function upsertSnapshot(meta: Omit<QueueSnapshotMeta, 'trackCount'>
  * Entries with no id are dropped: `childToTrack` cannot play them, and `song_id` is
  * NOT NULL so one would abort the whole batch.
  */
-function snapshotTrackCommands(snapshotId: string, tracks: readonly Child[]): BatchCommand[] {
-  const usable = tracks.filter((c) => !!c?.id);
+function snapshotTrackCommands(
+  snapshotId: string,
+  tracks: readonly Child[],
+  origins?: readonly QueueTrackOrigin[],
+): BatchCommand[] {
+  const usable = tracks
+    .map((track, index) => ({ track, origin: origins?.[index] ?? 'manual' as const }))
+    .filter(({ track }) => !!track?.id);
   const commands: BatchCommand[] = [
     ['DELETE FROM queue_snapshot_songs WHERE snapshot_id = ?;', [snapshotId]],
   ];
-  usable.forEach((child, pos) => {
+  usable.forEach(({ track: child, origin }, pos) => {
     commands.push(
       childSnapshotInsertCommand({
         table: 'queue_snapshot_songs',
-        key: { snapshot_id: snapshotId, pos },
+        key: { snapshot_id: snapshotId, pos, origin },
         child,
       }),
       ...childSnapshotArrayCommands({
@@ -141,11 +150,12 @@ function snapshotTrackCommands(snapshotId: string, tracks: readonly Child[]): Ba
 export async function replaceSnapshotTracks(
   snapshotId: string,
   tracks: readonly Child[],
+  origins?: readonly QueueTrackOrigin[],
 ): Promise<void> {
   const db = getDb();
   if (db === null) return;
   try {
-    await db.runAtomicBatchAsync(snapshotTrackCommands(snapshotId, tracks));
+    await db.runAtomicBatchAsync(snapshotTrackCommands(snapshotId, tracks, origins));
   } catch {
     /* dropped */
   }
@@ -280,7 +290,7 @@ export function readSnapshotSync(snapshotId: string): QueueSnapshot | null {
     const meta = db.getFirstSync<SnapshotRow>(`SELECT ${META_SELECT} WHERE id = ?;`, [snapshotId]);
     if (meta === undefined || meta === null) return null;
     const rows = db.getAllSync<Record<string, unknown>>(
-      `SELECT pos, ${CHILD_SNAPSHOT_SELECT} FROM queue_snapshot_songs ` +
+      `SELECT pos, origin, ${CHILD_SNAPSHOT_SELECT} FROM queue_snapshot_songs ` +
         'WHERE snapshot_id = ? ORDER BY pos;',
       [snapshotId],
     );
@@ -291,7 +301,8 @@ export function readSnapshotSync(snapshotId: string): QueueSnapshot | null {
         arrays.get(childSnapshotArrayKey([snapshotId, raw.pos as number])) ?? NO_ARRAYS,
       ),
     );
-    return { ...metaFromRow(meta), tracks };
+    const origins = rows.map((raw) => raw.origin === 'autoplay' ? 'autoplay' : 'manual');
+    return { ...metaFromRow(meta), tracks, origins };
   } catch {
     return null;
   }
@@ -387,7 +398,10 @@ export async function readBookmarkSnapshots(): Promise<QueueSnapshot[] | null> {
         ),
       );
     }
-    return metas.map((meta) => ({ ...meta, tracks: tracks.get(meta.id) ?? [] }));
+    return metas.map((meta) => {
+      const snapshotTracks = tracks.get(meta.id) ?? [];
+      return { ...meta, tracks: snapshotTracks, origins: snapshotTracks.map(() => 'manual') };
+    });
   } catch {
     return null;
   }

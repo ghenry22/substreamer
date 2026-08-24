@@ -140,6 +140,8 @@ export interface PlaybackSettingsState {
   estimateContentLength: boolean;
   /** Repeat mode for queue playback. */
   repeatMode: RepeatModeSetting;
+  /** Append related tracks as the manual queue runs out. */
+  autoplayEnabled: boolean;
   /** Playback speed multiplier (1 = normal). */
   playbackRate: PlaybackRate;
   /** Pitch-correction mode applied at non-1x speed (default 'none'). */
@@ -184,6 +186,7 @@ export interface PlaybackSettingsState {
   setStreamFormat: (format: StreamFormat) => void;
   setEstimateContentLength: (enabled: boolean) => void;
   setRepeatMode: (mode: RepeatModeSetting) => void;
+  setAutoplayEnabled: (enabled: boolean) => void;
   setPlaybackRate: (rate: PlaybackRate) => void;
   setPitchCorrection: (mode: PitchCorrection) => void;
   setDownloadMaxBitRate: (bitRate: MaxBitRate) => void;
@@ -229,6 +232,7 @@ export const playbackSettingsStore = create<PlaybackSettingsState>()(
       streamFormat: 'raw',
       estimateContentLength: Platform.OS === 'android',
       repeatMode: 'off',
+      autoplayEnabled: false,
       playbackRate: 1,
       pitchCorrection: 'none',
       downloadMaxBitRate: 320,
@@ -250,6 +254,7 @@ export const playbackSettingsStore = create<PlaybackSettingsState>()(
       setStreamFormat: (streamFormat) => set({ streamFormat: normalizeFormat(streamFormat) }),
       setEstimateContentLength: (estimateContentLength) => set({ estimateContentLength }),
       setRepeatMode: (repeatMode) => set({ repeatMode }),
+      setAutoplayEnabled: (autoplayEnabled) => set({ autoplayEnabled }),
       setPlaybackRate: (playbackRate) => set({ playbackRate }),
       setPitchCorrection: (pitchCorrection) => set({ pitchCorrection }),
       setDownloadMaxBitRate: (downloadMaxBitRate) => set({ downloadMaxBitRate }),
@@ -277,6 +282,7 @@ export const playbackSettingsStore = create<PlaybackSettingsState>()(
         streamFormat: state.streamFormat,
         estimateContentLength: state.estimateContentLength,
         repeatMode: state.repeatMode,
+        autoplayEnabled: state.autoplayEnabled,
         playbackRate: state.playbackRate,
         pitchCorrection: state.pitchCorrection,
         downloadMaxBitRate: state.downloadMaxBitRate,
