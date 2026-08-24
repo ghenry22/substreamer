@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { CachedImage } from './CachedImage';
+import { AutoplayQueueHeading } from './AutoplayQueueHeading';
 import { NowPlayingIndicator } from './NowPlayingIndicator';
 import { RowMetaLine } from './RowMetaLine';
 import { SwipeableRow, type SwipeAction } from './SwipeableRow';
@@ -33,6 +34,7 @@ export interface QueueItemRowProps {
   track: Child;
   index: number;
   isActive: boolean;
+  startsAutoplaySection?: boolean;
   colors: Pick<ThemeColors, 'textPrimary' | 'textSecondary' | 'primary' | 'border' | 'red'>;
   onPress: (index: number) => void;
   onLongPress?: (track: Child) => void;
@@ -46,6 +48,7 @@ export const QueueItemRow = memo(function QueueItemRow({
   track,
   index,
   isActive,
+  startsAutoplaySection = false,
   colors,
   onPress,
   onLongPress,
@@ -118,68 +121,71 @@ export const QueueItemRow = memo(function QueueItemRow({
   );
 
   return (
-    <SwipeableRow rightActions={rightActions} leftActions={leftActions} enableFullSwipeRight enableFullSwipeLeft={!offlineMode} restingBackgroundColor="transparent" onPress={handlePress} onLongPress={onLongPress ? handleLongPress : undefined}>
-      <View style={[styles.row, { borderBottomColor: colors.border }]}>
-        {/* Cover art with now-playing overlay */}
-        <View style={styles.coverWrap}>
-          <CachedImage
-            coverArtId={songCoverArtId}
-            size={50}
-            style={styles.cover}
-            resizeMode="cover"
-          />
-          {isActive && (
-            <View style={styles.activeOverlay}>
-              <NowPlayingIndicator size={24} color={colors.primary} />
-            </View>
-          )}
-        </View>
-
-        {/* Track info — title + duration on line 1, artist + status
-            icons on line 2. Mirrors the TrackRow layout so detail-view
-            and play-queue rows have the same shape. */}
-        <View style={styles.info}>
-          <View style={styles.line}>
-            <Text
-              style={[styles.title, { color: titleColor }]}
-              numberOfLines={1}
-            >
-              {track.title}
-            </Text>
-            <RowMetaLine
-              slots={['duration']}
-              durationText={durationText}
-              durationFontSize={14}
-              durationColor={isActive ? colors.primary : undefined}
+    <>
+      {startsAutoplaySection && <AutoplayQueueHeading color={colors.textPrimary} />}
+      <SwipeableRow rightActions={rightActions} leftActions={leftActions} enableFullSwipeRight enableFullSwipeLeft={!offlineMode} restingBackgroundColor="transparent" onPress={handlePress} onLongPress={onLongPress ? handleLongPress : undefined}>
+        <View style={[styles.row, { borderBottomColor: colors.border }]}>
+          {/* Cover art with now-playing overlay */}
+          <View style={styles.coverWrap}>
+            <CachedImage
+              coverArtId={songCoverArtId}
+              size={50}
+              style={styles.cover}
+              resizeMode="cover"
             />
+            {isActive && (
+              <View style={styles.activeOverlay}>
+                <NowPlayingIndicator size={24} color={colors.primary} />
+              </View>
+            )}
           </View>
-          <View style={[styles.line, styles.artistLine]}>
-            {track.artist ? (
+
+          {/* Track info — title + duration on line 1, artist + status
+              icons on line 2. Mirrors the TrackRow layout so detail-view
+              and play-queue rows have the same shape. */}
+          <View style={styles.info}>
+            <View style={styles.line}>
               <Text
-                style={[styles.artist, { color: subtitleColor }]}
+                style={[styles.title, { color: titleColor }]}
                 numberOfLines={1}
               >
-                {track.artist}
+                {track.title}
               </Text>
-            ) : (
-              // Keep the line height stable when artist is missing so the
-              // status icons don't shift up onto the title line.
-              <View style={styles.artistPlaceholder} />
-            )}
-            <RowMetaLine
-              slots={['rating', 'download', 'heart']}
-              rating={rating}
-              starred={starred}
-              downloadStatus={
-                downloadStatus === 'complete' || downloadStatus === 'partial'
-                  ? downloadStatus
-                  : 'none'
-              }
-            />
+              <RowMetaLine
+                slots={['duration']}
+                durationText={durationText}
+                durationFontSize={14}
+                durationColor={isActive ? colors.primary : undefined}
+              />
+            </View>
+            <View style={[styles.line, styles.artistLine]}>
+              {track.artist ? (
+                <Text
+                  style={[styles.artist, { color: subtitleColor }]}
+                  numberOfLines={1}
+                >
+                  {track.artist}
+                </Text>
+              ) : (
+                // Keep the line height stable when artist is missing so the
+                // status icons don't shift up onto the title line.
+                <View style={styles.artistPlaceholder} />
+              )}
+              <RowMetaLine
+                slots={['rating', 'download', 'heart']}
+                rating={rating}
+                starred={starred}
+                downloadStatus={
+                  downloadStatus === 'complete' || downloadStatus === 'partial'
+                    ? downloadStatus
+                    : 'none'
+                }
+              />
+            </View>
           </View>
         </View>
-      </View>
-    </SwipeableRow>
+      </SwipeableRow>
+    </>
   );
 });
 

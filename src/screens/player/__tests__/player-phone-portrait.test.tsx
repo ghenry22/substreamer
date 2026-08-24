@@ -135,14 +135,26 @@ jest.mock('@/components/SkipIntervalButton', () => {
   return { SkipIntervalButton: () => <View testID="skip-interval" /> };
 });
 
-jest.mock('@/components/QueueItemRow', () => {
-  const { Text } = require('react-native');
-  return { QueueItemRow: ({ track }: { track: { title: string } }) => <Text>{track.title}</Text> };
+jest.mock('@/components/SwipeableRow', () => {
+  const { Pressable } = require('react-native');
+  return {
+    SwipeableRow: ({ children, onPress }: { children: React.ReactNode; onPress: () => void }) => (
+      <Pressable onPress={onPress}>{children}</Pressable>
+    ),
+    closeOpenRow: jest.fn(),
+  };
 });
 
-jest.mock('@/components/SwipeableRow', () => ({
-  closeOpenRow: jest.fn(),
-}));
+jest.mock('@/components/NowPlayingIndicator', () => {
+  const { View } = require('react-native');
+  return { NowPlayingIndicator: () => <View testID="now-playing-indicator" /> };
+});
+
+jest.mock('@/components/RowMetaLine', () => ({ RowMetaLine: () => null }));
+
+jest.mock('@/hooks/useDownloadStatus', () => ({ useDownloadStatus: () => 'none' }));
+jest.mock('@/hooks/useRating', () => ({ useRating: () => 0 }));
+jest.mock('@/hooks/useSongCoverArt', () => ({ useSongCoverArt: () => 'cover-1' }));
 
 jest.mock('@/components/MoreOptionsButton', () => {
   const { View } = require('react-native');
@@ -212,10 +224,11 @@ jest.mock('@shopify/flash-list', () => {
   const { View } = require('react-native');
   return {
     FlashList: React.forwardRef(function MockFlashList(
-      { data, renderItem, ListHeaderComponent, keyExtractor }: {
+      { data, renderItem, ListHeaderComponent, ListFooterComponent, keyExtractor }: {
         data: unknown[];
         renderItem: (info: { item: unknown; index: number }) => React.ReactNode;
         ListHeaderComponent?: React.ReactNode;
+        ListFooterComponent?: React.ComponentType;
         keyExtractor?: (item: unknown, index: number) => string;
       },
       _ref: unknown,
@@ -224,10 +237,14 @@ jest.mock('@shopify/flash-list', () => {
         <View testID="flash-list">
           {ListHeaderComponent}
           {data?.map((item: unknown, index: number) => (
-            <View key={keyExtractor ? keyExtractor(item, index) : String(index)}>
+            <View
+              key={keyExtractor ? keyExtractor(item, index) : String(index)}
+              testID={`flash-item-${index}`}
+            >
               {renderItem({ item, index })}
             </View>
           ))}
+          {ListFooterComponent ? React.createElement(ListFooterComponent) : null}
         </View>
       );
     }),
@@ -235,15 +252,15 @@ jest.mock('@shopify/flash-list', () => {
 });
 
 import React from 'react';
-import { render, fireEvent, act } from '@testing-library/react-native';
+import { render, fireEvent, act, within } from '@testing-library/react-native';
 
+import { PlayerPhonePortrait } from '@/screens/player/player-phone-portrait';
+import { skipToNext, skipToPrevious } from '@/services/playerService';
 import { appStateStore } from '@/store/appStateStore';
 import { lyricsStore } from '@/store/lyricsStore';
 import { playerStore } from '@/store/playerStore';
+import { toggleStar } from '@/services/moreOptionsService';
 import { type Child } from '@/services/subsonicService';
-
-// Must import after mocks
-const { PlayerPhonePortrait } = require('@/screens/player/player-phone-portrait');
 
 const fetchLyrics = lyricsStore.getState().fetchLyrics as jest.Mock;
 
@@ -271,7 +288,9 @@ beforeEach(() => {
     currentTrack: MOCK_TRACK,
     currentTrackIndex: 0,
     queue: MOCK_QUEUE,
+    queueOrigins: ['manual', 'manual', 'manual'],
     queueLoading: false,
+    autoplayLoading: false,
     playbackState: 'playing',
     position: 30,
     duration: 180,
@@ -314,6 +333,34 @@ describe('PlayerPhonePortrait', () => {
     // Queue should show items after mounting
     expect(getByText('Second Song')).toBeTruthy();
     expect(getByText('Third Song')).toBeTruthy();
+  });
+
+  it('places one autoplay heading immediately before the first upcoming autoplay row', () => {
+    playerStore.setState({
+      currentTrack: MOCK_QUEUE[1],
+      currentTrackIndex: 1,
+      queueOrigins: ['manual', 'manual', 'autoplay'],
+    });
+    const { getByLabelText, getAllByText, getByTestId } = render(<PlayerPhonePortrait />);
+
+    fireEvent.press(getByLabelText('Queue'));
+
+    expect(getAllByText('Autoplay')).toHaveLength(1);
+    expect(within(getByTestId('flash-item-1')).queryByText('Autoplay')).toBeNull();
+    expect(within(getByTestId('flash-item-2')).getByText('Autoplay')).toBeTruthy();
+    expect(within(getByTestId('flash-item-2')).getByText('Third Song')).toBeTruthy();
+  });
+
+  it('shows autoplay progress only while recommendations are loading', () => {
+    playerStore.setState({ autoplayLoading: true });
+    const view = render(<PlayerPhonePortrait />);
+
+    fireEvent.press(view.getByLabelText('Queue'));
+    expect(view.getByText('Building your autoplay queue…')).toBeTruthy();
+    expect(view.getByLabelText('Building your autoplay queue…')).toBeTruthy();
+
+    act(() => playerStore.setState({ autoplayLoading: false }));
+    expect(view.queryByText('Building your autoplay queue…')).toBeNull();
   });
 
   it('shows queue header with shuffle, share, clear actions', () => {
@@ -410,7 +457,6 @@ describe('PlayerPhonePortrait', () => {
   it('presses favorite button without error', () => {
     const { getByLabelText } = render(<PlayerPhonePortrait />);
     fireEvent.press(getByLabelText('Add to Favorites'));
-    const { toggleStar } = require('@/services/moreOptionsService');
     expect(toggleStar).toHaveBeenCalledWith('song', 'track-1');
   });
 
@@ -425,14 +471,12 @@ describe('PlayerPhonePortrait', () => {
   it('presses skip forward button', () => {
     const { getByText } = render(<PlayerPhonePortrait />);
     fireEvent.press(getByText('play-forward'));
-    const { skipToNext } = require('@/services/playerService');
     expect(skipToNext).toHaveBeenCalled();
   });
 
   it('presses skip backward button', () => {
     const { getByText } = render(<PlayerPhonePortrait />);
     fireEvent.press(getByText('play-back'));
-    const { skipToPrevious } = require('@/services/playerService');
     expect(skipToPrevious).toHaveBeenCalled();
   });
 
@@ -536,7 +580,7 @@ describe('PlayerPhonePortrait', () => {
       fireEvent.press(getByLabelText('Queue'));
     });
 
-    // Press the "Second Song" queue item (rendered by mocked QueueItemRow)
+    // Press the "Second Song" queue item.
     fireEvent.press(getByText('Second Song'));
   });
 

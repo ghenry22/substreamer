@@ -30,6 +30,7 @@ import { MoreOptionsButton } from '@/components/MoreOptionsButton';
 import { PlaybackRateButton } from '@/components/PlaybackRateButton';
 import { PlayerProgressBar } from '@/components/PlayerProgressBar';
 import { QueueItemRow } from '@/components/QueueItemRow';
+import { AutoplayQueueFooter } from '@/components/AutoplayQueueFooter';
 import { RepeatButton } from '@/components/RepeatButton';
 import { ShuffleButton } from '@/components/ShuffleButton';
 import { ShuffleOverlay } from '@/components/ShuffleOverlay';
@@ -41,6 +42,7 @@ import { useCanSkip } from '@/hooks/useCanSkip';
 import { useCoverGradient } from '@/hooks/useCoverGradient';
 import { useSongCoverArt } from '@/hooks/useSongCoverArt';
 import { mixHexColors } from '@/utils/colors';
+import { isAutoplaySectionStart } from '@/utils/queueOrigins';
 import { usePlayerActions } from '@/hooks/usePlayerActions';
 import { usePlaybackState } from '@/hooks/usePlaybackState';
 import { useShuffleOverlay } from '@/hooks/useShuffleOverlay';
@@ -80,6 +82,7 @@ export function PlayerTabletLandscape({
   const songCoverArtId = useSongCoverArt(currentTrack);
   const currentTrackIndex = playerStore((s) => s.currentTrackIndex);
   const queue = playerStore((s) => s.queue);
+  const queueOrigins = playerStore((s) => s.queueOrigins);
   const { isPlaying, isBuffering } = usePlaybackState();
   const position = playerStore((s) => s.position);
   const duration = playerStore((s) => s.duration);
@@ -225,12 +228,13 @@ export function PlayerTabletLandscape({
         track={item}
         index={index}
         isActive={index === currentTrackIndex}
+        startsAutoplaySection={isAutoplaySectionStart(queueOrigins, currentTrackIndex, index)}
         colors={queueColors}
         onPress={handleQueueItemPress}
         onLongPress={handleQueueItemLongPress}
       />
     ),
-    [currentTrackIndex, queueColors, handleQueueItemPress, handleQueueItemLongPress],
+    [currentTrackIndex, queueOrigins, queueColors, handleQueueItemPress, handleQueueItemLongPress],
   );
 
   const keyExtractor = useCallback(
@@ -501,6 +505,7 @@ export function PlayerTabletLandscape({
                       data={queue}
                       renderItem={renderQueueItem}
                       keyExtractor={keyExtractor}
+                      ListFooterComponent={AutoplayQueueFooter}
                       onScrollBeginDrag={closeOpenRow}
                       drawDistance={200}
                       showsVerticalScrollIndicator={false}

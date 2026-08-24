@@ -48,6 +48,7 @@ export const getAllArtists = jest.fn().mockResolvedValue([]);
 export const getArtist = jest.fn().mockResolvedValue(null);
 export const getArtistInfo2 = jest.fn().mockResolvedValue(null);
 export const getTopSongs = jest.fn().mockResolvedValue([]);
+export const getRandomSongs = jest.fn().mockResolvedValue([]);
 export const getRandomSongsFiltered = jest.fn().mockResolvedValue([]);
 export const getSimilarSongs = jest.fn().mockResolvedValue([]);
 export const getSimilarSongs2 = jest.fn().mockResolvedValue([]);

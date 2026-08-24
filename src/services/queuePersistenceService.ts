@@ -18,6 +18,7 @@ import {
   SNAPSHOT_LIVE_ID,
 } from '../store/persistence/queueSnapshotTable';
 import { type Child } from './subsonicService';
+import type { QueueTrackOrigin } from '../types/queue';
 
 /** Throttle window for resume-position writes. */
 const PERSIST_INTERVAL_MS = 10_000;
@@ -35,6 +36,7 @@ const QUEUE_DEBOUNCE_MS = 1500;
 interface PersistedQueue {
   queue: Child[];
   currentTrackIndex: number;
+  origins: QueueTrackOrigin[];
 }
 
 interface PersistedPosition {
@@ -47,6 +49,7 @@ interface PersistedPosition {
 /* ------------------------------------------------------------------ */
 
 let liveQueue: Child[] = [];
+let liveOrigins: QueueTrackOrigin[] = [];
 let liveIndex = 0;
 let livePosition = 0;
 let livePositionTrackId: string | null = null;
@@ -66,6 +69,7 @@ function ensureLoaded(): void {
   const snapshot = readSnapshotSync(SNAPSHOT_LIVE_ID);
   if (snapshot === null || snapshot.tracks.length === 0) return;
   liveQueue = snapshot.tracks;
+  liveOrigins = snapshot.origins;
   liveIndex = Math.min(Math.max(0, snapshot.currentIndex), snapshot.tracks.length - 1);
   livePosition = snapshot.positionSec ?? 0;
   livePositionTrackId = liveQueue[liveIndex]?.id ?? null;
@@ -75,10 +79,11 @@ function ensureLoaded(): void {
  * Move the cursor in memory. The stored position is an offset INTO the track under
  * the cursor, so landing on a different track voids it.
  */
-function setCursor(queue: Child[], index: number): void {
+function setCursor(queue: Child[], index: number, origins = liveOrigins): void {
   const previousTrackId = liveQueue[liveIndex]?.id;
   liveLoaded = true;
   liveQueue = queue;
+  liveOrigins = origins.length === queue.length ? [...origins] : queue.map(() => 'manual');
   liveIndex = index;
   const nextTrackId = queue[index]?.id;
   if (nextTrackId !== previousTrackId) {
@@ -101,6 +106,7 @@ function flushQueueWrite(): void {
   if (!queueDirty) return;
   queueDirty = false;
   const tracks = liveQueue;
+  const origins = liveOrigins;
   const meta = {
     id: SNAPSHOT_LIVE_ID,
     kind: 'live' as const,
@@ -111,7 +117,7 @@ function flushQueueWrite(): void {
   };
   void (async () => {
     await upsertSnapshot(meta);
-    await replaceSnapshotTracks(SNAPSHOT_LIVE_ID, tracks);
+    await replaceSnapshotTracks(SNAPSHOT_LIVE_ID, tracks, origins);
   })();
 }
 
@@ -121,8 +127,12 @@ function flushQueueWrite(): void {
 
 /** Record a queue CHANGE — tracks added, removed, reordered or replaced. Rewrites
  *  every song row, so it is debounced; readers see the new queue immediately. */
-export function persistQueue(queue: Child[], currentTrackIndex: number): void {
-  setCursor(queue, currentTrackIndex);
+export function persistQueue(
+  queue: Child[],
+  currentTrackIndex: number,
+  origins?: readonly QueueTrackOrigin[],
+): void {
+  setCursor(queue, currentTrackIndex, origins ? [...origins] : queue.map(() => 'manual'));
   queueDirty = true;
   clearQueueTimer();
   queueTimer = setTimeout(flushQueueWrite, QUEUE_DEBOUNCE_MS);
@@ -192,6 +202,7 @@ export function clearPersistedQueue(): void {
   queueDirty = false;
   liveLoaded = true;
   liveQueue = [];
+  liveOrigins = [];
   liveIndex = 0;
   livePosition = 0;
   livePositionTrackId = null;
@@ -211,7 +222,7 @@ export function clearPersistedQueue(): void {
 export function getPersistedQueue(): PersistedQueue | null {
   ensureLoaded();
   if (liveQueue.length === 0) return null;
-  return { queue: liveQueue, currentTrackIndex: liveIndex };
+  return { queue: liveQueue, currentTrackIndex: liveIndex, origins: liveOrigins };
 }
 
 /** The resume position and the track it was measured on. */

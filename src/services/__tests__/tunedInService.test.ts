@@ -10,6 +10,7 @@ import {
   getTopGenreForHour,
   resolveGenreSlot,
 } from '../tunedInService';
+import * as arrayHelpers from '../../utils/arrayHelpers';
 import { type Child } from '../subsonicService';
 
 /* ------------------------------------------------------------------ */
@@ -18,14 +19,17 @@ import { type Child } from '../subsonicService';
 
 const mockGetRandomSongs = jest.fn();
 const mockGetRandomSongsFiltered = jest.fn();
-const mockGetSimilarSongs = jest.fn();
 const mockGetSimilarSongs2 = jest.fn();
+const mockFetchSimilarSongsOrRandom = jest.fn();
 
 jest.mock('../subsonicService', () => ({
   getRandomSongs: (...args: unknown[]) => mockGetRandomSongs(...args),
   getRandomSongsFiltered: (...args: unknown[]) => mockGetRandomSongsFiltered(...args),
-  getSimilarSongs: (...args: unknown[]) => mockGetSimilarSongs(...args),
   getSimilarSongs2: (...args: unknown[]) => mockGetSimilarSongs2(...args),
+}));
+
+jest.mock('../recommendationService', () => ({
+  fetchSimilarSongsOrRandom: (...args: unknown[]) => mockFetchSimilarSongsOrRandom(...args),
 }));
 
 const mockGetOfflineSongsByGenre = jest.fn();
@@ -39,10 +43,14 @@ jest.mock('../searchService', () => ({
 beforeEach(() => {
   mockGetRandomSongs.mockReset();
   mockGetRandomSongsFiltered.mockReset();
-  mockGetSimilarSongs.mockReset();
   mockGetSimilarSongs2.mockReset();
+  mockFetchSimilarSongsOrRandom.mockReset();
   mockGetOfflineSongsByGenre.mockReset();
   mockGetOfflineSongsAll.mockReset();
+});
+
+afterEach(() => {
+  jest.restoreAllMocks();
 });
 
 /* ------------------------------------------------------------------ */
@@ -572,18 +580,21 @@ describe('fetchMixSongs', () => {
     expect(mockGetRandomSongs).toHaveBeenCalledWith(20);
   });
 
-  it('fetches similar songs for a song', async () => {
-    mockGetSimilarSongs.mockResolvedValue(songs);
+  it('fetches and shuffles the shared similar-to-song result', async () => {
+    mockFetchSimilarSongsOrRandom.mockResolvedValue(songs);
+    const shuffle = jest.spyOn(arrayHelpers, 'shuffleArray').mockReturnValue([...songs].reverse());
+
     const result = await fetchMixSongs({ type: 'similarToSong', songId: 's-1', count: 20 });
-    expect(result.length).toBe(2);
-    expect(mockGetSimilarSongs).toHaveBeenCalledWith('s-1', 20);
+    expect(result).toEqual([...songs].reverse());
+    expect(mockFetchSimilarSongsOrRandom).toHaveBeenCalledWith('s-1', 20);
+    expect(shuffle).toHaveBeenCalledWith(songs);
   });
 
-  it('falls back to random when similarToSong returns empty', async () => {
-    mockGetSimilarSongs.mockResolvedValue([]);
-    mockGetRandomSongs.mockResolvedValue(songs);
+  it('returns an empty shared similar-to-song result', async () => {
+    mockFetchSimilarSongsOrRandom.mockResolvedValue([]);
     const result = await fetchMixSongs({ type: 'similarToSong', songId: 's-1', count: 20 });
-    expect(result).toEqual(songs);
+    expect(result).toEqual([]);
+    expect(mockGetRandomSongs).not.toHaveBeenCalled();
   });
 
   it('blends multiple genres', async () => {

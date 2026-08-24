@@ -81,6 +81,7 @@ export function PlayerTabletPortrait() {
   const songCoverArtId = useSongCoverArt(currentTrack);
   const currentTrackIndex = playerStore((s) => s.currentTrackIndex);
   const queue = playerStore((s) => s.queue);
+  const queueOrigins = playerStore((s) => s.queueOrigins);
   const offlineMode = offlineModeStore((s) => s.offlineMode);
 
   const [mode, setMode] = useState<PlayerMode>('queue');
@@ -264,6 +265,7 @@ export function PlayerTabletPortrait() {
               mode={mode}
               currentTrack={currentTrack}
               queue={queue}
+              queueOrigins={queueOrigins}
               currentTrackIndex={currentTrackIndex}
               colors={colors}
               queueColors={queueColors}

@@ -10,6 +10,8 @@ beforeEach(() => {
     currentTrackIndex: null,
     playbackState: 'idle',
     queue: [],
+    queueOrigins: [],
+    autoplayLoading: false,
     position: 0,
     duration: 0,
     bufferedPosition: 0,
@@ -49,6 +51,20 @@ describe('playerStore', () => {
     const queue = [mockTrack];
     playerStore.getState().setQueue(queue);
     expect(playerStore.getState().queue).toBe(queue);
+    expect(playerStore.getState().queueOrigins).toEqual(['manual']);
+  });
+
+  it('setQueue keeps aligned origins and rejects a mismatched list', () => {
+    playerStore.getState().setQueue([mockTrack], ['autoplay']);
+    expect(playerStore.getState().queueOrigins).toEqual(['autoplay']);
+
+    playerStore.getState().setQueue([mockTrack], []);
+    expect(playerStore.getState().queueOrigins).toEqual(['manual']);
+  });
+
+  it('setAutoplayLoading updates the loading flag', () => {
+    playerStore.getState().setAutoplayLoading(true);
+    expect(playerStore.getState().autoplayLoading).toBe(true);
   });
 
   describe('setProgress', () => {

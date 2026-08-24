@@ -13,6 +13,7 @@ import {
 } from '../../store/playbackSettingsStore';
 import { applyPlaybackMode } from '../../services/playerService';
 import { DropdownRow, type DropdownOption } from './DropdownRow';
+import { AutoplayCard } from './AutoplayCard';
 import { SettingsSectionTitle } from './SettingsSectionTitle';
 
 /**
@@ -68,7 +69,7 @@ export function PlaybackModeCard() {
           value={mode}
           options={modeOptions}
           onChange={handleModeChange}
-          isLast={!isCrossfade}
+          isLast={false}
         />
         {isCrossfade && (
           <DropdownRow
@@ -76,9 +77,10 @@ export function PlaybackModeCard() {
             value={durationMs}
             options={durationOptions}
             onChange={handleDurationChange}
-            isLast
+            isLast={false}
           />
         )}
+        <AutoplayCard />
       </View>
     </View>
   );

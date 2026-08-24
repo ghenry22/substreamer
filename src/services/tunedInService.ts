@@ -4,10 +4,10 @@ import type { IoniconsName } from '../utils/iconNames';
 import {
   getRandomSongs,
   getRandomSongsFiltered,
-  getSimilarSongs,
   getSimilarSongs2,
   type Child,
 } from './subsonicService';
+import { fetchSimilarSongsOrRandom } from './recommendationService';
 import { getOfflineSongsByGenre, getOfflineSongsAll } from './searchService';
 import { shuffleArray } from '../utils/arrayHelpers';
 import { splitGenreValue } from '../utils/genreHelpers';
@@ -458,10 +458,8 @@ export async function fetchMixSongs(strategy: FetchStrategy, listLength = 20): P
         return (await getRandomSongs(listLength)) ?? [];
       }
       case 'similarToSong': {
-        const songs = await getSimilarSongs(strategy.songId, strategy.count);
-        if (songs.length > 0) return shuffleArray([...songs]);
-        // Fallback to random
-        return (await getRandomSongs(listLength)) ?? [];
+        const songs = await fetchSimilarSongsOrRandom(strategy.songId, strategy.count);
+        return shuffleArray([...songs]);
       }
       case 'multiGenreBlend': {
         const results: Child[] = [];

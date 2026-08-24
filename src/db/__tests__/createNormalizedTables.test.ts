@@ -65,6 +65,35 @@ describe('ensureNormalizedSchema', () => {
     );
   });
 
+  it('adds new queue columns to an existing database without losing rows', () => {
+    const db = getDb();
+    expect(db).not.toBeNull();
+    ensureNormalizedSchema(db!);
+    db!.runSync("DELETE FROM queue_snapshots WHERE id = 'schema-upgrade';");
+    db!.execSync('ALTER TABLE queue_snapshot_songs DROP COLUMN origin;');
+    db!.runSync(
+      `INSERT INTO queue_snapshots
+         (id, kind, created_at, current_index, track_count)
+       VALUES ('schema-upgrade', 'live', 1, 0, 1);`,
+    );
+    db!.runSync(
+      `INSERT INTO queue_snapshot_songs (snapshot_id, pos, song_id, title)
+       VALUES ('schema-upgrade', 0, 'song-1', 'Existing song');`,
+    );
+
+    ensureNormalizedSchema(db!);
+
+    const columns = db!
+      .getAllSync<{ name: string }>('PRAGMA table_info("queue_snapshot_songs")')
+      .map((column) => column.name);
+    const row = db!.getFirstSync<{ title: string; origin: string | null }>(
+      "SELECT title, origin FROM queue_snapshot_songs WHERE snapshot_id = 'schema-upgrade';",
+    );
+    expect(columns).toContain('origin');
+    expect(row).toEqual({ title: 'Existing song', origin: null });
+    db!.runSync("DELETE FROM queue_snapshots WHERE id = 'schema-upgrade';");
+  });
+
   it('drops the favourites remainder tables on logout (they are server-scoped)', () => {
     const droppable = new Set(normalizedTableNames());
     for (const t of [

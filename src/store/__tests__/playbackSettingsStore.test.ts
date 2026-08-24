@@ -8,6 +8,7 @@ beforeEach(() => {
     streamFormat: 'raw',
     estimateContentLength: false,
     repeatMode: 'off',
+    autoplayEnabled: false,
     playbackRate: 1,
     downloadMaxBitRate: 320,
     downloadFormat: 'mp3',
@@ -45,6 +46,11 @@ describe('playbackSettingsStore', () => {
   it('setRepeatMode updates repeat mode', () => {
     playbackSettingsStore.getState().setRepeatMode('all');
     expect(playbackSettingsStore.getState().repeatMode).toBe('all');
+  });
+
+  it('setAutoplayEnabled updates autoplay', () => {
+    playbackSettingsStore.getState().setAutoplayEnabled(true);
+    expect(playbackSettingsStore.getState().autoplayEnabled).toBe(true);
   });
 
   it('setPlaybackRate updates rate', () => {
