@@ -1,0 +1,54 @@
+name: Create release
+
+on:
+  push:
+    tags:
+      - "*"
+  workflow_dispatch: { }
+permissions:
+  contents: write
+
+jobs:
+  github:
+    name: Release pushed tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        
+      - name: Install expo
+        run: npm install expo
+
+      - name: Run prebuild with expo only for android
+        run: npx expo prebuild -p android
+      - name: set up java - 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Setup gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build APK
+        run: |
+          cd android
+          ./gradlew --no-daemon assembleRelease -Dorg.gradle.jvmargs='-Xmx4g'
+      - name: Update CHANGELOG
+        id: changelog
+        uses: requarks/changelog-action@v1
+        with:
+          token: ${{ github.token }}
+          tag: ${{ github.ref_name }}
+          writeToFile: false
+      - name: Create release
+        uses: ncipollo/release-action@v1
+        id: create_release
+        with:
+          generateReleaseNotes: true
+          artifacts: "./android/app/build/outputs/apk/release/*.apk"
+          makeLatest: true
+          name: ${{ github.ref_name }}
+          body: ${{ steps.changelog.outputs.changes }}
+          tag: ${{ github.ref_name }}
