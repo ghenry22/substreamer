@@ -1209,6 +1209,15 @@ async function cacheAllSizes(coverArtId: string): Promise<void> {
   // their coverArtId to `undefined` before calling here.
   if (isSentinelCoverArtId(coverArtId)) return;
 
+  // Remote-failed ids (server error, or a source that won't decode) park on
+  // the placeholder — this gate stops the render→report→re-enqueue cycle
+  // churning the network on them. Recovery is explicit and clears the set on
+  // purpose: server switch, offline→online, app foreground, manual refresh.
+  if (failedRemoteIds.has(coverArtId)) {
+    logImageCache(`cacheAllSizes id=${coverArtId} remote-failed-skip`);
+    return;
+  }
+
   // DB is the source of truth for "is this cover complete?" — never the
   // in-memory cache (which raced the boot index-build and skipped variants).
   const cachedSizes = await cachedSizesForCover(coverArtId);
@@ -1292,10 +1301,17 @@ export async function reportBadRemote(coverArtId: string): Promise<void> {
   }
   if (failedRemoteIds.has(coverArtId)) return;
   logImageCache(`reportBadRemote id=${coverArtId}`);
+  flagRemoteFailed(coverArtId);
+}
+
+/**
+ * Add the id to `failedRemoteIds` and notify its subscribers directly —
+ * bypassing `notifyImageCacheUpdate`, whose "fresh variant landed" branch
+ * would delete the flag we just set. Idempotent: a repeat call is a no-op.
+ */
+function flagRemoteFailed(coverArtId: string): void {
+  if (failedRemoteIds.has(coverArtId)) return;
   failedRemoteIds.add(coverArtId);
-  // Notify subscribers directly — bypass `notifyImageCacheUpdate` so the
-  // helper's "delete from failedRemoteIds" branch doesn't undo what we
-  // just did.
   const listeners = cacheUpdateListeners.get(coverArtId);
   if (!listeners) return;
   for (const listener of listeners) {
@@ -1527,7 +1543,7 @@ async function downloadAndCacheImage(coverArtId: string): Promise<void> {
     `downloadAndCacheImage id=${coverArtId} resize-needed=[${needed.join(',')}] source-cached=${sourceWasCached}`,
   );
   for (const size of needed) {
-    await generateResizedVariant(source600Uri, coverArtId, size, subDir);
+    await generateResizedVariant(source600Uri, coverArtId, size, subDir, sourceWasCached);
   }
 }
 
@@ -1714,7 +1730,9 @@ async function downloadSourceImage(
  * devices). On the threshold strike, the row is purged: source bytes
  * are most likely corrupt or in an unsupported format, and re-running
  * the same decode would just re-fail. Counter resets on success or
- * after a purge so a fresh download can be evaluated cleanly.
+ * after a purge so a fresh download can be evaluated cleanly; when the
+ * purged source was itself a fresh download, the id is additionally
+ * flagged remote-failed, because re-fetching would return the same bytes.
  */
 const variantFailureCount = new Map<string, number>();
 const MAX_VARIANT_FAILURES = 3;
@@ -1726,12 +1744,17 @@ const MAX_VARIANT_FAILURES = 3;
  * `UIImage(contentsOfFile:)` (iOS) — no Glide, no coroutine callback
  * surface, so the `expo-image-manipulator` double-resume crash that
  * surfaces on Android 16 is structurally impossible here.
+ *
+ * `sourceWasCached` distinguishes a stale local copy (its purge hands the
+ * next run a fresh download to re-evaluate) from bytes the server just
+ * served (a threshold strike on those is terminal — see the catch block).
  */
 async function generateResizedVariant(
   sourceUri: string,
   coverArtId: string,
   size: number,
   subDir: Directory,
+  sourceWasCached: boolean,
 ): Promise<void> {
   const fileName = `${size}.jpg`;
   const tmpName = `${fileName}.tmp`;
@@ -1804,13 +1827,18 @@ async function generateResizedVariant(
       );
       logImageCache(`resize id=${coverArtId} threshold-purge`);
       await purgeCoverArtRows(coverArtId);
-      // No further server-side recovery is attempted. The Subsonic spec
-      // for `getCoverArt` accepts only `id` and `size`, so a `format=jpg`
-      // query is a no-op — the server returns the same un-decodable
-      // bytes. User-visible recovery is handled
-      // upstream in CachedImage's source-size fallback, which renders
-      // the (decodable) 600 source in the smaller slot when smaller
-      // variants are unavailable.
+      // A source that was freshly downloaded from the server in this run
+      // and still won't decode is a server-side defect: re-fetching returns
+      // the same bytes, so no further server-side recovery is possible.
+      // Flag the id remote-failed — CachedImage parks on the placeholder,
+      // the cacheAllSizes gate stops the re-download, and the standard
+      // recovery paths (server switch, offline→online, foreground, manual
+      // refresh) un-stick it. A stale local copy is NOT flagged: its purge
+      // hands the next run a fresh download to re-evaluate.
+      if (!sourceWasCached) {
+        logImageCache(`resize id=${coverArtId} terminal remote-failed`);
+        flagRemoteFailed(coverArtId);
+      }
     }
   }
 }
