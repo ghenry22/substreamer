@@ -77,7 +77,8 @@
       "./plugins/fix-jvm-target",
       "./plugins/large-heap",
       "./plugins/set-gradle-version",
-      "./plugins/with-disable-sync-mount-props-override",
+      "./plugins/with-gradle-memory",
+      "./plugins/with-proguard-optimize",
       "./modules/expo-ssl-trust/plugin",
       "./modules/expo-backup-exclusions/plugin",
       [
@@ -112,6 +113,7 @@
       ],
       "./plugins/location-feature-optional",
       "./plugins/strip-push-entitlement",
+      "./plugins/with-disable-sync-mount-props-override",
       "./plugins/with-android-app-actions",
       "./plugins/with-carplay-appearance-fix",
       "expo-notifications",
