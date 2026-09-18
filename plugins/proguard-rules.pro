@@ -11,11 +11,9 @@
 # Expo native modules (incl. expo-modules-core reflection paths)
 -keep class expo.modules.** { *; }
 
-# react-native-track-player (DoubleSymmetry's headless audio service)
--keep class com.doublesymmetry.** { *; }
-
-# Media3 / ExoPlayer — used by react-native-track-player. Stripping these is
-# the most common cause of release-only crashes when audio playback starts.
+# Media3 / ExoPlayer — the playback engine behind react-native-queue-player.
+# Stripping these is the most common cause of release-only crashes when audio
+# playback starts.
 -keep class androidx.media3.** { *; }
 -keep interface androidx.media3.** { *; }
 -dontwarn androidx.media3.**
@@ -46,3 +44,9 @@
 # JSSE / SSL — keep our custom TrustManager wiring (expo-ssl-trust module)
 -keep class * implements javax.net.ssl.X509TrustManager { *; }
 -keep class * implements javax.net.ssl.HostnameVerifier { *; }
+
+# Crash-report readability. AGP's common config keeps annotations and Signature but NOT
+# line numbers, and R8 optimization inlines frames — without these, a Play Console stack
+# trace de-obfuscates to names with no lines, which is not enough to act on.
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile

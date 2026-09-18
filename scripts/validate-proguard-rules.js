@@ -17,19 +17,19 @@ const RULES_PATH = path.join(__dirname, '..', 'plugins', 'proguard-rules.pro');
 
 const REQUIRED = [
   {
+    name: 'line-number attributes',
+    pattern: /^-keepattributes\s+SourceFile,LineNumberTable/m,
+    why: 'R8 optimization inlines frames; without these a Play crash has no line numbers',
+  },
+  {
     name: 'expo.modules keep',
     pattern: /^-keep\s+class\s+expo\.modules\.\*\*\s+\{\s*\*;\s*\}/m,
     why: 'Expo module reflection paths',
   },
   {
-    name: 'react-native-track-player (com.doublesymmetry) keep',
-    pattern: /^-keep\s+class\s+com\.doublesymmetry\.\*\*\s+\{\s*\*;\s*\}/m,
-    why: 'Headless audio service entry points',
-  },
-  {
     name: 'androidx.media3 keep',
     pattern: /^-keep\s+class\s+androidx\.media3\.\*\*\s+\{\s*\*;\s*\}/m,
-    why: 'Media3 / ExoPlayer used by RNTP — release-only playback crashes if stripped',
+    why: 'Media3 / ExoPlayer — release-only playback crashes if stripped',
   },
   {
     name: 'okhttp3 keep',

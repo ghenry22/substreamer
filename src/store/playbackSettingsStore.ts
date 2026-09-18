@@ -87,8 +87,10 @@ export type RemoteControlMode = 'skip-track' | 'skip-interval';
 /** Whether artist play/shuffle buttons use top songs or all songs across all albums. */
 export type ArtistPlayMode = 'topSongs' | 'allSongs';
 
-/** Track-count options for the RNQP lookahead cache (tracks prefetched ahead). */
-export const LOOKAHEAD_COUNTS = [3, 5, 10, 20] as const;
+/** Track-count options for the RNQP lookahead cache (tracks prefetched ahead).
+ *  `1` is for metered or tight-storage setups: still gapless into the next track,
+ *  without pulling a run of tracks the listener may skip past. */
+export const LOOKAHEAD_COUNTS = [1, 3, 5, 10, 20] as const;
 export type LookaheadCount = (typeof LOOKAHEAD_COUNTS)[number];
 
 /**
