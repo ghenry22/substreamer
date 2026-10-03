@@ -335,6 +335,8 @@ import {
   prefetchCoverArt,
   __resetRetryStateForTest,
   reportBadRemote,
+  reportBadCache,
+  retryRemoteImagesForServerSwitch,
   isRemoteFailed,
 } from '../imageCacheService';
 
@@ -706,6 +708,8 @@ describe('download pipeline — cacheAllSizes + processQueue', () => {
     );
     // addFile was called for the source + 3 resized variants
     expect(mockUpsertCachedImage).toHaveBeenCalled();
+    // A decoding fresh source never trips the terminal flag.
+    expect(isRemoteFailed(id)).toBe(false);
   });
 
   it('does NOT cache an HTTP-200 XML error envelope as an image', async () => {
@@ -1083,6 +1087,10 @@ describe('generateResizedVariant — 3-failure circuit breaker purges row', () =
     expect(mockDeleteCachedImagesForCoverArt).toHaveBeenCalledWith(id);
     expect(mockDbRows.has(mockDbKey(id, 600))).toBe(false);
     expect(mockFileExistsMap.get(fileMockName(id, '600.jpg'))).toBeFalsy();
+    // A CACHED source that won't decode is local-state corruption, not a
+    // server defect: the purge hands the next run a fresh download to
+    // re-evaluate — no terminal flag.
+    expect(isRemoteFailed(id)).toBe(false);
   });
 
   it('does not purge when failures stay below the threshold', async () => {
@@ -1112,6 +1120,71 @@ describe('generateResizedVariant — 3-failure circuit breaker purges row', () =
   // server simply returned the same un-decodable bytes). The retry
   // machinery + tests have been removed; CachedImage's source-size
   // fallback handles user-visible recovery instead.
+});
+
+describe('generateResizedVariant — terminal flag on a fresh source that won\'t decode', () => {
+  /** Drive a fresh (uncached) source download: no 600 row, fetch resolves. */
+  function mockFreshSourceFetch(): void {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'image/jpeg' },
+      arrayBuffer: () => Promise.resolve(jpegBuffer(1024)),
+    });
+  }
+
+  it('flags the id remote-failed after three strikes on a freshly downloaded source', async () => {
+    const id = 'terminal-fresh';
+    mockFreshSourceFetch();
+    mockResizeImageToFileAsync.mockRejectedValue(new Error('persistent decode failure'));
+
+    await ensureCached(id);
+
+    expect(mockResizeImageToFileAsync).toHaveBeenCalledTimes(3);
+    expect(mockDeleteCachedImagesForCoverArt).toHaveBeenCalledWith(id);
+    expect(mockDbRows.has(mockDbKey(id, 600))).toBe(false);
+    expect(isRemoteFailed(id)).toBe(true);
+  });
+
+  it('does not re-download a terminally flagged id from any enqueue path', async () => {
+    const id = 'terminal-gated';
+    mockFreshSourceFetch();
+    mockResizeImageToFileAsync.mockRejectedValue(new Error('persistent decode failure'));
+
+    await ensureCached(id);
+    expect(isRemoteFailed(id)).toBe(true);
+
+    const fetches = mockFetch.mock.calls.length;
+    // Both component-driven re-entries funnel through the cacheAllSizes gate.
+    await ensureCached(id);
+    await reportBadCache(id, 300);
+
+    expect(mockFetch.mock.calls.length).toBe(fetches);
+    expect(mockResizeImageToFileAsync).toHaveBeenCalledTimes(3);
+  });
+
+  it('re-arms the download path once the flag is cleared', async () => {
+    const id = 'terminal-recovery';
+    mockFreshSourceFetch();
+    mockResizeImageToFileAsync.mockRejectedValue(new Error('persistent decode failure'));
+
+    await ensureCached(id);
+    expect(isRemoteFailed(id)).toBe(true);
+
+    // Server switch / recovery paths clear the set on purpose.
+    retryRemoteImagesForServerSwitch();
+    expect(isRemoteFailed(id)).toBe(false);
+
+    mockFetch.mockClear();
+    mockResizeImageToFileAsync.mockClear();
+    mockFreshSourceFetch();
+    mockResizeImageToFileAsync.mockRejectedValue(new Error('persistent decode failure'));
+    await ensureCached(id);
+
+    // One more bounded attempt — re-terminates if the server still serves
+    // the bad bytes, but the cycle no longer self-sustains.
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(isRemoteFailed(id)).toBe(true);
+  });
 });
 
 describe('listCachedImages — file names from DB row shape', () => {
