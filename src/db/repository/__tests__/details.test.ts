@@ -90,6 +90,19 @@ describe('getAlbumDetail', () => {
     expect(detail?.songs[0].genres).toEqual(['Rock', 'Blues']);
     expect(detail?.songs[0].contributors?.[0].artist?.name).toBe('Lennon');
   });
+
+  it('preserves displayComposer through the round trip — the Album View offline/cached read path', async () => {
+    // album-detail.tsx reads a cache hit straight through getAlbumDetail, so this is the
+    // exact shape its TrackRow rows render from when offline or opened from cache.
+    await upsertAlbums(db(), [album('al1', 'Classical Sampler', { artist: 'Various Artists' })]);
+    await upsertSongs(db(), [
+      song('s1', 'Air on the G String', { albumId: 'al1', track: 1, displayComposer: 'J.S. Bach' }),
+      song('s2', 'Untitled Study', { albumId: 'al1', track: 2 }),
+    ]);
+    const detail = await getAlbumDetail(db(), 'al1');
+    expect(detail?.songs[0].displayComposer).toBe('J.S. Bach');
+    expect(detail?.songs[1].displayComposer).toBeUndefined();
+  });
 });
 
 describe('artist detail parts', () => {

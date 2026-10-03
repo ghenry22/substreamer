@@ -221,6 +221,7 @@ export function AlbumDetailScreen() {
             trackNumber={item.track.track != null ? `${item.track.track}. ` : undefined}
             colors={colors}
             songs={allSongs}
+            showComposer
           />
         </View>
       );
