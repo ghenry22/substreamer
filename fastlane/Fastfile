@@ -119,7 +119,7 @@ platform :android do
       skip_upload_apk: true,
       skip_upload_images: skip_images,
       skip_upload_screenshots: skip_images,
-      skip_upload_changelogs: true,
+      skip_upload_changelogs: false,
       metadata_path: "./fastlane/metadata/android",
       track: "beta"
     )
