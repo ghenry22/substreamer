@@ -22,6 +22,7 @@ import { authStore } from '../store/authStore';
 import { onboardingStore } from '../store/onboardingStore';
 import { isDbHealthy } from '../store/persistence';
 import { serverInfoStore } from '../store/serverInfoStore';
+import { ensureAndroidLocalNetworkPermission } from '../utils/androidLocalNetworkPermission';
 
 import {
   getCertificateInfo,
@@ -165,6 +166,13 @@ export function LoginScreen() {
     }
     setError(null);
     setLoading(true);
+
+    const localNetwork = await ensureAndroidLocalNetworkPermission();
+    if (localNetwork === 'denied') {
+      setLoading(false);
+      setError(t('localNetworkPermissionDenied'));
+      return;
+    }
 
     const result = await subsonicLogin(url, user, pass, legacyAuth);
 

@@ -524,6 +524,7 @@
   "trustServerCertificate": "Trust server certificate",
   "trustServerCertificateHint": "Manually trust a self-signed or custom certificate",
   "logIn": "Log in",
+  "localNetworkPermissionDenied": "Local network access is needed to reach this server. Allow it in Settings > Apps > Substreamer > Nearby devices.",
   "fillAllFields": "Please fill in all fields.",
   "connectionFailed": "Connection failed",
   "connectionFailedAfterTrust": "Connection failed after trusting certificate.",

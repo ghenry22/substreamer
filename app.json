@@ -51,6 +51,7 @@
       },
       "permissions": [
         "ACCESS_FINE_LOCATION",
+        "ACCESS_LOCAL_NETWORK",
         "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
         "POST_NOTIFICATIONS"
       ],
