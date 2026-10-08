@@ -2337,6 +2337,49 @@ describe('download pipeline', () => {
     expect(musicCacheStore.getState().cachedSongs['fmt-t1'].suffix).toBe('mp3');
   });
 
+  it('re-downloads a cached song whose format no longer matches downloadFormat', async () => {
+    mockFileExists = true;
+    mockFileSize = 5000;
+    mockDownloadFileAsyncWithProgress.mockResolvedValue(undefined);
+    playbackSettingsStore.setState({ downloadFormat: 'mp3', downloadMaxBitRate: 192 } as any);
+
+    seedSong(makeCachedSong('s1', { suffix: 'm4a', albumId: 'album-A' }));
+    seedItem('album-A', { type: 'album', songIds: ['s1'] });
+
+    mockFetchPlaylist.mockResolvedValue({
+      id: 'pl-fmt-changed',
+      name: 'X',
+      entry: [makeChild('s1', { suffix: 'm4a', albumId: 'album-A' })],
+    });
+    await enqueuePlaylistDownload('pl-fmt-changed');
+    await waitForQueueIdle();
+
+    expect(mockDownloadFileAsyncWithProgress).toHaveBeenCalledTimes(1);
+    expect(musicCacheStore.getState().cachedSongs['s1'].suffix).toBe('mp3');
+    expect(fileDeletes.some((u) => u.endsWith('/album-A/s1.m4a'))).toBe(true);
+  });
+
+  it('still reuses the cached copy when its format matches downloadFormat', async () => {
+    mockFileExists = true;
+    mockFileSize = 5000;
+    mockDownloadFileAsyncWithProgress.mockResolvedValue(undefined);
+    playbackSettingsStore.setState({ downloadFormat: 'mp3', downloadMaxBitRate: 192 } as any);
+
+    seedSong(makeCachedSong('s1', { suffix: 'mp3', albumId: 'album-A' }));
+    seedItem('album-A', { type: 'album', songIds: ['s1'] });
+
+    mockFetchPlaylist.mockResolvedValue({
+      id: 'pl-fmt-match',
+      name: 'X',
+      entry: [makeChild('s1', { suffix: 'flac', albumId: 'album-A' }), makeChild('s2', { albumId: 'album-B' })],
+    });
+    await enqueuePlaylistDownload('pl-fmt-match');
+    await waitForQueueIdle();
+
+    expect(mockDownloadFileAsyncWithProgress).toHaveBeenCalledTimes(1);
+    expect(musicCacheStore.getState().cachedSongs['s1'].suffix).toBe('mp3');
+  });
+
   it('errors when getDownloadStreamUrl returns null', async () => {
     mockDownloadFileAsyncWithProgress.mockResolvedValue(undefined);
     (getDownloadStreamUrl as jest.Mock).mockReturnValue(null);
