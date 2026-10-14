@@ -17,6 +17,7 @@
     "validate:modules": "node scripts/validate-module-inventory.js",
     "test:watch": "jest --watchAll",
     "test:modules": "scripts/test-modules.sh",
+    "test:ios-large-queue": "scripts/verify-ios-large-queue-performance.sh",
     "build:modules": "scripts/build-modules.sh",
     "clean:rnqp": "rm -rf node_modules/react-native-queue-player/android/.cxx node_modules/react-native-queue-player/android/build",
     "test:coverage": "jest --coverage --coverageReporters=text --coverageReporters=html",
