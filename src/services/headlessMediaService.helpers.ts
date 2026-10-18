@@ -10,6 +10,7 @@
  *   az:albums:<L>[:<lo>-<hi>]                    — Albums letter buckets
  *   album:<id> / playlist:<id>                   — drill → tracks
  *   track:album:<albumId>:<i> / track:playlist:<playlistId>:<i> / track:fav:<i>
+ *   shuffle:<playlistId>                         — "Shuffle play" row inside a playlist
  *
  * `playable` and `hasChildren` are mutually exclusive (RNQP): list/album/
  * playlist/az rows are `hasChildren`; track rows are `playable`.
@@ -38,6 +39,7 @@ export const albumTrackId = (albumIdVal: string, index: number): string =>
   `track:album:${albumIdVal}:${index}`;
 export const playlistTrackId = (playlistIdVal: string, index: number): string =>
   `track:playlist:${playlistIdVal}:${index}`;
+export const playlistShuffleId = (id: string): string => `shuffle:${id}`;
 export const favTrackId = (index: number): string => `track:fav:${index}`;
 
 /* ------------------------------------------------------------------ */
@@ -49,6 +51,7 @@ export type CarMediaId =
   | { kind: 'list'; list: string }
   | { kind: 'album'; albumId: string }
   | { kind: 'playlist'; playlistId: string }
+  | { kind: 'shuffle'; playlistId: string }
   | { kind: 'azLetter'; letter: string }
   | { kind: 'azBucket'; letter: string; lo: string; hi: string }
   | { kind: 'track'; ctx: 'album' | 'playlist' | 'fav'; ctxId: string; index: number }
@@ -74,6 +77,8 @@ export function parseMediaId(id: string): CarMediaId {
       return { kind: 'album', albumId: rest };
     case 'playlist':
       return { kind: 'playlist', playlistId: rest };
+    case 'shuffle':
+      return rest === '' ? { kind: 'unknown', raw: id } : { kind: 'shuffle', playlistId: rest };
     case 'az': {
       // rest = `albums:<L>` or `albums:<L>:<lo>-<hi>`
       const parts = rest.split(':');

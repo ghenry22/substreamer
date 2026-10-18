@@ -27,6 +27,7 @@ import { getTrackPlayer, registerPlaybackService, SectionIcon } from 'react-nati
 import type { AlbumID3, Child, Playlist } from './subsonicService';
 import { buildPlayableQueue } from './playerHelpers';
 import { playTrack, initPlayer } from './playerService';
+import { shuffleArray } from '../utils/arrayHelpers';
 import { initScrobbleService } from './scrobbleService';
 import { resolveDisplayImage, resolveDisplayImages } from './imageCacheService';
 import { coverArtForAlbum, coverArtForPlaylist } from '../utils/coverArtId';
@@ -73,6 +74,7 @@ import {
   playlistId,
   albumTrackId,
   playlistTrackId,
+  playlistShuffleId,
   favTrackId,
   parseMediaId,
   albumLetterRows,
@@ -377,11 +379,23 @@ async function resolveBrowseChildren(parentId: string): Promise<BrowseItem[]> {
       return Promise.all(albumsForBucket(await azItems(), p.letter, p.lo, p.hi).map(toAzAlbumRow));
     case 'album':
       return trackRows(await albumSongs(p.albumId), (i) => albumTrackId(p.albumId, i));
-    case 'playlist':
-      return trackRows(
-        (await playlistSongs(p.playlistId)).slice(0, CAR_MAX_ITEMS_PER_NODE),
-        (i) => playlistTrackId(p.playlistId, i),
-      );
+    case 'playlist': {
+      const songs = await playlistSongs(p.playlistId);
+      if (songs.length === 0) return [];
+      const shuffleRow: BrowseItem = {
+        id: playlistShuffleId(p.playlistId),
+        title: i18n.t('shufflePlay'),
+        playable: true,
+        hasChildren: false,
+      };
+      return [
+        shuffleRow,
+        ...(await trackRows(
+          songs.slice(0, CAR_MAX_ITEMS_PER_NODE - 1),
+          (i) => playlistTrackId(p.playlistId, i),
+        )),
+      ];
+    }
     default:
       return [];
   }
@@ -413,6 +427,10 @@ async function resolvePlayback(mediaId: string): Promise<ResolvedPlayback> {
     return { queue: [], startIndex: 0, sourcePlaylistId: null };
   }
   const p = parseMediaId(mediaId);
+  if (p.kind === 'shuffle') {
+    const queue = shuffleArray(await playlistSongs(p.playlistId));
+    return { queue, startIndex: 0, sourcePlaylistId: p.playlistId };
+  }
   if (p.kind === 'track') {
     if (p.ctx === 'album') {
       const queue = await albumSongs(p.ctxId);
