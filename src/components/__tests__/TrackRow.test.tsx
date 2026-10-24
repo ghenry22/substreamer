@@ -293,6 +293,58 @@ describe('TrackRow — offline-unplayable disabled state', () => {
   });
 });
 
+describe('TrackRow — composer subtitle line', () => {
+  it('showComposer true + displayComposer set: composer text renders', () => {
+    const trackWithComposer = { ...track, displayComposer: 'J.S. Bach' } as Child;
+    const { getByText } = render(
+      <TrackRow track={trackWithComposer} colors={colors} onPress={jest.fn()} showComposer />,
+    );
+    expect(getByText('J.S. Bach')).toBeTruthy();
+  });
+
+  it('showComposer true + no displayComposer: no composer text, artist not shown in its place', () => {
+    const { queryByText, getAllByText } = render(
+      <TrackRow track={track} colors={colors} onPress={jest.fn()} showComposer />,
+    );
+    // Artist line still renders once (its normal slot); it must not also
+    // appear a second time standing in for the missing composer line.
+    expect(getAllByText('Test Artist')).toHaveLength(1);
+    expect(queryByText(/Bach/)).toBeNull();
+  });
+
+  it('showComposer false + displayComposer set: no composer text (other screens unaffected)', () => {
+    const trackWithComposer = { ...track, displayComposer: 'J.S. Bach' } as Child;
+    const { queryByText } = render(
+      <TrackRow track={trackWithComposer} colors={colors} onPress={jest.fn()} />,
+    );
+    expect(queryByText('J.S. Bach')).toBeNull();
+  });
+
+  it('renders a multi-composer string verbatim', () => {
+    const trackWithComposers = { ...track, displayComposer: 'Bach, Handel' } as Child;
+    const { getByText } = render(
+      <TrackRow track={trackWithComposers} colors={colors} onPress={jest.fn()} showComposer />,
+    );
+    expect(getByText('Bach, Handel')).toBeTruthy();
+  });
+
+  it('composer Text truncates to one line', () => {
+    const trackWithComposer = { ...track, displayComposer: 'J.S. Bach' } as Child;
+    const { getByText } = render(
+      <TrackRow track={trackWithComposer} colors={colors} onPress={jest.fn()} showComposer />,
+    );
+    expect(getByText('J.S. Bach').props.numberOfLines).toBe(1);
+  });
+
+  it('composer Text exposes an accessibility label containing the localized "Composer"', () => {
+    const trackWithComposer = { ...track, displayComposer: 'J.S. Bach' } as Child;
+    const { getByText } = render(
+      <TrackRow track={trackWithComposer} colors={colors} onPress={jest.fn()} showComposer />,
+    );
+    expect(getByText('J.S. Bach').props.accessibilityLabel).toContain('Composer');
+  });
+});
+
 describe('TrackRow — optionsSource passthrough', () => {
   it('forwards optionsSource to moreOptionsStore.show on long press', () => {
     const { getByText } = render(
