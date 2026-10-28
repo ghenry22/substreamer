@@ -46,6 +46,7 @@ import { filterBarStore } from '../../store/filterBarStore';
 import { layoutPreferencesStore } from '../../store/layoutPreferencesStore';
 import { musicCacheStore } from '../../store/musicCacheStore';
 import { searchStore } from '../../store/searchStore';
+import { syncStatusStore } from '../../store/syncStatusStore';
 import { SearchScreen } from '../search';
 
 const artist = (id: string): ArtistID3 => ({ id, name: `Artist ${id}`, albumCount: 1 });
@@ -293,5 +294,19 @@ describe('SearchScreen — "no results" vs "filtered away"', () => {
     act(() => filterBarStore.setState({ favoritesOnly: false }));
     expect(r.queryByText('Nothing matches your filters')).toBeNull();
     expect(rowIds(r)).toEqual(expect.arrayContaining(['artist:ar1', 'album:al1']));
+  });
+
+  it('re-runs the active search when alwaysUseServerSearch flips', () => {
+    const spy = jest.fn().mockResolvedValue(undefined);
+    searchStore.setState({ query: 'pearl jam', performSearch: spy });
+    syncStatusStore.setState({ alwaysUseServerSearch: false });
+
+    render(<SearchScreen />);
+    expect(spy).not.toHaveBeenCalled();
+
+    act(() => {
+      syncStatusStore.setState({ alwaysUseServerSearch: true });
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 });

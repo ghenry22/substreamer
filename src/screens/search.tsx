@@ -33,6 +33,7 @@ import { getDb } from '../store/persistence/db';
 import { offlineModeStore } from '../store/offlineModeStore';
 import { recentSearchStore } from '../store/recentSearchStore';
 import { searchStore } from '../store/searchStore';
+import { syncStatusStore } from '../store/syncStatusStore';
 
 /* ------------------------------------------------------------------ */
 /*  Section data types                                                */
@@ -65,6 +66,7 @@ export function SearchScreen() {
   const loading = searchStore((s) => s.loading);
   const performSearch = searchStore((s) => s.performSearch);
   const offlineMode = offlineModeStore((s) => s.offlineMode);
+  const alwaysUseServerSearch = syncStatusStore((s) => s.alwaysUseServerSearch);
 
   useEffect(() => {
     if (!isFocused) return;
@@ -75,10 +77,10 @@ export function SearchScreen() {
     store.setHideFavorites(false);
   }, [isFocused]);
 
-  // Re-run the active search when offline/online mode flips. `searchLibrary` routes
-  // on the mode (offline = downloaded-only, no artists; online = full library +
-  // server), so a stale result set from the other mode must be replaced without the
-  // user having to re-type. Skip the mount pass (didModeMount) and empty queries.
+  // Re-run the active search when offline/online mode or server-search override flips.
+  // `searchLibrary` routes on these flags, so a stale result set from the previous
+  // mode must be replaced without the user having to re-type. Skip the mount pass
+  // (didModeMount) and empty queries.
   const didModeMount = useRef(false);
   useEffect(() => {
     if (!didModeMount.current) {
@@ -86,7 +88,7 @@ export function SearchScreen() {
       return;
     }
     if (searchStore.getState().query.trim()) void performSearch();
-  }, [offlineMode, performSearch]);
+  }, [offlineMode, alwaysUseServerSearch, performSearch]);
 
   const downloadedOnly = filterBarStore((s) => s.downloadedOnly);
   const favoritesOnly = filterBarStore((s) => s.favoritesOnly);

@@ -54,6 +54,7 @@ export function LibrarySyncCard() {
   // fetch is in progress.
   const isSyncing = librarySyncPhase === 'fetching' || songSyncPhase === 'syncing';
   const forceLegacySync = syncStatusStore((st) => st.forceLegacySync);
+  const alwaysUseServerSearch = syncStatusStore((st) => st.alwaysUseServerSearch);
   const albumSyncStrategy = syncStatusStore((st) => st.albumSyncStrategy);
   const librarySyncCursor = syncStatusStore((st) => st.librarySyncCursor);
   const songSyncFetched = syncStatusStore((st) => st.songSyncFetched);
@@ -102,6 +103,10 @@ export function LibrarySyncCard() {
   // re-derives instead of resuming the previous transport.
   const handleToggleLegacySync = useCallback((next: boolean) => {
     syncStatusStore.getState().setForceLegacySync(next);
+  }, []);
+
+  const handleToggleAlwaysUseServerSearch = useCallback((next: boolean) => {
+    syncStatusStore.getState().setAlwaysUseServerSearch(next);
   }, []);
 
   const handleForceResync = useCallback(() => {
@@ -287,6 +292,22 @@ export function LibrarySyncCard() {
             value={forceLegacySync}
             onValueChange={handleToggleLegacySync}
             disabled={isSyncing || isPaused}
+          />
+        </View>
+
+        <View style={[styles.legacyRow, { borderTopColor: colors.border }]}>
+          <View style={styles.legacyLabelWrap}>
+            <Text style={[settingsStyles.infoLabel, { color: colors.textPrimary }]}>
+              {t('alwaysUseServerSearch')}
+            </Text>
+            <Text style={[styles.legacyHint, { color: colors.textSecondary }]}>
+              {t('alwaysUseServerSearchHint')}
+            </Text>
+          </View>
+          <Switch
+            testID="always-use-server-search-switch"
+            value={alwaysUseServerSearch}
+            onValueChange={handleToggleAlwaysUseServerSearch}
           />
         </View>
 

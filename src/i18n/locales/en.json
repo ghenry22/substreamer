@@ -860,6 +860,8 @@
   "syncTransportBasic": "per-album sync",
   "legacySync": "Legacy sync",
   "legacySyncHint": "Force compatibility with older servers",
+  "alwaysUseServerSearch": "Always search server",
+  "alwaysUseServerSearchHint": "Include server search results even when library sync is complete",
   "fetchingSongs": "Fetching songs…",
   "librarySync": "Library sync",
   "syncedAlbums": "Synced albums",
