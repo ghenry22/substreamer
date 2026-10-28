@@ -62,9 +62,8 @@ function normalizeFormat(value: StreamFormat): StreamFormat {
 /** Repeat mode: off → repeat queue → repeat single track. */
 export type RepeatModeSetting = 'off' | 'all' | 'one';
 
-/** Supported playback speed multipliers. */
-export const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
-export type PlaybackRate = (typeof PLAYBACK_RATES)[number];
+/** Playback speed multiplier (0.5–2, in 0.1 increments). */
+export type PlaybackRate = number;
 
 /**
  * Pitch-correction quality mode applied when playing at non-1x speed:

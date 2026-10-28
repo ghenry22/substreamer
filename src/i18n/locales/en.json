@@ -1006,6 +1006,7 @@
   "repeatOneLabel": "Repeat current track. Tap to turn off repeat.",
   "playbackSpeedLabel": "Playback speed {{rate}}x. Tap to change.",
   "playbackSpeed": "Playback speed",
+  "playbackSpeedSlider": "Playback speed slider",
   "pitchCorrection": "Pitch correction",
   "pitchCorrectionNone": "None",
   "pitchCorrectionVoice": "Voice",
