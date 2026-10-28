@@ -13,6 +13,12 @@ let mockFileExists = false;
 let mockFileSize = 100;
 let mockDirExists = true;
 let mockDirCreateError: Error | null = null;
+// Bytes returned when a file's head is read (see MockFile.open). Defaults to the
+// 'fLaC' audio magic so a cached song with no real file on disk is still treated
+// as usable audio — preserving the pre-existing "cached row ⇒ downloaded"
+// behaviour. Tests that simulate a junk/error file set this to a JSON/XML head or
+// to `null` (open throws ⇒ readFileHead returns null ⇒ unusable).
+let mockFileHeadBytes: Uint8Array | null = new Uint8Array([0x66, 0x4c, 0x61, 0x43]);
 // Track File.delete calls so tests can assert orphan files get deleted.
 const fileDeletes: string[] = [];
 // Track Directory.delete calls so reconciliation tests can assert empty
@@ -52,6 +58,13 @@ jest.mock('expo-file-system', () => {
     delete = jest.fn(() => { fileDeletes.push(this.uri); });
     move = jest.fn();
     static downloadFileAsync = jest.fn().mockResolvedValue(undefined);
+    open = () => {
+      if (mockFileHeadBytes === null) throw new Error('ENOENT');
+      return {
+        readBytes: () => mockFileHeadBytes!,
+        close: () => {},
+      };
+    };
   }
   class MockDirectory {
     uri: string;
@@ -70,6 +83,7 @@ jest.mock('expo-file-system', () => {
   return {
     File: MockFile,
     Directory: MockDirectory,
+    FileMode: { ReadOnly: 'readOnly', WriteOnly: 'writeOnly', ReadWrite: 'readWrite' },
     Paths: { document: { uri: 'file:///document' } },
   };
 });
@@ -506,6 +520,7 @@ beforeEach(() => {
   mockFileExists = false;
   mockFileSize = 100;
   mockDirExists = true;
+  mockFileHeadBytes = new Uint8Array([0x66, 0x4c, 0x61, 0x43]); // 'fLaC' ⇒ usable audio
   fileDeletes.length = 0;
   dirDeletes.length = 0;
   fileDeletesAsync.length = 0;
@@ -1208,6 +1223,18 @@ describe('enqueueSongDownload', () => {
     expect(musicCacheStore.getState().downloadQueue).toHaveLength(0);
     expect(musicCacheStore.getState().cachedItems['song:s1']).toBeDefined();
     expect(musicCacheStore.getState().cachedItems['song:s1'].songIds).toEqual(['s1']);
+  });
+
+  it('re-downloads when the cached file is a junk/error document', async () => {
+    seedSong(makeCachedSong('s1', { albumId: 'a1' }));
+    // Simulate a 220-byte Subsonic error document on disk (HTTP 200 + failed JSON).
+    mockFileHeadBytes = new TextEncoder().encode('{"subsonic-response":{"status":"failed"');
+    mockCheckStorageLimit.mockReturnValue(true);
+    await enqueueSongDownload(makeChild('s1', { albumId: 'a1' }));
+    // The cached row's file is unusable, so the pool hit is NOT trusted — a real
+    // queue entry is created and the junk file will be replaced on download.
+    expect(musicCacheStore.getState().downloadQueue).toHaveLength(1);
+    expect(musicCacheStore.getState().downloadQueue[0].type).toBe('song');
   });
 
   it('enqueues download for a song not yet in the pool', async () => {

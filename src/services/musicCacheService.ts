@@ -35,6 +35,7 @@ import {
 } from 'expo-async-fs';
 import { checkStorageLimit } from './storageService';
 import { beginDownload, clearDownload } from './downloadSpeedTracker';
+import { isErrorDocument, isUsableAudioFile } from './downloadResponseGuard';
 import { fetchAlbumDetail, fetchPlaylistDetail } from './detailFetchService';
 import { favoritesStore } from '../store/favoritesStore';
 import { storageLimitStore } from '../store/storageLimitStore';
@@ -1001,29 +1002,34 @@ export async function enqueueSongDownload(song: Child): Promise<void> {
   // `Child` goes along, so the `cached_song_*` mirrors are rebuilt too.
   if (song.id in state.cachedSongs) {
     const existing = state.cachedSongs[song.id];
-    musicCacheStore.getState().upsertCachedSong(
-      { ...existing, ...promotedSongFieldsFromChild(song) },
-      song,
-    );
-    musicCacheStore.getState().upsertCachedItem(
-      {
-        itemId,
-        type: 'song',
-        name: song.title ?? existing.title,
-        artist: song.artist ?? existing.artist,
-        coverArtId: songCover,
-        expectedSongCount: 1,
-        parentAlbumId: song.albumId ?? existing.albumId,
-        lastSyncAt: Date.now(),
-        downloadedAt: Date.now(),
-        // Explicit individual-song download — a real holder.
-        derived: false,
-      },
-      [song.id],
-    );
-    insertCachedItemSong(itemId, 1, song.id);
-    registerTrackToItem(song.id, itemId);
-    return;
+    // The cached row may point at a junk file (e.g. a Subsonic error document
+    // served with HTTP 200). Only short-circuit when the file on disk is usable
+    // audio; otherwise fall through and re-download so the bad file is replaced.
+    if (await isUsableAudioFile(resolveSongFile(existing).uri)) {
+      musicCacheStore.getState().upsertCachedSong(
+        { ...existing, ...promotedSongFieldsFromChild(song) },
+        song,
+      );
+      musicCacheStore.getState().upsertCachedItem(
+        {
+          itemId,
+          type: 'song',
+          name: song.title ?? existing.title,
+          artist: song.artist ?? existing.artist,
+          coverArtId: songCover,
+          expectedSongCount: 1,
+          parentAlbumId: song.albumId ?? existing.albumId,
+          lastSyncAt: Date.now(),
+          downloadedAt: Date.now(),
+          // Explicit individual-song download — a real holder.
+          derived: false,
+        },
+        [song.id],
+      );
+      insertCachedItemSong(itemId, 1, song.id);
+      registerTrackToItem(song.id, itemId);
+      return;
+    }
   }
 
   // Re-check after the awaits (see enqueueAlbumDownload) — avoid a duplicate row.
@@ -1291,6 +1297,9 @@ async function downloadItem(queueItem: DownloadQueueItem, myId: number): Promise
   const preScannedSongs = new Set<string>();
   const state0 = musicCacheStore.getState();
   for (let i = 0; i < songs.length; i++) {
+    // Allow cancellation to interrupt even a long pre-scan: if a newer item has
+    // taken over, abandon this stale run.
+    if (myId !== processingId) return;
     const song = songs[i];
     const position = i + 1;
     if (seen.has(song.id)) {
@@ -1302,7 +1311,10 @@ async function downloadItem(queueItem: DownloadQueueItem, myId: number): Promise
     }
     seen.add(song.id);
     const existing = state0.cachedSongs[song.id];
-    if (existing) {
+    // A cached row can point at a junk file (e.g. a Subsonic error document
+    // served with HTTP 200). Only count it as already-downloaded when the file on
+    // disk is usable audio; otherwise let it fall through and be re-downloaded.
+    if (existing && (await isUsableAudioFile(resolveSongFile(existing).uri))) {
       preScannedSongs.add(`${i}`);
       itemEdges.push({ position, songId: song.id });
       itemSongsForCommit.set(song.id, existing);
@@ -1434,7 +1446,10 @@ async function downloadItem(queueItem: DownloadQueueItem, myId: number): Promise
  */
 async function downloadSong(track: Child): Promise<CachedSongMeta | null> {
   const existing = musicCacheStore.getState().cachedSongs[track.id];
-  if (existing) return existing;
+  // A cached row can point at a junk file (e.g. a Subsonic error document served
+  // with HTTP 200). Only trust it when the file on disk is usable audio; otherwise
+  // re-download so the bad file gets replaced.
+  if (existing && (await isUsableAudioFile(resolveSongFile(existing).uri))) return existing;
 
   await ensureCoverArtAuth();
 
@@ -1453,7 +1468,17 @@ async function downloadSong(track: Child): Promise<CachedSongMeta | null> {
   try {
     beginDownload(track.id);
     const tmpDest = new File(albumDir, tmpName);
-    await downloadFileAsyncWithProgress(url, tmpDest.uri, track.id);
+    const dl = await downloadFileAsyncWithProgress(url, tmpDest.uri, track.id);
+
+    // Reject a 0-byte or text/error-document response (e.g. a Subsonic
+    // `status="failed"` JSON envelope served with HTTP 200) before it is moved
+    // into place. Such a body would otherwise be written as the track file and
+    // counted as a successful download.
+    if (dl.bytes === 0 || (await isErrorDocument(tmpDest.uri))) {
+      try { tmpDest.delete(); } catch { /* best-effort */ }
+      clearDownload(track.id);
+      return null;
+    }
 
     const dest = new File(albumDir, fileName);
     if (dest.exists) {
@@ -1461,7 +1486,10 @@ async function downloadSong(track: Child): Promise<CachedSongMeta | null> {
     }
     await tmpDest.move(dest);
 
-    const bytes = dest.exists ? dest.size ?? 0 : 0;
+    // Use the byte count the download reported (the native module returns the
+    // bytes written to tmp), not the post-move `dest.size`, which the mock and
+    // some platforms report as 0.
+    const bytes = dl.bytes;
 
     clearDownload(track.id);
 
@@ -1610,8 +1638,9 @@ export async function redownloadTrack(
     }
     await File.downloadFileAsync(url, tmp);
     const bytes = tmp.exists ? tmp.size ?? 0 : 0;
-    if (bytes === 0) {
-      // Empty/failed download — discard the tmp and keep the existing file.
+    if (bytes === 0 || (await isErrorDocument(tmp.uri))) {
+      // Empty or error-document response (e.g. a Subsonic error envelope served
+      // with HTTP 200) — discard the tmp and keep the existing working file.
       try { tmp.delete(); } catch { /* best-effort */ }
       return false;
     }
