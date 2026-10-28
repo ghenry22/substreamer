@@ -223,4 +223,14 @@ describe('syncStatusStore', () => {
       expect(syncStatusStore.getState().fullResyncEpoch).toBe(1234);
     });
   });
+
+  describe('alwaysUseServerSearch', () => {
+    it('defaults to false and updates via setAlwaysUseServerSearch', () => {
+      expect(syncStatusStore.getInitialState().alwaysUseServerSearch).toBe(false);
+      syncStatusStore.getState().setAlwaysUseServerSearch(true);
+      expect(syncStatusStore.getState().alwaysUseServerSearch).toBe(true);
+      syncStatusStore.getState().setAlwaysUseServerSearch(false);
+      expect(syncStatusStore.getState().alwaysUseServerSearch).toBe(false);
+    });
+  });
 });

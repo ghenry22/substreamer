@@ -100,6 +100,10 @@ export interface SyncStatusState extends LastKnownMarkers {
    *  empty-query `search3` fast path. For servers whose probe succeeds but whose
    *  fast-path data is unusable, where detection cannot help. */
   forceLegacySync: boolean;
+  /** User override: always query the server (`search3`) during online search even
+   *  when the local library is marked fully synced. For servers/proxies whose search
+   *  endpoint returns tracks outside the synced library. */
+  alwaysUseServerSearch: boolean;
 
   // --- Song sync (populates the normalized `songs` table) ---
   /** Strategy the song fetch actually uses — normally `syncStrategy`, but forced
@@ -210,6 +214,7 @@ export interface SyncStatusState extends LastKnownMarkers {
   // Strategy + song-sync actions
   setSyncStrategy: (strategy: SyncStrategy | null) => void;
   setForceLegacySync: (force: boolean) => void;
+  setAlwaysUseServerSearch: (always: boolean) => void;
   setSongSyncStrategy: (strategy: SyncStrategy | null) => void;
   setSongSyncCursor: (cursor: number) => void;
   setSongSyncFetched: (fetched: number) => void;
@@ -262,6 +267,7 @@ export const syncStatusStore = create<SyncStatusState>()(
 
       syncStrategy: null,
       forceLegacySync: false,
+      alwaysUseServerSearch: false,
       librarySyncCursorTransport: null,
       albumSyncStrategy: null,
       lastSyncError: null,
@@ -369,6 +375,7 @@ export const syncStatusStore = create<SyncStatusState>()(
           // Clearing it here would race a running loop's next page write.
           albumSyncStrategy: null,
         }),
+      setAlwaysUseServerSearch: (always) => set({ alwaysUseServerSearch: always }),
       setSongSyncStrategy: (strategy) => set({ songSyncStrategy: strategy }),
       setSongSyncCursor: (cursor) => set({ songSyncCursor: cursor }),
       setSongSyncFetched: (fetched) => set({ songSyncFetched: fetched }),
@@ -473,6 +480,7 @@ export const syncStatusStore = create<SyncStatusState>()(
         librarySyncLastFetchedAt: state.librarySyncLastFetchedAt,
         syncStrategy: state.syncStrategy,
         forceLegacySync: state.forceLegacySync,
+        alwaysUseServerSearch: state.alwaysUseServerSearch,
         songSyncStrategy: state.songSyncStrategy,
         songSyncCursor: state.songSyncCursor,
         songSyncFetched: state.songSyncFetched,

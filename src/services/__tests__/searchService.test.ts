@@ -597,7 +597,11 @@ describe('searchLibrary — data-state routing', () => {
   beforeEach(() => {
     // Sane online + fully-synced + reachable defaults; each test overrides.
     offlineModeStore.setState({ offlineMode: false });
-    syncStatusStore.setState({ librarySyncComplete: true, songSyncComplete: true });
+    syncStatusStore.setState({
+      librarySyncComplete: true,
+      songSyncComplete: true,
+      alwaysUseServerSearch: false,
+    });
     connectivityStore.setState({ hasConnection: true, isServerReachable: true });
   });
 
@@ -725,6 +729,48 @@ describe('searchLibrary — data-state routing', () => {
     const res = await searchLibrary('anything');
     expect(mockSearch3).not.toHaveBeenCalled();
     expect(res).toEqual({ albums: [], artists: [], songs: [] });
+  });
+
+  it('online + fully synced + alwaysUseServerSearch ON + reachable → surfaces local first, then merges server results', async () => {
+    syncStatusStore.setState({
+      librarySyncComplete: true,
+      songSyncComplete: true,
+      alwaysUseServerSearch: true,
+    });
+    mockSearchSongs.mockResolvedValue([localSong('loc')]);
+    mockSearch3.mockResolvedValue({ albums: [], artists: [], songs: [{ id: 'srv', title: 'Server' }] } as any);
+    const surfaced: string[][] = [];
+    const res = await searchLibrary('test song', {
+      onLocalResults: (r) => surfaced.push(r.songs.map((s) => s.id)),
+    });
+    expect(surfaced).toEqual([['loc']]);
+    expect(mockSearch3).toHaveBeenCalledWith('test song');
+    expect(res.songs.map((s) => s.id)).toEqual(['loc', 'srv']);
+  });
+
+  it('online + fully synced + alwaysUseServerSearch ON + unreachable → returns local without hitting server', async () => {
+    syncStatusStore.setState({
+      librarySyncComplete: true,
+      songSyncComplete: true,
+      alwaysUseServerSearch: true,
+    });
+    connectivityStore.setState({ hasConnection: false, isServerReachable: false });
+    mockSearchSongs.mockResolvedValue([localSong('loc')]);
+    const res = await searchLibrary('test song');
+    expect(mockSearch3).not.toHaveBeenCalled();
+    expect(res.songs.map((s) => s.id)).toEqual(['loc']);
+  });
+
+  it('offlineMode ON + alwaysUseServerSearch ON → downloaded-only scan, never the server', async () => {
+    offlineModeStore.setState({ offlineMode: true });
+    syncStatusStore.setState({ alwaysUseServerSearch: true });
+    seedCache({
+      a1: { name: 'Album', tracks: [{ id: 't1', title: 'Freak on a Leash', artist: 'Korn', duration: 200 }] },
+    });
+    const res = await searchLibrary('freak on a leash');
+    expect(res.songs.map((s) => s.id)).toContain('t1');
+    expect(mockSearch3).not.toHaveBeenCalled();
+    expect(mockSearchSongs).not.toHaveBeenCalled();
   });
 });
 

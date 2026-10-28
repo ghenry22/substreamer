@@ -276,7 +276,7 @@ export async function searchLibrary(
     return performOfflineSearch(query, shouldAbort);
   }
 
-  const { librarySyncComplete, songSyncComplete } = syncStatusStore.getState();
+  const { librarySyncComplete, songSyncComplete, alwaysUseServerSearch } = syncStatusStore.getState();
   const fullySynced = librarySyncComplete && songSyncComplete;
   const { hasConnection, isServerReachable } = connectivityStore.getState();
   const reachable = hasConnection && isServerReachable;
@@ -289,10 +289,11 @@ export async function searchLibrary(
   const { results: local } = await searchFullLibraryScored(query, shouldAbort);
   if (shouldAbort?.()) return EMPTY_RESULTS;
 
-  // Local is the complete answer — return instantly, no network wait.
-  if (fullySynced || !reachable) return local;
+  // Local is the complete answer — return instantly, no network wait (unless the
+  // user explicitly opted in to always querying the server).
+  if ((fullySynced && !alwaysUseServerSearch) || !reachable) return local;
 
-  // Partial sync + reachable → show local now, then augment with the server.
+  // Partial sync (or alwaysUseServerSearch) + reachable → show local now, then augment with the server.
   onLocalResults?.(local);
   const server = await guardedServerSearch(query, shouldAbort);
   if (!server || shouldAbort?.()) return local;
