@@ -23,6 +23,8 @@ import {
   albumTrackId,
   favTrackId,
   playlistId,
+  playlistShuffleId,
+  CAR_MAX_ITEMS_PER_NODE,
 } from '../headlessMediaService.helpers';
 import { albumListsStore } from '../../store/albumListsStore';
 import { favoritesStore } from '../../store/favoritesStore';
@@ -453,8 +455,31 @@ describe('resolveBrowseChildren', () => {
     offlineModeStore.setState({ offlineMode: true } as any);
     (fetchPlaylistDetail as jest.Mock).mockResolvedValueOnce({ id: 'p1', entry: [song('s1'), song('s2')] });
     const rows = await __test.resolveBrowseChildren(playlistId('p1'));
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(3);
     expect(rows.every((r) => r.playable && !r.hasChildren)).toBe(true);
+  });
+
+  it('playlist:<id> → a Shuffle play row first, then index-aligned track rows', async () => {
+    (fetchPlaylistDetail as jest.Mock).mockResolvedValueOnce({ id: 'p1', entry: [song('s1'), song('s2')] });
+    const rows = await __test.resolveBrowseChildren(playlistId('p1'));
+    expect(rows.map((r) => r.id)).toEqual([
+      playlistShuffleId('p1'),
+      'track:playlist:p1:0',
+      'track:playlist:p1:1',
+    ]);
+    expect(rows[0]).toMatchObject({ playable: true, hasChildren: false });
+  });
+
+  it('playlist:<id> with no songs → no rows (no lone Shuffle play)', async () => {
+    (fetchPlaylistDetail as jest.Mock).mockResolvedValueOnce({ id: 'p1', entry: [] });
+    expect(await __test.resolveBrowseChildren(playlistId('p1'))).toEqual([]);
+  });
+
+  it('playlist:<id> stays within the per-node cap including the Shuffle play row', async () => {
+    const entry = Array.from({ length: CAR_MAX_ITEMS_PER_NODE + 5 }, (_, i) => song(`s${i}`));
+    (fetchPlaylistDetail as jest.Mock).mockResolvedValueOnce({ id: 'p1', entry });
+    const rows = await __test.resolveBrowseChildren(playlistId('p1'));
+    expect(rows).toHaveLength(CAR_MAX_ITEMS_PER_NODE);
   });
 
   it('album:<id> offline → tracks from the persisted detail cache (shared fetchAlbum)', async () => {
@@ -507,6 +532,25 @@ describe('resolvePlayback', () => {
     expect(r.queue).toHaveLength(3);
     expect(r.startIndex).toBe(2);
     expect(r.sourcePlaylistId).toBe('p1');
+  });
+
+  it('shuffle:<id> → the whole playlist reordered, from index 0, with sourcePlaylistId', async () => {
+    (fetchPlaylistDetail as jest.Mock).mockResolvedValueOnce({ entry: [song('s1'), song('s2'), song('s3')] });
+    const random = jest.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const r = await __test.resolvePlayback(playlistShuffleId('p1'));
+      expect(r.queue.map((c) => c.id)).toEqual(['s2', 's3', 's1']);
+      expect(r.startIndex).toBe(0);
+      expect(r.sourcePlaylistId).toBe('p1');
+    } finally {
+      random.mockRestore();
+    }
+  });
+
+  it('shuffle:<id> for an empty playlist → empty queue', async () => {
+    (fetchPlaylistDetail as jest.Mock).mockResolvedValueOnce({ entry: [] });
+    const r = await __test.resolvePlayback(playlistShuffleId('p1'));
+    expect(r.queue).toEqual([]);
   });
 
   it('unknown id → empty queue', async () => {

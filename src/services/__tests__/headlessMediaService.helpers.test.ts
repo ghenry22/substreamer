@@ -8,6 +8,7 @@ import {
   azBucketId,
   albumTrackId,
   playlistTrackId,
+  playlistShuffleId,
   favTrackId,
   bucketLetter,
   albumLetterRows,
@@ -25,6 +26,7 @@ describe('parseMediaId', () => {
     expect(parseMediaId(listId('recentlyAdded'))).toEqual({ kind: 'list', list: 'recentlyAdded' });
     expect(parseMediaId(albumId('al-9'))).toEqual({ kind: 'album', albumId: 'al-9' });
     expect(parseMediaId(playlistId('p-3'))).toEqual({ kind: 'playlist', playlistId: 'p-3' });
+    expect(parseMediaId(playlistShuffleId('p-3'))).toEqual({ kind: 'shuffle', playlistId: 'p-3' });
     expect(parseMediaId(azLetterId('S'))).toEqual({ kind: 'azLetter', letter: 'S' });
     expect(parseMediaId(azBucketId('S', 'sa', 'sm'))).toEqual({
       kind: 'azBucket',
@@ -67,6 +69,7 @@ describe('parseMediaId', () => {
 
   it('returns unknown for malformed ids', () => {
     expect(parseMediaId('nope')).toEqual({ kind: 'unknown', raw: 'nope' });
+    expect(parseMediaId('shuffle:').kind).toBe('unknown');
     expect(parseMediaId('track:album:al-9:notanumber').kind).toBe('unknown');
     expect(parseMediaId('az:artists:S').kind).toBe('unknown'); // only albums bucketed
   });
