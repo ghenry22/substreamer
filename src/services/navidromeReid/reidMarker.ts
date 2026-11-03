@@ -126,7 +126,8 @@ export function currentServerInfo(): { serverType: string | null; serverVersion:
  * What should happen about the re-key on this launch?
  *
  * `run` unattended, `skip` entirely, or `ask` the user because the server's version string
- * cannot settle it (see `navidromeReidVerdict`). Always `skip` once the pass has completed.
+ * has no number to read (see `navidromeReidVerdict`). Always `skip` once the pass has
+ * completed.
  *
  * Synchronous and cheap — one KV read plus a string compare — so it is safe on every
  * launch and on the headless path.
@@ -157,9 +158,54 @@ export function isReidRequired(): boolean {
  * blank browse tree and a corrupted download set.
  */
 export function shouldBlockContent(): boolean {
-  // `ask` blocks too. An undecided server is one we may be about to re-key, and serving
-  // a car head unit ids we are unsure about is the case this exists to prevent.
-  return reidVerdict() !== 'skip';
+  // `ask` does not block: an undetermined version runs in legacy mode until the user
+  // chooses to update, and a car wake has no screen to ask on.
+  return reidVerdict() === 'run';
+}
+
+/**
+ * Must pending scrobbles be held rather than submitted?
+ *
+ * Navidrome answers a scrobble with OK even when it cannot register it
+ * (`reference/navidrome/server/subsonic/media_annotation.go:178-190`), and the row is then
+ * deleted, so a scrobble sent under a retired id is lost. Held while the pass is
+ * outstanding, and for an undetermined version until the user has chosen legacy mode.
+ */
+export function shouldHoldScrobbles(): boolean {
+  const verdict = reidVerdict();
+  return verdict === 'run' || (verdict === 'ask' && !legacyThisSession);
+}
+
+// --- Per-session answers to the gate ----------------------------------------------
+//
+// Here rather than in `runNavidromeReid` so the scrobble check above can read them: the
+// repository layer imports this module and must not reach `runNavidromeReid`.
+
+/** The user chose "Run in legacy mode" this session. */
+let legacyThisSession = false;
+/** The user chose "Continue without updating" after a failed pass this session. */
+let continuedAfterFailureThisSession = false;
+
+export function setLegacyThisSession(): void {
+  legacyThisSession = true;
+}
+
+export function isLegacyThisSession(): boolean {
+  return legacyThisSession;
+}
+
+export function setContinuedAfterFailureThisSession(): void {
+  continuedAfterFailureThisSession = true;
+}
+
+export function hasContinuedAfterFailureThisSession(): boolean {
+  return continuedAfterFailureThisSession;
+}
+
+/** Forget both answers. The next session decides afresh. */
+export function resetReidSessionLatches(): void {
+  legacyThisSession = false;
+  continuedAfterFailureThisSession = false;
 }
 
 // --- The live version probe -------------------------------------------------------
@@ -217,8 +263,8 @@ export function hasServerAnswered(): boolean {
   return serverAnswered;
 }
 
-/** Test-only: forget the probe result. */
-export function resetReidProbeForTests(): void {
+/** Forget the probe result, so the next session decides afresh. Called at login. */
+export function resetReidProbeState(): void {
   probedVersion = null;
   probeSettled = false;
   serverAnswered = false;
@@ -248,5 +294,6 @@ export function shouldBlockLibraryWrites(): boolean {
   // Safe only because a settled-but-unanswered probe stays retryable (`reidProbe`), so
   // this blocks until we can actually ask rather than for the whole session.
   if (!hasServerAnswered()) return true;
-  return reidVerdict() !== 'skip';
+  // `ask` stays open: legacy mode is fully functional on the old ids.
+  return reidVerdict() === 'run';
 }

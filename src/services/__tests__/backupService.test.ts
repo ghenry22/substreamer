@@ -59,6 +59,11 @@ jest.mock('expo-gzip', () => ({
 }));
 
 jest.mock('../../store/persistence/kvStorage', () => require('../../store/persistence/__mocks__/kvStorage'));
+let mockReidComplete = false;
+jest.mock('../navidromeReid/reidMarker', () => ({
+  ...jest.requireActual('../navidromeReid/reidMarker'),
+  isReidComplete: () => mockReidComplete,
+}));
 
 // Fake the scrobble SQL layer with a single in-memory list (`mockDbScrobbles`)
 // so the SQL-backed store (compute aggregates / load recent / export) behaves
@@ -580,6 +585,36 @@ describe('restoreBackup', () => {
     expect(completedScrobbleStore.getState().recentScrobbles).toHaveLength(1);
     expect(mockReplace).toHaveBeenCalledTimes(1);
     expect(mockReplace.mock.calls[0][0]).toHaveLength(1);
+  });
+
+  describe('on an install the Navidrome re-key has converted', () => {
+    // Vectors from canonicalId.test.ts.
+    const OLD = 'e3b7fc2ae9447bbec37a13bf916e3cf6';
+    const NEW = '6VHl3uR4kss6sUPKA8Cwnk';
+    const restoreOne = async () => {
+      const mockReplace = replaceAllScrobbles as jest.Mock;
+      mockReplace.mockClear();
+      mockDecompressFromFile.mockResolvedValue(JSON.stringify([
+        { id: 's1', song: { id: OLD, title: 'Track', artist: 'Artist', duration: 100 }, time: 1 },
+      ]));
+      mockFileInstances.set('backup-r.scrobbles.gz', { exists: true, content: '', deleted: false });
+      await restoreBackup({ ...baseEntry, stem: 'backup-r', scrobbleCount: 1, scrobbleSizeBytes: 50 });
+      return mockReplace.mock.calls[0][0] as Array<{ id: string; song: { id: string } }>;
+    };
+    afterEach(() => { mockReidComplete = false; });
+
+    it('converts the restored ids to the current form', async () => {
+      // A backup from before the server's 0.64 upgrade would otherwise stay retired.
+      mockReidComplete = true;
+      const [written] = await restoreOne();
+      expect(written.song.id).toBe(NEW);
+      expect(written.id).toBe('s1');
+    });
+
+    it('restores verbatim when the re-key has not run, which converts them itself', async () => {
+      const [written] = await restoreOne();
+      expect(written.song.id).toBe(OLD);
+    });
   });
 
   it('restores MBID overrides from backup (new format)', async () => {

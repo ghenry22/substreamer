@@ -1,10 +1,16 @@
 import type { AlbumID3, Child } from 'subsonic-api';
 
+import * as albumsRepo from '../../db/repository/albums';
 import { countAlbums, upsertAlbums } from '../../db/repository/albums';
+import * as songsRepo from '../../db/repository/songs';
 import { countSongs } from '../../db/repository/songs';
 import { getDb } from '../../store/persistence/db';
 import { syncStatusStore } from '../../store/syncStatusStore';
-import { runNormalizedLibrarySync, __setPageSizesForTest } from '../normalizedLibrarySync';
+import {
+  releaseLibrarySyncQueue,
+  runNormalizedLibrarySync,
+  __setPageSizesForTest,
+} from '../normalizedLibrarySync';
 
 // Fixed server pages: 5 albums, 10 songs across those 5 albums (2 each). Prefixed
 // `mock*` so jest permits referencing them inside the hoisted mock factory.
@@ -1047,3 +1053,108 @@ describe('escaping a pinned slow path', () => {
   });
 });
 
+
+/** A page fetch the test resolves or rejects by hand. */
+const heldPage = () => {
+  let release: (page: AlbumID3[]) => void = () => undefined;
+  let fail: (e: Error) => void = () => undefined;
+  const promise = new Promise<AlbumID3[]>((resolve, reject) => {
+    release = resolve;
+    fail = reject;
+  });
+  return { promise, release: (page: AlbumID3[]) => release(page), fail: (e: Error) => fail(e) };
+};
+
+describe('a logout while the sync runs', () => {
+  // Logout bumps the generation and does not wait for the run: a fetch can hang, since
+  // OkHttp has no timeouts. Nothing the old run fetched may then be written.
+  const logout = () => syncStatusStore.getState().bumpGeneration();
+
+  it('writes nothing from an album page that returns after the bump', async () => {
+    const held = heldPage();
+    mockSearchAlbumsPage.mockImplementationOnce(() => held.promise);
+
+    const run = runNormalizedLibrarySync({ reason: 'test' });
+    await flush();
+    logout();
+    held.release(mockAlbumsData);
+    await run;
+
+    expect(await countAlbums(db())).toBe(0);
+    expect(syncStatusStore.getState().librarySyncCursor).toBe(0);
+  });
+
+  it('does not persist an error pause for a fetch that failed after the bump', async () => {
+    // A persisted `paused-error` makes the next session's startup skip the sync.
+    mockSearchAlbumsPage.mockImplementation(() => {
+      logout();
+      return Promise.reject(new Error('boom'));
+    });
+
+    await runNormalizedLibrarySync({ reason: 'test' });
+
+    expect(syncStatusStore.getState().librarySyncPhase).not.toBe('paused-error');
+    expect(syncStatusStore.getState().lastSyncError).toBeFalsy();
+  });
+
+  it('does not write the album cursor when the bump lands during the upsert', async () => {
+    const spy = jest.spyOn(albumsRepo, 'upsertAlbums').mockImplementationOnce(async (...args) => {
+      const written = await upsertAlbums(...args);
+      logout();
+      return written;
+    });
+
+    await runNormalizedLibrarySync({ reason: 'test' });
+
+    expect(syncStatusStore.getState().librarySyncCursor).toBe(0);
+    spy.mockRestore();
+  });
+
+  it('does not write the song cursor when the bump lands during the upsert', async () => {
+    const real = songsRepo.upsertSongs;
+    const spy = jest.spyOn(songsRepo, 'upsertSongs').mockImplementationOnce(async (...args) => {
+      const written = await real(...args);
+      logout();
+      return written;
+    });
+
+    await runNormalizedLibrarySync({ reason: 'test' });
+
+    expect(syncStatusStore.getState().songSyncCursor).toBe(0);
+    spy.mockRestore();
+  });
+
+  it('lets the next session sync while the old run is still stuck in a fetch', async () => {
+    mockSearchAlbumsPage.mockImplementationOnce(() => new Promise<AlbumID3[]>(() => undefined));
+    void runNormalizedLibrarySync({ reason: 'old session' });
+    await flush();
+
+    logout();
+    releaseLibrarySyncQueue();
+    await runNormalizedLibrarySync({ reason: 'new session' });
+
+    expect(await countAlbums(db())).toBe(5);
+  });
+
+  it('a run queued before the logout does nothing once it starts', async () => {
+    const held = heldPage();
+    mockSearchAlbumsPage.mockImplementationOnce(() => held.promise);
+    const first = runNormalizedLibrarySync({ reason: 'test' });
+    await flush();
+    // Queued behind the first: a full run never joins a non-full one.
+    const queued = runNormalizedLibrarySync({ full: true, reason: 'test' });
+    const resetLibrarySync = jest.fn();
+    syncStatusStore.setState({ resetLibrarySync });
+
+    logout();
+    releaseLibrarySyncQueue();
+    held.release(mockAlbumsData);
+    await first;
+    await queued;
+
+    expect(mockSearchAlbumsPage).toHaveBeenCalledTimes(1);
+    expect(resetLibrarySync).not.toHaveBeenCalled();
+    expect(await countAlbums(db())).toBe(0);
+    expect(syncStatusStore.getState().librarySyncCursor).toBe(0);
+  });
+});

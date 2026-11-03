@@ -108,7 +108,7 @@ jest.mock('@shopify/flash-list', () => {
 });
 
 import React from 'react';
-import { act, render, waitFor } from '@testing-library/react-native';
+import { act, render, waitFor, waitForElementToBeRemoved } from '@testing-library/react-native';
 
 import { ensureNormalizedSchema } from '../../db/createNormalizedTables';
 import { getDb } from '../../store/persistence/db';
@@ -366,7 +366,7 @@ describe('HomeScreen — Downloaded sections track musicCacheStore.revision', ()
     db().runSync('DELETE FROM cached_items');
     db().runSync('DELETE FROM cached_albums');
     bumpRevision();
-    await waitFor(() => expect(r.queryByTestId('album:dl1')).toBeNull());
+    await waitForElementToBeRemoved(() => r.queryByTestId('album:dl1'));
   });
 });
 

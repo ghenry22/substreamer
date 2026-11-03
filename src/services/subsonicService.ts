@@ -62,7 +62,16 @@ let cachedCoverArtKey: string | null = null;
 let cachedCoverArtSalt: string | null = null;
 let cachedCoverArtToken: string | null = null;
 
-type LoginResult = { success: true; version: string } | { success: false; error: string };
+type LoginResult =
+  | {
+      success: true;
+      version: string;
+      /** OpenSubsonic `type`, as `fetchServerInfo` derives it; null on a classic server. */
+      serverType: string | null;
+      /** OpenSubsonic `serverVersion`, as `fetchServerInfo` derives it; null on a classic server. */
+      serverVersion: string | null;
+    }
+  | { success: false; error: string };
 
 export async function login(
   serverUrl: string,
@@ -98,7 +107,13 @@ export async function login(
       response.openSubsonic && 'serverVersion' in response
         ? response.serverVersion
         : response.version;
-    return { success: true, version: version ?? response.version };
+    const openSubsonic = Boolean(response.openSubsonic && 'serverVersion' in response);
+    return {
+      success: true,
+      version: version ?? response.version,
+      serverType: (openSubsonic && 'type' in response ? response.type : null) ?? null,
+      serverVersion: (openSubsonic && 'serverVersion' in response ? response.serverVersion : null) ?? null,
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : i18n.t('connectionFailed');
     return { success: false, error: message };

@@ -185,6 +185,8 @@ async function doBasicSongWalk(
       async (id) => {
         if (genChanged() || isOffline()) throw new Error('walk-bail');
         const result = await getAlbumResult(id);
+        // A logout or Pause during the fetch: nothing from it may be written.
+        if (genChanged()) throw new Error('walk-bail');
         // The server's own verdict that this album is gone: skip it and let the walk
         // reach completion. A single deleted album bailing the run is unrecoverable:
         // `fullWalkPending` clears only on completion, so every later sync re-walks
@@ -200,6 +202,7 @@ async function doBasicSongWalk(
         // that still has album-shaped holes in it.
         if (!album.song || album.song.length === 0) return undefined;
         await upsertSongs(db, album.song, undefined, articles);
+        if (genChanged()) throw new Error('walk-bail');
         // The walk has no song offset of its own, so accumulate what it wrote —
         // the card's Songs row is this sync's progress, not the local total.
         walkSongsFetched += album.song.length;
@@ -216,6 +219,8 @@ async function doBasicSongWalk(
     unsubOffline();
   }
 
+  // After a logout the verdicts belong to the previous server, and the store is persisted.
+  if (genChanged()) return 'bailed';
   syncStatusStore.getState().setDetailSyncCompleted(done);
   // Persist the server's not-found verdicts even on a bail — they are facts about the
   // server, independent of why the rest of the walk stopped.
@@ -279,6 +284,9 @@ async function runSearch3SongPhase(
       () => searchSongsPage(SONG_PAGE, songOffset),
       `song page offset=${songOffset}`,
     );
+    // Before the error branch too: a fetch that failed during a logout must not persist
+    // `paused-error` into the next session.
+    if (genChanged()) return 'bailed';
     if (!fetched.ok) {
       pauseForError(fetched.error, 'song');
       return 'bailed';
@@ -339,6 +347,7 @@ async function runSearch3SongPhase(
     }
     // eslint-disable-next-line no-await-in-loop
     await upsertSongs(db, page, undefined, articles);
+    if (genChanged()) return 'bailed';
     const songPageStart = songOffset;
     // Advance by what we asked for — see the album loop.
     songOffset += SONG_PAGE;
@@ -568,6 +577,15 @@ export async function refreshPlaylistLibrary(): Promise<void> {
  * exit hatch and getting nothing), and neither may a call whose generation has moved on
  * — `forceFullResync` bumps the generation immediately before asking for the full run.
  */
+/**
+ * Forget the running sync so the next request does not queue behind it. Logout calls
+ * this after bumping the generation: the old run may be parked in a fetch that never
+ * returns (OkHttp has no timeouts), and its generation checks stop it writing anything.
+ */
+export function releaseLibrarySyncQueue(): void {
+  inFlight = null;
+}
+
 export function runNormalizedLibrarySync(
   opts: { full?: boolean; reason?: string } = {},
 ): Promise<void> {
@@ -587,7 +605,7 @@ export function runNormalizedLibrarySync(
   inFlightFull = opts.full === true;
   const run = (previous ?? Promise.resolve())
     .catch(() => undefined)
-    .then(() => doNormalizedSync(opts));
+    .then(() => doNormalizedSync({ ...opts, gen }));
   // Store `run` itself, not `run.finally(...)` — that returns a different promise, so the
   // identity check never matches, the slot never clears, and every later call joins a
   // stale resolved promise and silently does nothing.
@@ -639,8 +657,12 @@ async function doNormalizedSync(
     // Diagnostic only: which call site asked for this run. Logged with the stats so an
     // unexplained sync (and the banner it drives) can be traced to its trigger.
     reason = 'unknown',
-  }: { full?: boolean; reason?: string },
+    // The generation the run was REQUESTED under. A run queued behind another starts
+    // only when that one settles, by which time a logout may have bumped it.
+    gen,
+  }: { full?: boolean; reason?: string; gen: number },
 ): Promise<void> {
+  if (syncStatusStore.getState().generation !== gen) return;
   const db = getDb();
   if (!db) return;
   if (offlineModeStore.getState().offlineMode) return;
@@ -650,7 +672,7 @@ async function doNormalizedSync(
   // deliberate mid-run toggle clobbered back to the file's value.
   const syncLogOn = readLibrarySyncLogFlag();
 
-  const capturedGen = syncStatusStore.getState().generation;
+  const capturedGen = gen;
   const genChanged = (): boolean => syncStatusStore.getState().generation !== capturedGen;
   const isOffline = (): boolean => offlineModeStore.getState().offlineMode;
 
@@ -737,6 +759,8 @@ async function doNormalizedSync(
         () => (useBasic ? getAlbumsPageByName(requested, albumOffset) : searchAlbumsPage(requested, albumOffset)),
         `album page offset=${albumOffset}`,
       );
+      // Before the error branch too: see the song phase.
+      if (genChanged()) return;
       if (!fetched.ok) {
         // Twice in a row is not a blip. Pause rather than fail: the cursor is already
         // persisted per page, so Resume picks up exactly here.
@@ -789,9 +813,12 @@ async function doNormalizedSync(
         const ids = [...new Set(page.map((a) => a.id))];
         // eslint-disable-next-line no-await-in-loop
         newInPage = ids.length - (await albumIdsPresent(db, ids)).size;
+        if (genChanged()) return;
       }
       // eslint-disable-next-line no-await-in-loop
       await upsertAlbums(db, page, undefined, articles);
+      // A cursor written after logout's sync reset would resume over a wiped library.
+      if (genChanged()) return;
       const pageStart = albumOffset;
       // Advance by what we ASKED for, not by what came back. Those are the same on any
       // server that honours the contract; where they differ, advancing by the reply

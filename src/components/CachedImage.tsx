@@ -80,12 +80,12 @@ const RESIZE_MODE_TO_CONTENT_FIT: Record<string, 'cover' | 'contain' | 'fill' | 
 /** Resolved URI for the bundled starred-songs cover art. */
 const STARRED_COVER_URI = RNImage.resolveAssetSource(
   require('../assets/starred-cover.jpg'),
-).uri;
+)?.uri;
 
 /** Resolved URI for the bundled Various Artists cover art. */
 const VARIOUS_ARTISTS_COVER_URI = RNImage.resolveAssetSource(
   require('../assets/various-artists-cover.jpg'),
-).uri;
+)?.uri;
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */

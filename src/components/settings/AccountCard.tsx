@@ -7,16 +7,11 @@ import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../hooks/useTheme';
 import { useThemedAlert } from '../../hooks/useThemedAlert';
 import { settingsStyles } from '../../styles/settingsStyles';
-import { clearImageCache } from '../../services/imageCacheService';
-import { clearMusicCache } from '../../services/musicCacheService';
-import { clearQueue } from '../../services/playerService';
-import { stopPolling } from '../../services/scanService';
-import { clearAllNativeTrust } from '../../services/sslTrustService';
+import { logout } from '../../services/logoutService';
 import { clearApiCache, ensureCoverArtAuth, login } from '../../services/subsonicService';
 import { authStore } from '../../store/authStore';
 import { deviceIdentityStore } from '../../store/deviceIdentityStore';
 import { processingOverlayStore } from '../../store/processingOverlayStore';
-import { resetAllStores } from '../../store/resetAllStores';
 import { serverInfoStore } from '../../store/serverInfoStore';
 import { ChangePasswordSheet } from './ChangePasswordSheet';
 import { EditDeviceNameSheet } from './EditDeviceNameSheet';
@@ -82,17 +77,7 @@ export function AccountCard() {
     // showing the overlay never lands and logout looks like it did nothing.
     await new Promise((resolve) => setTimeout(resolve, 0));
     try {
-      clearQueue();
-      stopPolling();
-      clearApiCache();
-      // Clear the NATIVE trust store + stop the proxy BEFORE resetting JS state /
-      // navigating to login. The native store is what the URLProtocol swizzle /
-      // OkHttp actually enforce; awaiting here (rather than fire-and-forget) means
-      // a self-signed re-login re-prompts instead of racing a still-trusted cert.
-      await clearAllNativeTrust();
-      await resetAllStores();
-      await clearImageCache();
-      await clearMusicCache();
+      await logout();
       // Hold the overlay for a minimum beat BEFORE moving to login. A fresh install
       // with little to clear finishes almost instantly, and the overlay flashing up
       // and vanishing reads as a glitch rather than as work being done.

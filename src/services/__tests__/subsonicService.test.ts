@@ -380,7 +380,7 @@ describe('login', () => {
     });
     const { login } = require('../subsonicService');
     const result = await login('music.example.com', 'user', 'pass');
-    expect(result).toEqual({ success: true, version: '1.16.0' });
+    expect(result).toEqual({ success: true, version: '1.16.0', serverType: null, serverVersion: null });
   });
 
   it('adds https:// to bare hostname', async () => {
@@ -446,7 +446,25 @@ describe('login', () => {
     });
     const { login } = require('../subsonicService');
     const result = await login('https://music.example.com', 'user', 'pass');
-    expect(result).toEqual({ success: true, version: '0.52.5' });
+    expect(result).toEqual({ success: true, version: '0.52.5', serverType: null, serverVersion: '0.52.5' });
+  });
+
+  it('returns the server type and version the re-key gate needs', async () => {
+    SubsonicAPI.prototype.ping = jest.fn().mockResolvedValue({
+      status: 'ok',
+      version: '1.16.1',
+      openSubsonic: true,
+      type: 'navidrome',
+      serverVersion: '0.64.0 (1072e9f7)',
+    });
+    const { login } = require('../subsonicService');
+    const result = await login('https://music.example.com', 'user', 'pass');
+    expect(result).toEqual({
+      success: true,
+      version: '0.64.0 (1072e9f7)',
+      serverType: 'navidrome',
+      serverVersion: '0.64.0 (1072e9f7)',
+    });
   });
 });
 
@@ -1944,7 +1962,7 @@ describe('login (edge cases)', () => {
     });
     const { login } = require('../subsonicService');
     const result = await login('https://music.example.com', 'user', 'pass');
-    expect(result).toEqual({ success: true, version: '1.16.0' });
+    expect(result).toEqual({ success: true, version: '1.16.0', serverType: null, serverVersion: null });
   });
 
   it('returns Authentication failed when error has no message and non-40 code', async () => {

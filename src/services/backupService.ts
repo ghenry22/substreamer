@@ -11,6 +11,13 @@ import { hydrateScrobblesAsync } from '../store/persistence/scrobbleTable';
 import { deviceIdentityStore, getDeviceShortId } from '../store/deviceIdentityStore';
 import { mbidOverrideStore } from '../store/mbidOverrideStore';
 import { scrobbleExclusionStore } from '../store/scrobbleExclusionStore';
+import { isReidComplete } from './navidromeReid/reidMarker';
+import {
+  convertRestoredBookmarks,
+  convertRestoredExclusions,
+  convertRestoredMbidOverrides,
+  convertRestoredScrobbles,
+} from './navidromeReid/reidRestore';
 import { bookmarksStore } from '../store/bookmarksStore';
 
 import { type CompletedScrobble } from '../store/completedScrobbleStore';
@@ -417,6 +424,11 @@ export async function restoreBackup(
   let bookmarkCount = 0;
   let bookmarkSkipped = 0;
 
+  // A backup taken before the server's 0.64 upgrade carries the retired ids. On an install
+  // the re-key has already converted, convert them on the way in; otherwise the pass's own
+  // run converts them along with everything else.
+  const convertIds = isReidComplete();
+
   // Yield once so the caller's "restoring" spinner paints a frame before the
   // synchronous JSON.parse of the (potentially multi-MB) scrobble blob and the
   // O(n) buildAggregates/buildStats inside replaceAll/mergeAll block the JS
@@ -429,7 +441,8 @@ export async function restoreBackup(
       throw new Error('Scrobble backup data file not found');
     }
     const json = await decompressFromFile(dataFile.uri);
-    const scrobbles: CompletedScrobble[] = JSON.parse(json);
+    const parsed: CompletedScrobble[] = JSON.parse(json);
+    const scrobbles = convertIds ? convertRestoredScrobbles(parsed) : parsed;
     if (mode === 'merge') {
       // mergeAll uses INSERT OR IGNORE per-row inside one transaction,
       // returning the actual added/skipped counts; existing scrobbles are
@@ -467,6 +480,7 @@ export async function restoreBackup(
     } else {
       overrides = raw as Record<string, MbidOverride>;
     }
+    if (convertIds) overrides = convertRestoredMbidOverrides(overrides);
     if (mode === 'merge') {
       // mergeOverrides keeps existing local entries on key conflict so the
       // user's most recent edit on this device is preserved.
@@ -487,11 +501,12 @@ export async function restoreBackup(
       throw new Error('Scrobble exclusion backup data file not found');
     }
     const json = await decompressFromFile(dataFile.uri);
-    const data: {
+    const parsed: {
       excludedAlbums: Record<string, ScrobbleExclusion>;
       excludedArtists: Record<string, ScrobbleExclusion>;
       excludedPlaylists: Record<string, ScrobbleExclusion>;
     } = JSON.parse(json);
+    const data = convertIds ? convertRestoredExclusions(parsed) : parsed;
     if (mode === 'merge') {
       const result = scrobbleExclusionStore.getState().mergeExclusions(data);
       scrobbleExclusionCount = result.added;
@@ -509,7 +524,8 @@ export async function restoreBackup(
       throw new Error('Bookmark backup data file not found');
     }
     const json = await decompressFromFile(dataFile.uri);
-    const data: Record<string, PlayQueueBookmark> = JSON.parse(json);
+    const parsed: Record<string, PlayQueueBookmark> = JSON.parse(json);
+    const data = convertIds ? convertRestoredBookmarks(parsed) : parsed;
     if (mode === 'merge') {
       const result = bookmarksStore.getState().mergeBookmarks(data);
       bookmarkCount = result.added;

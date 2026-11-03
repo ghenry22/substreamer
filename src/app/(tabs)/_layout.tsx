@@ -1,11 +1,6 @@
 import Ionicons from "@react-native-vector-icons/ionicons/static";
-// SDK 56 codemod gap: `expo-router/js-tabs` (the public entry) doesn't
-// re-export BottomTabBar as a named export. Use the deeper path until
-// upstream surfaces it at js-tabs.
-import { BottomTabBar } from "expo-router/build/react-navigation/bottom-tabs";
-// Same deep-path gap as BottomTabBar above — the public entry doesn't
-// re-export PlatformPressable (the default tab button).
-import { PlatformPressable } from "expo-router/build/react-navigation/elements";
+import { BottomTabBar } from "expo-router/js-tabs";
+import { PlatformPressable } from "expo-router/react-navigation";
 import { Tabs } from 'expo-router';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';

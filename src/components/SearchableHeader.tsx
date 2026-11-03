@@ -1,8 +1,5 @@
 import Ionicons from "@react-native-vector-icons/ionicons/static";
-// SDK 56 codemod gap: `expo-router/js-tabs` (the public entry) doesn't
-// re-export BottomTabHeaderProps. Use the deeper path until upstream
-// surfaces it at js-tabs.
-import type { BottomTabHeaderProps } from "expo-router/build/react-navigation/bottom-tabs";
+import type { BottomTabHeaderProps } from "expo-router/js-tabs";
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
@@ -15,6 +12,7 @@ import {
   StyleSheet,
   TextInput,
   View,
+  type TextInputInstance,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -34,7 +32,7 @@ export function SearchableHeader({ route }: BottomTabHeaderProps) {
   const { t } = useTranslation();
   const { theme, colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInputInstance>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const offlineMode = offlineModeStore((s) => s.offlineMode);

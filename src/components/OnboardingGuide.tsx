@@ -10,7 +10,7 @@ import {
   Text,
   View,
   useWindowDimensions,
-  type ViewToken,
+  type ListViewToken,
 } from 'react-native';
 
 import { useTheme } from '../hooks/useTheme';
@@ -131,7 +131,7 @@ export const OnboardingGuide = memo(function OnboardingGuide() {
   const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 50 }).current;
 
   const onViewableItemsChanged = useRef(
-    ({ viewableItems }: { viewableItems: ViewToken<Slide>[] }) => {
+    ({ viewableItems }: { viewableItems: ListViewToken[] }) => {
       if (viewableItems.length > 0 && viewableItems[0].index != null) {
         setActiveIndex(viewableItems[0].index);
       }

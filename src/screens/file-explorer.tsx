@@ -278,7 +278,7 @@ export function FileExplorerScreen() {
         <EmptyState icon="folder-open-outline" title={t('emptyDirectory')} subtitle={t('emptyDirectorySubtitle')} />
       ) : (
         <FlatList
-          data={entries}
+          data={entries ?? undefined}
           keyExtractor={(item) => item.uri}
           renderItem={renderEntry}
           ListHeaderComponent={breadcrumbHeader}

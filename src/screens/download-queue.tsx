@@ -477,7 +477,7 @@ export function DownloadQueueScreen() {
           )}
           <DownloadStatsCard colors={colors} queuedCount={queuedCount} />
         </>
-      ) : null,
+      ) : undefined,
     [downloadQueue.length, colors, queuedCount, pausedReason, t],
   );
 

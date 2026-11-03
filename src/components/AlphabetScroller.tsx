@@ -5,6 +5,7 @@ import {
   Text,
   View,
   type GestureResponderEvent,
+  type ViewInstance,
 } from 'react-native';
 
 import { useTheme } from '../hooks/useTheme';
@@ -127,7 +128,7 @@ export const AlphabetScroller = memo(function AlphabetScroller({
   ).current;
 
   // Measure the inner letter strip (not the full-height outer container)
-  const stripRef = useRef<View>(null);
+  const stripRef = useRef<ViewInstance>(null);
   const handleStripLayout = useCallback(() => {
     stripRef.current?.measureInWindow((_x, y, _w, h) => {
       stripY.current = y;

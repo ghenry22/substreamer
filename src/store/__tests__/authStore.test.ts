@@ -1,6 +1,8 @@
 jest.mock('../persistence/kvStorage', () => require('../persistence/__mocks__/kvStorage'));
 
 import { authStore } from '../authStore';
+import { markLogoutPending } from '../logoutPending';
+import { clearKvStorage, kvStorageSync } from '../persistence';
 
 beforeEach(() => {
   authStore.setState({
@@ -222,3 +224,31 @@ describe('authStore', () => {
   });
 });
 
+
+describe('authStore hydration with a logout pending', () => {
+  beforeEach(() => {
+    clearKvStorage();
+    kvStorageSync.setItem('substreamer-auth', JSON.stringify({
+      state: { serverUrl: 'https://music.example.com', username: 'old', password: 'p', isLoggedIn: true },
+      version: 0,
+    }));
+  });
+  afterEach(() => clearKvStorage());
+
+  it('hydrates logged out, and the actions still work', async () => {
+    markLogoutPending();
+    await authStore.persist.rehydrate();
+
+    expect(authStore.getState().isLoggedIn).toBe(false);
+    expect(authStore.getState().username).toBeNull();
+    authStore.getState().setSession('https://new.example.com', 'new', 'q', '1.16');
+    expect(authStore.getState().username).toBe('new');
+  });
+
+  it('hydrates the persisted session when no logout is pending', async () => {
+    await authStore.persist.rehydrate();
+
+    expect(authStore.getState().isLoggedIn).toBe(true);
+    expect(authStore.getState().username).toBe('old');
+  });
+});

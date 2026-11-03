@@ -32,6 +32,7 @@ jest.mock('../../services/imageCacheService', () => ({
 }));
 jest.mock('../../services/musicCacheService', () => ({
   teardownMusicCache: jest.fn(),
+  clearMusicCache: jest.fn().mockResolvedValue(0),
 }));
 jest.mock('../persistence/scrobbleTable', () => ({
   clearScrobbles: jest.fn(),
@@ -86,6 +87,10 @@ import { playerStore } from '../playerStore';
 import { processingOverlayStore } from '../processingOverlayStore';
 import { searchStore } from '../searchStore';
 import { resetAllStores } from '../resetAllStores';
+import { syncStatusStore } from '../syncStatusStore';
+import { migrationGateStore } from '../migrationGateStore';
+import { clearImageCache } from '../../services/imageCacheService';
+import { clearMusicCache } from '../../services/musicCacheService';
 
 beforeEach(() => {
   (clearKvStorage as jest.Mock).mockClear();
@@ -210,10 +215,70 @@ describe('resetAllStores', () => {
 
     await resetAllStores();
 
-    const idleCall = (awaitDbWritesIdle as jest.Mock).mock.invocationCallOrder[0];
-    expect(idleCall).toBeDefined();
-    expect(idleCall).toBeLessThan(withTransactionSync.mock.invocationCallOrder[0]);
+    // The LAST idle wait before the reset, not the first: logout also waits earlier, after
+    // resetting the sync state, and an await between that one and the BEGIN would let a
+    // batch in.
+    const begin = withTransactionSync.mock.invocationCallOrder[0];
+    const idleBefore = (awaitDbWritesIdle as jest.Mock).mock.invocationCallOrder
+      .filter((order) => order < begin);
+    expect(idleBefore.length).toBeGreaterThan(0);
+    const lastIdle = Math.max(...idleBefore);
+    expect((clearScrobbles as jest.Mock).mock.invocationCallOrder[0]).toBeGreaterThan(begin);
+    expect(lastIdle).toBeLessThan(begin);
     withTransactionSync.mockRestore();
+  });
+
+  it('resets the sync state first and clears the KV store only after every data wipe', async () => {
+    // A kill part way through logout must leave the user logged in over a sync that
+    // starts from zero, never logged out over the previous account's data.
+    const resetLibrarySync = jest.spyOn(syncStatusStore.getState(), 'resetLibrarySync');
+    syncStatusStore.setState({ resetLibrarySync } as never);
+
+    await resetAllStores();
+
+    const kv = (clearKvStorage as jest.Mock).mock.invocationCallOrder[0];
+    const first = resetLibrarySync.mock.invocationCallOrder[0];
+    for (const wipe of [clearScrobbles, clearAllMusicCacheRows, clearMusicCache, clearImageCache]) {
+      const order = (wipe as jest.Mock).mock.invocationCallOrder.at(-1)!;
+      expect(order).toBeGreaterThan(first);
+      expect(order).toBeLessThan(kv);
+    }
+    resetLibrarySync.mockRestore();
+  });
+
+  it('clears a pending-update notice so it does not reach the next account', async () => {
+    migrationGateStore.getState().setDeferred(true);
+
+    await resetAllStores();
+
+    expect(migrationGateStore.getState().deferred).toBe(false);
+  });
+
+  it('only ever raises the sync generation', async () => {
+    // In-memory only and can be above 0 already. A reset back to 0 would let a run that
+    // captured 0 earlier read as current again.
+    syncStatusStore.setState({ generation: 7 });
+
+    await resetAllStores();
+
+    expect(syncStatusStore.getState().generation).toBeGreaterThan(7);
+  });
+
+  it('carries on when clearing the download files throws', async () => {
+    (clearMusicCache as jest.Mock).mockRejectedValueOnce(new TypeError('no cache dir'));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    authStore.setState({ isLoggedIn: true });
+
+    await expect(resetAllStores()).resolves.toBeUndefined();
+
+    expect(warn).toHaveBeenCalledWith(
+      '[resetAllStores] music cache files clear failed:',
+      expect.any(TypeError),
+    );
+    expect(clearImageCache).toHaveBeenCalled();
+    expect(clearKvStorage).toHaveBeenCalledTimes(1);
+    expect(authStore.getState().isLoggedIn).toBe(false);
+    warn.mockRestore();
   });
 
   it('carries on when the normalized-schema reset throws', async () => {
@@ -281,17 +346,17 @@ describe('the KEPT-table sweep', () => {
     expect(after?.n).toBe(0);
   });
 
-  it('leaves no rows in ANY kept table', async () => {
+  it('leaves no rows in ANY kept table (storage is the KV store, cleared by clearKvStorage)', async () => {
     const handle = getDb()!;
     await handle.runAsync(
       'INSERT INTO image_download_queue (cover_art_id, scope, status, attempts, added_at, cycle_id)'
       + " VALUES ('al-x_1', 'refresh-all', 'queued', 0, 0, 'cyc-1');",
     );
-    await handle.runAsync("INSERT INTO storage (key, value) VALUES ('leftover', 'x');");
 
     await resetAllStores();
 
-    for (const table of KEPT_TABLES) {
+    expect(clearKvStorage).toHaveBeenCalledTimes(1);
+    for (const table of KEPT_TABLES.filter((t) => t !== 'storage')) {
       // eslint-disable-next-line no-await-in-loop
       const row = await handle.getFirstAsync<{ n: number }>(
         `SELECT COUNT(*) AS n FROM "${table}"`,

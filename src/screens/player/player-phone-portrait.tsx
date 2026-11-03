@@ -892,11 +892,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: 'rgba(0,0,0,0.06)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 12,
+    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
   },
   heroImage: {
     width: '100%',

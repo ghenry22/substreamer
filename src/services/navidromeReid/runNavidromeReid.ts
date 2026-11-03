@@ -1,10 +1,11 @@
 /**
  * The Navidrome 0.64 id re-key, start to finish.
  *
- * Runs behind the blocking interstitial, before the app launches. That placement is what
- * makes the rest simple: `_layout`'s startup effects are gated on the same flag, so
- * nothing is racing this — no pause flag threaded through the services, no writes to
- * refuse, no half-live app to defend against.
+ * Runs behind the blocking interstitial: at cold start before the app launches, or later
+ * in the session when a launch that could not reach the server reaches it. `_layout`'s
+ * startup effects are gated on the same flag. The app may already be live in the second
+ * case, so the pass quiets the player and the download and image workers before its first
+ * write.
  *
  * Ordering is not arbitrary:
  *
@@ -29,19 +30,32 @@ import {
 } from '../imageCacheService';
 import { imageDownloadQueueStore } from '../../store/imageDownloadQueueStore';
 import { flushLibrarySyncLog, logLibrarySync } from '../librarySyncLogger';
+import { appStateStore } from '../../store/appStateStore';
 import { migrationGateStore } from '../../store/migrationGateStore';
-import { rebuildTrackMaps } from '../musicCacheService';
+import { haltDownloadWorkers, musicCacheReconcileInFlight, rebuildTrackMaps } from '../musicCacheService';
+import { clearQueue } from '../playerService';
 import { rehydrateAllStores } from '../../store/persistence/rehydrate';
 import { ratingStore } from '../../store/ratingStore';
 import { syncStatusStore } from '../../store/syncStatusStore';
 import { clearImageQueue } from '../../store/persistence/imageDownloadQueueTable';
+import { legacyMetadataConversionInFlight } from '../../store/persistence/musicCacheTables';
 import { getDb } from '../../store/persistence/db';
 import { buildIdMap, createIdMap, dropIdMap } from './reidMap';
 import { moveDownloadedFiles } from './reidFiles';
 import { rekeyKvBlobs } from './reidKv';
+import { installHoldsServerIds } from './reidInstall';
 import { discardLibrary } from './reidLibrary';
 import { cannotAskNow } from './reidProbe';
-import { hasServerAnswered, reidVerdict, setReidState, setUserConfirmedReid } from './reidMarker';
+import {
+  hasContinuedAfterFailureThisSession,
+  hasServerAnswered,
+  isLegacyThisSession,
+  reidVerdict,
+  setContinuedAfterFailureThisSession,
+  setLegacyThisSession,
+  setReidState,
+  setUserConfirmedReid,
+} from './reidMarker';
 import { appendReidLog } from './reidMigrationLog';
 import { dataModelUpgradeInFlight } from '../dataModelUpgradeService';
 import { MIGRATION_DONE_KEY, MIGRATION_VERSION } from '../normalizedMigrationKey';
@@ -53,26 +67,18 @@ import {
 } from './reidRekey';
 
 let inFlight: Promise<void> | null = null;
+/** Set while a pass waits for the app to come to the foreground. */
+let foregroundWait: (() => void) | null = null;
 
 /**
  * Run the pass if this install needs it.
  *
- * Safe to call on every launch: it returns immediately when the marker says complete, the
- * server is not affected, or a run is already going. When the server's version cannot
- * settle the question it shows the interstitial in `asking` mode instead and returns —
- * the user's answer triggers a fresh call.
+ * Safe to call on every launch and whenever the server answers: it returns immediately
+ * when the marker says complete, the server is not affected, or a run is already going.
+ * An undetermined server version shows the `asking` prompt instead; the user's answer
+ * triggers a fresh call.
  */
-export interface ReidRunOptions {
-  /**
-   * True when this is NOT the cold-start path — the app is already running and the user
-   * is using it. A cold start runs straight through: they are sat at a splash expecting
-   * startup work. Interrupting a live session with a multi-minute, uninterruptible
-   * migration is a different matter, so that asks first.
-   */
-  midSession?: boolean;
-}
-
-export function runNavidromeReidIfNeeded(opts: ReidRunOptions = {}): Promise<void> {
+export function runNavidromeReidIfNeeded(): Promise<void> {
   if (inFlight) return inFlight;
 
   // Verdict FIRST. `skip` covers every install that will never need this — not
@@ -89,13 +95,27 @@ export function runNavidromeReidIfNeeded(opts: ReidRunOptions = {}): Promise<voi
     return Promise.resolve();
   }
 
+  // An undetermined version runs in legacy mode until the user chooses to update, so it
+  // is never `deferred`. The prompt waits for a server that has answered, because
+  // "Update now" starts the pass.
+  if (verdict === 'ask') {
+    if (isLegacyThisSession() || cannotAskNow() || !hasServerAnswered()) {
+      return Promise.resolve();
+    }
+    migrationGateStore.getState().show('asking');
+    return Promise.resolve();
+  }
+
+  // The pass failed earlier this session and the user chose to carry on. The next launch
+  // tries again; retrying here would loop on the same failure.
+  if (hasContinuedAfterFailureThisSession()) return Promise.resolve();
+
   // Only now, for an install that genuinely needs the pass: may it run RIGHT NOW?
   //
   // Nothing about it is safe without a server to refill from. It discards the whole
   // library and depends on the sync that follows to rebuild it — measured on a fixture
   // with offline mode on and a persisted 0.64: "library discarded (45 tables)", marker
-  // stamped complete, songs 0, and no sync able to run. The `ask` prompt is worse: it
-  // appears offline and a "yes" confirms straight into the same thing.
+  // stamped complete, songs 0, and no sync able to run.
   //
   // `cannotAskNow()` alone is not enough — the connectivity flags default optimistically
   // to reachable, so a user away from home sails past it and the probe merely times out.
@@ -110,17 +130,11 @@ export function runNavidromeReidIfNeeded(opts: ReidRunOptions = {}): Promise<voi
     return Promise.resolve();
   }
 
-  if (verdict === 'ask') {
-    migrationGateStore.getState().show('asking');
-    return Promise.resolve();
-  }
-
-  // Mid-session: offer, do not seize. The pass clears the play queue and discards the
-  // library, and it cannot be interrupted once it starts, so taking over the screen
-  // while someone is listening is not ours to decide. Declining leaves the marker
-  // `pending`, so the next launch asks again.
-  if (opts.midSession && !userAcceptedThisSession) {
-    migrationGateStore.getState().show('offering');
+  // Never start unseen. The pass stops playback and takes over the screen, so a server
+  // that answers while the app is in the background (auto-offline turning off on home
+  // Wi-Fi) waits until the user brings the app back.
+  if (!appStateStore.getState().isActive) {
+    runWhenForeground();
     return Promise.resolve();
   }
 
@@ -156,6 +170,17 @@ export function awaitReidDecision(pass: Promise<void>): Promise<void> {
   });
 }
 
+/** Call the pass once, the next time the app comes to the foreground. */
+function runWhenForeground(): void {
+  if (foregroundWait) return;
+  foregroundWait = appStateStore.subscribe((state, prev) => {
+    if (!state.isActive || prev.isActive) return;
+    foregroundWait?.();
+    foregroundWait = null;
+    void runNavidromeReidIfNeeded();
+  });
+}
+
 /**
  * The user answered the `ask` prompt: their server is updated, run it.
  *
@@ -163,37 +188,41 @@ export function awaitReidDecision(pass: Promise<void>): Promise<void> {
  * question back — the version string still cannot answer it and asking twice is worse
  * than remembering.
  */
-export function confirmAndRunNavidromeReid(): Promise<void> {
+export async function confirmAndRunNavidromeReid(): Promise<void> {
+  // An install holding no server data has nothing to convert: whatever it syncs next
+  // carries the server's current ids. Mark it done instead of running the full pass.
+  const db = getDb();
+  if (db && !(await installHoldsServerIds(db))) {
+    setReidState('complete');
+    migrationGateStore.getState().hide();
+    logLibrarySync('[reid] update confirmed on an empty install; marked complete');
+    return;
+  }
   setUserConfirmedReid();
   migrationGateStore.getState().confirm();
   return runNavidromeReidIfNeeded();
 }
 
 /**
- * The user accepted the mid-session offer. Session-scoped on purpose: declining should
- * not be remembered past this launch, and accepting should not have to be repeated if
- * the pass then fails and is retried.
+ * The user chose "Run in legacy mode" on the `ask` prompt. Everything keeps working on
+ * the old ids; the prompt returns at the next launch.
  */
-let userAcceptedThisSession = false;
-
-/** Test-only: forget a mid-session acceptance. */
-export function resetMidSessionAcceptanceForTests(): void {
-  userAcceptedThisSession = false;
-}
-
-/** The user said yes to the mid-session offer. */
-export function acceptMidSessionReid(): Promise<void> {
-  userAcceptedThisSession = true;
-  migrationGateStore.getState().show('working');
-  return runNavidromeReidIfNeeded({ midSession: true });
-}
-
-/** The user said "later". The marker stays pending, so the next launch runs it. */
-export function declineMidSessionReid(): void {
+export function chooseLegacyMode(): void {
+  setLegacyThisSession();
   migrationGateStore.getState().hide();
-  migrationGateStore.getState().setDeferred(true);
-  logLibrarySync('[reid] user deferred the mid-session offer; will run at next launch');
-  appendReidLog('deferred by user', ['they chose Later on the mid-session prompt']);
+  logLibrarySync('[reid] legacy mode chosen for this session');
+  appendReidLog('legacy mode', ['the server version is undetermined; the user chose legacy mode']);
+}
+
+/**
+ * The user chose "Continue without updating" after a failed pass. Library writes stay
+ * blocked this session and the Settings notice says so; the next launch retries.
+ */
+export function continueWithoutUpdating(): void {
+  setContinuedAfterFailureThisSession();
+  migrationGateStore.getState().hide();
+  migrationGateStore.getState().setDeferredAfterFailure();
+  logLibrarySync('[reid] continuing without the update after a failure; retried next launch');
 }
 
 /** Re-run after a failure, from the gate's retry button. */
@@ -267,6 +296,11 @@ async function execute(verdict: string): Promise<void> {
     }
   }
 
+  // A store hydration converting legacy download metadata reads rows and writes them back
+  // by key; a conversion read before the re-key would write retired artist and album ids
+  // back after it. No new hydration starts while the gate holds startup.
+  await legacyMetadataConversionInFlight();
+
   try {
     // Prove the deferral works on THIS build before writing anything. The spike that
     // justified the design ran a different SQLite; if a future op-SQLite bump ever changes
@@ -305,11 +339,21 @@ async function execute(verdict: string): Promise<void> {
     // ACTIVE cycle, so anything queued outside one would survive and be retried against
     // ids the server no longer has. Clearing before the cache is cleared also means the
     // re-warm enqueues into an empty queue, so none of its ids collide.
+    // Quiet the running app before the first write. A download reconcile already walking
+    // reads the store and would delete moved files as orphans, so it finishes first; then
+    // the download workers stop, and the player stops and forgets its queue (in memory
+    // too, or the persisted queue writer would put the retired ids back).
+    await musicCacheReconcileInFlight();
+    haltDownloadWorkers();
+    await clearQueue();
+
     // From here on the run writes. A failure after this point cannot be walked away from:
     // the database ends up re-keyed with files still at their old paths, and launching the
     // app into that lets `reconcileMusicCacheAsync` delete every download as an orphan.
     gate.markWritten();
 
+    // After `clearQueue()`: its own snapshot delete is not awaited, and a queue write
+    // already in flight could land behind it.
     await clearLiveQueue(db);
     await clearDownloadQueue(db);
     await clearImageQueue();

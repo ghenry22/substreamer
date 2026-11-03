@@ -1,5 +1,5 @@
 import Ionicons from '@react-native-vector-icons/ionicons/static';
-import { useNavigation } from 'expo-router';
+import { usePreventRemove } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
@@ -23,8 +23,6 @@ export function OfflineCard() {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const { alert, confirm } = useThemedAlert();
-  const navigation = useNavigation();
-
   const offlineMode = offlineModeStore((s) => s.offlineMode);
   const toggleOfflineMode = offlineModeStore((s) => s.toggleOfflineMode);
   const showInFilterBar = offlineModeStore((s) => s.showInFilterBar);
@@ -54,35 +52,34 @@ export function OfflineCard() {
   }, [currentSSID, homeSSIDs.length]);
 
   // Prompt to disable auto-offline when navigating away with incomplete home-wifi setup
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('beforeRemove', (e: any) => {
-      const { enabled, mode, homeSSIDs: ssids, locationPermissionGranted: permGranted } = autoOfflineStore.getState();
-      if (!enabled || mode !== 'home-wifi') return;
-      if (permGranted && ssids.length > 0) return;
-
-      e.preventDefault();
-      Alert.alert(
-        t('incompleteSetup'),
-        t('incompleteSetupMessage'),
-        [
-          {
-            text: t('keepEnabled'),
-            style: 'cancel',
-            onPress: () => navigation.dispatch(e.data.action),
+  const [leaving, setLeaving] = useState(false);
+  const setupIncomplete =
+    autoEnabled && autoMode === 'home-wifi' && !(locationGranted && homeSSIDs.length > 0);
+  usePreventRemove(setupIncomplete && !leaving, ({ repeat }) => {
+    Alert.alert(
+      t('incompleteSetup'),
+      t('incompleteSetupMessage'),
+      [
+        {
+          text: t('keepEnabled'),
+          style: 'cancel',
+          onPress: () => {
+            setLeaving(true);
+            repeat();
           },
-          {
-            text: t('disable'),
-            style: 'destructive',
-            onPress: () => {
-              autoOfflineStore.getState().setEnabled(false);
-              navigation.dispatch(e.data.action);
-            },
+        },
+        {
+          text: t('disable'),
+          style: 'destructive',
+          onPress: () => {
+            autoOfflineStore.getState().setEnabled(false);
+            setLeaving(true);
+            repeat();
           },
-        ],
-      );
-    });
-    return unsubscribe;
-  }, [navigation, t]);
+        },
+      ],
+    );
+  });
 
   const handleAutoEnabledChange = useCallback((value: boolean) => {
     autoOfflineStore.getState().setEnabled(value);

@@ -2231,6 +2231,11 @@ async function runLegacyMetadataConversion(): Promise<boolean> {
  * before it publishes: a row published ahead of its own conversion would serve
  * empty columns. A false verdict leaves every envelope intact for the next run.
  */
+/** Resolves once any running conversion has finished. The Navidrome re-key waits on it. */
+export function legacyMetadataConversionInFlight(): Promise<unknown> {
+  return conversionInFlight ?? Promise.resolve();
+}
+
 export function convertLegacyMetadataAsync(): Promise<boolean> {
   if (conversionInFlight) return conversionInFlight;
   const run = runLegacyMetadataConversion().finally(() => {

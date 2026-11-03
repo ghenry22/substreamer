@@ -35,7 +35,7 @@ jest.mock('../../components/SongRow', () => ({ SongRow: stubRow('song') }));
 jest.mock('../../components/RecentSearches', () => ({ RecentSearches: () => null }));
 
 import React from 'react';
-import { act, render, waitFor } from '@testing-library/react-native';
+import { act, render, waitFor, waitForElementToBeRemoved } from '@testing-library/react-native';
 
 import type { AlbumID3, ArtistID3, Child } from 'subsonic-api';
 
@@ -205,7 +205,7 @@ describe('SearchScreen — downloaded album filter reads SQL', () => {
 
     db().runSync('DELETE FROM cached_items');
     bumpRevision();
-    await waitFor(() => expect(r.queryByTestId('album:al1')).toBeNull());
+    await waitForElementToBeRemoved(() => r.queryByTestId('album:al1'));
   });
 
   it('honours the partial-download preference, and re-reads when it flips', async () => {

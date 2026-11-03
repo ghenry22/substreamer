@@ -28,6 +28,10 @@ import { albumListsStore } from '../../store/albumListsStore';
 import { favoritesStore } from '../../store/favoritesStore';
 import { fetchAlbumDetail, fetchPlaylistDetail } from '../detailFetchService';
 import { offlineModeStore } from '../../store/offlineModeStore';
+import { authStore } from '../../store/authStore';
+import { markLogoutPending } from '../../store/logoutPending';
+import { clearKvStorage } from '../../store/persistence/kvStorage';
+import * as dbModule from '../../store/persistence/db';
 import { clearReidMarker, setReidState } from '../navidromeReid/reidMarker';
 import { serverInfoStore } from '../../store/serverInfoStore';
 import { musicCacheStore } from '../../store/musicCacheStore';
@@ -55,6 +59,7 @@ const db = () => getDb()!;
 beforeAll(() => ensureNormalizedSchema(db()));
 
 beforeEach(async () => {
+  authStore.setState({ isLoggedIn: true });
   offlineModeStore.setState({ offlineMode: false } as any);
   musicCacheStore.setState({ cachedItems: {}, cachedSongs: {} } as any);
   layoutPreferencesStore.setState({ includePartialInDownloadedFilter: false } as any);
@@ -537,6 +542,41 @@ describe('pushSnapshot — connection gate', () => {
     expect(tp.setBrowseSnapshot).not.toHaveBeenCalled();
     // Siri vocabulary is phone-side (SiriKit) — never car-gated.
     expect(tp.donateVoiceVocabulary).toHaveBeenCalled();
+  });
+});
+
+describe('pushSnapshot with no session ready', () => {
+  const tp = require('react-native-queue-player').getTrackPlayer();
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    clearKvStorage();
+    tp.setBrowseSnapshot.mockClear();
+    tp.donateVoiceVocabulary.mockClear();
+  });
+
+  const cases: Array<[string, () => void]> = [
+    ['logged out', () => authStore.setState({ isLoggedIn: false })],
+    ['a logout pending', () => markLogoutPending()],
+  ];
+
+  it.each(cases)('%s: pushes four empty tabs and empty vocabulary, reading no SQL', async (_, arrange) => {
+    arrange();
+    tp.isCarConnected.mockReturnValue(true);
+    const getDb = jest.spyOn(dbModule, 'getDb');
+
+    await __test.pushSnapshot();
+
+    const snap = tp.setBrowseSnapshot.mock.calls.at(-1)[0];
+    expect(snap.sections.map((s: { id: string }) => s.id)).toEqual([
+      sectionId('home'),
+      sectionId('favorites'),
+      sectionId('albums'),
+      sectionId('playlists'),
+    ]);
+    expect(snap.sections.every((s: { items: unknown[] }) => s.items.length === 0)).toBe(true);
+    expect(tp.donateVoiceVocabulary).toHaveBeenCalledWith({ artists: [], playlists: [] });
+    expect(getDb).not.toHaveBeenCalled();
   });
 });
 

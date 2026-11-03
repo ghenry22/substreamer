@@ -33,53 +33,27 @@ index 6fcabc3..aaaf793 100644
          childScreenContainers.clear()
      }
 diff --git a/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenStackFragment.kt b/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenStackFragment.kt
-index b9e6e2e..3987c9a 100644
+index 10b64cf..0e9e5be 100644
 --- a/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenStackFragment.kt
 +++ b/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenStackFragment.kt
-@@ -500,7 +500,15 @@ class ScreenStackFragment :
+@@ -507,7 +507,11 @@ class ScreenStackFragment :
  
      override fun canNavigateBack(): Boolean {
          val container: ScreenContainer? = screen.container
 -        check(container is ScreenStack) { "ScreenStackFragment added into a non-stack container" }
-+        // Local patch (substreamer-rn): soft-fail instead of crashing if the
-+        // container is missing or not a ScreenStack. This is a transient state
-+        // that can occur during fragment detach / re-parent races (especially
-+        // on Android 16+). The primary fix is in ScreenStackHeaderConfig.onUpdate
-+        // — this is defensive insurance for any other caller that might hit
-+        // the same race in the future.
++        // Local patch (substreamer-rn): soft-fail instead of asserting. The recursive
++        // call below can reach a parent fragment whose container is already detached.
 +        if (container !is ScreenStack) {
 +            return false
 +        }
          return if (container.rootScreen == screen) {
              // this screen is the root of the container, if it is nested we can check parent container
              // if it is also a root or not
-diff --git a/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenStackHeaderConfig.kt b/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenStackHeaderConfig.kt
-index f9648bc..24b4050 100644
---- a/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenStackHeaderConfig.kt
-+++ b/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenStackHeaderConfig.kt
-@@ -232,7 +232,16 @@ class ScreenStackHeaderConfig(
-         val stack = screenStack
-         val isTop = stack == null || stack.topScreen == parent
- 
--        if (!isAttachedToWindow || !isTop || isDestroyed) {
-+        // Local patch (substreamer-rn): also bail when stack is null. The
-+        // `isTop` short-circuit above evaluates to true when stack is null,
-+        // which lets onUpdate() proceed past this guard for screens whose
-+        // container has been detached or swapped (a transient state during
-+        // navigation transitions / fragment re-parenting). It then calls
-+        // screenFragment.canNavigateBack(), which crashes on the
-+        // `check(container is ScreenStack)` assertion in ScreenStackFragment.
-+        // Observed on Android 16 (SDK 36) where tightened lifecycle rules
-+        // surface this race more often. Reported as a Play Console crash.
-+        if (!isAttachedToWindow || !isTop || isDestroyed || stack == null) {
-             return
-         }
- 
 diff --git a/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenViewManager.kt b/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenViewManager.kt
-index 4cb201b..c8a32a8 100644
+index df9e242..07db6d4 100644
 --- a/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenViewManager.kt
 +++ b/node_modules/react-native-screens/android/src/main/java/com/swmansion/rnscreens/ScreenViewManager.kt
-@@ -95,6 +95,24 @@ open class ScreenViewManager :
+@@ -95,6 +95,21 @@ open class ScreenViewManager :
          view.onFinalizePropsUpdate()
      }
  
@@ -91,9 +65,6 @@ index 4cb201b..c8a32a8 100644
 +    // Defensive guard: only null if no fragment is currently attached, to
 +    // avoid the (vanishingly small) risk of clobbering a live wrapper if
 +    // Fabric drops then re-attaches via a different path.
-+    // NOTE: PR software-mansion/react-native-screens#3250 touches this file
-+    // for unrelated transition cleanup; if it merges upstream this hunk may
-+    // need to rebase.
 +    override fun onDropViewInstance(view: Screen) {
 +        if (view.fragmentWrapper?.fragment?.isAdded != true) {
 +            view.fragmentWrapper = null
