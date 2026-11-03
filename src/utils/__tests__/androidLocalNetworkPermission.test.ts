@@ -22,7 +22,7 @@ describe('ensureAndroidLocalNetworkPermission', () => {
     mockCheck.mockReset();
     mockRequest.mockReset();
     Platform.OS = 'android';
-    Platform.Version = 37;
+    Object.defineProperty(Platform, 'Version', { value: 37, configurable: true });
   });
 
   it('returns granted immediately off Android', async () => {
@@ -32,7 +32,7 @@ describe('ensureAndroidLocalNetworkPermission', () => {
   });
 
   it('returns granted below API 37 without touching the platform', async () => {
-    Platform.Version = 36;
+    Object.defineProperty(Platform, 'Version', { value: 36, configurable: true });
     expect(await ensureAndroidLocalNetworkPermission()).toBe('granted');
     expect(mockCheck).not.toHaveBeenCalled();
   });
