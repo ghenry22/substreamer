@@ -3,6 +3,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 // Synchronous adapter: `isLoggedIn` gates the login redirect at boot — async
 // hydration would flash the logged-out state then bounce.
+import { isLogoutPending } from './logoutPending';
 import { kvStorageSync as kvStorage } from './persistence';
 
 export type ServerSlot = 'primary' | 'secondary';
@@ -142,6 +143,10 @@ export const authStore = create<AuthState>()(
         secondaryServerUrl: state.secondaryServerUrl,
         activeServer: state.activeServer,
       }),
+      // A pending logout reads as logged out from the first frame; the splash finishes it.
+      // The result replaces the whole state, so it must carry the actions.
+      merge: (persisted, current) =>
+        isLogoutPending() ? current : { ...current, ...(persisted as Partial<AuthState>) },
       // No boot reset: `activeServer` is restored verbatim. If the restored
       // server is unreachable, the connectivity banner offers a switch (detect-
       // and-confirm) — we never silently force a slot on launch.

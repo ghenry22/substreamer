@@ -9,7 +9,7 @@
  * `execute` and `executeBatch` do NOT enter that pool the same way: `execute` goes
  * straight to native, while `executeBatch` parks on a JS-side transaction lock and is
  * dispatched a `setImmediate` later, wrapped in its own `BEGIN TRANSACTION`/`COMMIT`
- * (`op-sqlite/src/functions.ts:50-70, 95-131`). So a read or write issued AFTER a batch
+ * (`op-sqlite/src/functions.ts:48-68, 93-123`). So a read or write issued AFTER a batch
  * can reach the engine BEFORE it, and anything issued while a batch's transaction is
  * open joins that transaction. Do not assume submission order is execution order.
  *
@@ -47,7 +47,7 @@ export interface InternalDb {
   runAsync(sql: string, params?: readonly unknown[]): Promise<RunResult>;
   /**
    * Run many statements off the JS thread. The native side aborts on the first failing
-   * statement (`cpp/bridge.cpp`), but op-SQLite's JS wrapper brackets the whole call in
+   * statement (`cpp/OPBridge.cpp`), but op-SQLite's JS wrapper brackets the whole call in
    * `BEGIN TRANSACTION`/`COMMIT` and rolls back on failure, so this is atomic in
    * practice despite the native layer's autocommit. {@link InternalDb.runAtomicBatchAsync}
    * additionally nests a SAVEPOINT.
@@ -182,8 +182,8 @@ function adapt(op: DB): InternalDb {
       if (commands.length === 0) return;
       // op-SQLite's JS `executeBatch` does NOT reach the pool at call time. It parks the
       // batch on a transaction lock and dispatches it from a `setImmediate`
-      // (`op-sqlite/src/functions.ts:50-70`), then brackets it in a JS-thread
-      // `BEGIN TRANSACTION` / `COMMIT`, with `ROLLBACK;` on failure (`:95-131`). So the
+      // (`op-sqlite/src/functions.ts:48-68`), then brackets it in a JS-thread
+      // `BEGIN TRANSACTION` / `COMMIT`, with `ROLLBACK;` on failure (`:93-123`). So the
       // wrapper already makes this atomic, and a plain `execute` issued afterwards can
       // reach the pool FIRST. `musicCacheStore.ts:234-243` documents the same thing.
       //

@@ -1,3 +1,4 @@
+import i18n from '../../../i18n/i18n';
 jest.mock('../../../store/persistence/kvStorage', () =>
   require('../../../store/persistence/__mocks__/kvStorage'),
 );
@@ -58,5 +59,20 @@ describe('LibrarySyncCard — a deferred re-key', () => {
     fireEvent.press(screen.getByText('Sync'));
 
     expect(mockResync).not.toHaveBeenCalled();
+  });
+
+  it('says the update failed when the user continued past a failed run', () => {
+    migrationGateStore.getState().setDeferredAfterFailure();
+    render(<LibrarySyncCard />);
+
+    expect(screen.getByText(i18n.t('syncMigrationFailedPending'))).toBeTruthy();
+    expect(screen.queryByText(i18n.t('syncPendingLibraryUpdate'))).toBeNull();
+  });
+
+  it('says it is waiting for the server when the pass is deferred for want of one', () => {
+    migrationGateStore.getState().setDeferred(true);
+    render(<LibrarySyncCard />);
+
+    expect(screen.getByText(i18n.t('syncPendingLibraryUpdate'))).toBeTruthy();
   });
 });

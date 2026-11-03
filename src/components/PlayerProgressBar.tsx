@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Text,
   View,
+  type ViewInstance,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -67,7 +68,7 @@ export function PlayerProgressBar({
   const { t } = useTranslation();
   const trackWidth = useRef(0);
   const trackPageX = useRef(0);
-  const trackRef = useRef<View>(null);
+  const trackRef = useRef<ViewInstance>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragFraction, setDragFraction] = useState(0);
   const [pendingSeekFraction, setPendingSeekFraction] = useState<number | null>(

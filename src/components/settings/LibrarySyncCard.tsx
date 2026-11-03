@@ -22,6 +22,7 @@ export function LibrarySyncCard() {
   // A needed re-key that has not run blocks every library write for the session, so the
   // sync controls below would accept a tap and do nothing. Say so instead.
   const reidDeferred = migrationGateStore((s) => s.deferred);
+  const reidDeferredAfterFailure = migrationGateStore((s) => s.deferredAfterFailure);
   const syncBlocked = offlineMode || reidDeferred;
   const lastSyncAt = syncStatusStore((s) => s.fullSyncCompletedAt);
   const librarySyncPhase = syncStatusStore((s) => s.librarySyncPhase);
@@ -268,7 +269,7 @@ export function LibrarySyncCard() {
           <View style={styles.statusRow} testID="sync-card-reid-deferred">
             <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
             <Text style={[styles.statusText, { color: colors.textSecondary, flex: 1 }]}>
-              {t('syncPendingLibraryUpdate')}
+              {t(reidDeferredAfterFailure ? 'syncMigrationFailedPending' : 'syncPendingLibraryUpdate')}
             </Text>
           </View>
         )}

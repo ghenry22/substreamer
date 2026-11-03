@@ -19,9 +19,10 @@ import { dropIdMap } from '../services/navidromeReid/reidMap';
 import { clearPendingScrobbles } from './persistence/pendingScrobbleTable';
 import { clearScrobbles } from './persistence/scrobbleTable';
 import { clearMusicCacheTables } from './musicCacheStore';
-import { teardownMusicCache } from '../services/musicCacheService';
+import { clearMusicCache, teardownMusicCache } from '../services/musicCacheService';
 import { clearImageCache, teardownImageCache } from '../services/imageCacheService';
 import { resetFavoritesSyncFlags } from '../services/favoritesSyncService';
+import { releaseLibrarySyncQueue } from '../services/normalizedLibrarySync';
 
 // Persisted stores
 import { albumInfoStore } from './albumInfoStore';
@@ -63,6 +64,7 @@ import { devOptionsStore } from './devOptionsStore';
 import { editShareStore } from './editShareStore';
 import { filterBarStore } from './filterBarStore';
 import { mbidSearchStore } from './mbidSearchStore';
+import { migrationGateStore } from './migrationGateStore';
 import { migrationStore } from './migrationStore';
 import { moreOptionsStore } from './moreOptionsStore';
 import { playbackToastStore } from './playbackToastStore';
@@ -105,6 +107,8 @@ const allStores = [
   sslCertStore,
   storageLimitStore,
   syncStatusStore,
+  // A deferral notice must not carry into the next account's Settings.
+  migrationGateStore,
   migrationStore,
   // Non-persisted
   addToPlaylistStore,
@@ -171,7 +175,8 @@ async function clearKeptTables(): Promise<void> {
   );
   const commands: Array<[string, unknown[]]> = [['PRAGMA defer_foreign_keys = ON', []]];
   for (const table of KEPT_TABLES) {
-    if (present.has(table)) commands.push([`DELETE FROM "${table}"`, []]);
+    // `storage` is the KV store, cleared by `clearKvStorage` once the data is gone.
+    if (table !== 'storage' && present.has(table)) commands.push([`DELETE FROM "${table}"`, []]);
   }
   try {
     await db.runAtomicBatchAsync(commands as never);
@@ -180,31 +185,28 @@ async function clearKeptTables(): Promise<void> {
   }
 }
 
-export async function resetAllStores(): Promise<void> {
-  // (Native SSL trust + proxy teardown happens in the logout handler, awaited
-  // before this runs — see AccountCard.handleLogout.)
-
-  // Unregister cache-service AppState listeners before clearing state so a
-  // background→foreground transition while logged out can't fire stalled-
-  // download recovery against a reset store. The next login re-arms them.
-  teardownMusicCache();
-  teardownImageCache();
-  // Module-scope flags in favoritesSyncService: zustand's `getInitialState()` returns a
-  // memoised object and never re-runs the store initializer, so the reset loop below
-  // cannot clear them.
-  resetFavoritesSyncFlags();
-  await clearKvStorage();
-  await clearLegacyBlobTables();
-  // The normalized model is the sole source of truth — wipe it too so a different
-  // account/server can't see the previous account's library after logout (downloads +
-  // blobs are cleared here as well, so a full reset is consistent).
+/**
+ * Wipe everything the previous server's session left in the install: the legacy blobs,
+ * the normalized model and id map, scrobbles, downloads (rows and files), the image cache
+ * and every KEPT table except `storage`. Never rejects; each step is independent, so one
+ * failing must not leave the rest in place. Logout runs it before clearing credentials,
+ * and login runs it when it finds leftovers.
+ */
+export async function wipeServerData(): Promise<void> {
+  const step = async (label: string, run: () => unknown): Promise<void> => {
+    try {
+      await run();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn(`[resetAllStores] ${label} failed:`, e);
+    }
+  };
+  await step('legacy blob clear', clearLegacyBlobTables);
   const normDb = getDb();
   if (normDb) {
     // `resetNormalizedSchema` is `withTransactionSync` — its `BEGIN` runs on the JS
     // thread and hard-fails if a batch's savepoint is open on the pool. Wait for the
-    // pool to be write-idle first, and never let a failure here abort the rest of the
-    // teardown (scrobbles, the music cache, the image cache and the store resets all
-    // follow).
+    // pool to be write-idle immediately before it, with no await in between.
     await awaitDbWritesIdle();
     try {
       resetNormalizedSchema(normDb);
@@ -215,37 +217,60 @@ export async function resetAllStores(): Promise<void> {
     // The Navidrome re-key's id map is created imperatively, so it is not in the generated
     // DDL and `resetNormalizedSchema` cannot know about it. Left behind, a mid-pass logout
     // would leak one server's id pairs into the next server's run.
-    try {
-      await dropIdMap(normDb);
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn('[resetAllStores] id-map drop failed:', e);
-    }
+    await step('id-map drop', () => dropIdMap(normDb));
   }
-  // completedScrobbleStore also persists to a per-row table (`scrobble_events`);
-  // truncate it here so logged-out state is clean.
-  await clearScrobbles();
-  // pendingScrobbleStore persists to `pending_scrobble_events`; truncate
-  // here so the offline transmit queue doesn't survive logout.
-  await clearPendingScrobbles();
-  // musicCacheStore persists its four v2 tables (cached_songs, cached_items,
-  // cached_item_songs, download_queue); truncate them here and drop the
-  // settings blob too.
-  await clearMusicCacheTables();
+  await step('scrobble clear', clearScrobbles);
+  await step('pending scrobble clear', clearPendingScrobbles);
+  await step('music cache tables clear', clearMusicCacheTables);
+  // The download files, off the JS thread. Can throw when the cache directory cannot be
+  // created.
+  await step('music cache files clear', clearMusicCache);
+  await step('image cache clear', () => clearImageCache());
+  await step('kept tables clear', clearKeptTables);
+}
+
+export async function resetAllStores(): Promise<void> {
+  // (Native SSL trust + proxy teardown happens before this runs — see
+  // logoutService.finishLogout.)
+
+  // 0. Stop the library sync without waiting for it: a fetch can hang (OkHttp has no
+  // timeouts). The bump makes every later write of a running sync a no-op, and the
+  // release lets the next account's first sync start instead of queueing behind it.
+  syncStatusStore.getState().bumpGeneration();
+  releaseLibrarySyncQueue();
+  // Unregister the cache services' AppState listeners so a foreground transition during
+  // the teardown cannot fire recovery against a half-reset store. Clearing the caches
+  // below re-initialises them, which re-arms the listeners against the empty caches.
+  teardownMusicCache();
+  teardownImageCache();
+  // Module-scope flags in favoritesSyncService: zustand's `getInitialState()` returns a
+  // memoised object and never re-runs the store initializer, so the reset loop below
+  // cannot clear them.
+  resetFavoritesSyncFlags();
+
+  // 1. Reset the sync state first and get it on disk. A logout killed later is finished
+  // at the next launch, and must never find a cursor over a wiped library.
+  syncStatusStore.getState().resetLibrarySync();
+  syncStatusStore.getState().resetSongSync();
+  await awaitDbWritesIdle();
+
+  // 2. The data. An interrupted logout is finished at the next launch (logoutPending).
+  await wipeServerData();
+
+  // 3. Last, the KV store and the in-memory state, auth included.
+  await clearKvStorage();
   kvStorage.removeItem('substreamer-music-cache-settings');
-  // imageCacheStore persists the `cached_images` table; the service-owned
-  // wipe also drops in-memory queue/uriCache state and the on-disk dir.
-  // Pass `reinit: false` so the AppState listener teardownImageCache just
-  // removed isn't re-armed — the next initImageCache comes from the auth
-  // flow on re-login.
-  void clearImageCache({ reinit: false });
   kvStorage.removeItem('substreamer-image-cache-settings');
+  // `generation` is in-memory only and may already be above its initial 0. It must only
+  // ever increase, or a run that captured the reset value would read as current again.
+  const generation = syncStatusStore.getState().generation;
   for (const store of allStores) {
     (store.setState as (state: unknown, replace: boolean) => void)(
       store.getInitialState(),
       true,
     );
   }
+  syncStatusStore.setState({ generation: generation + 1 });
   // Drop debounced library-store writes AFTER the reset loop: each
   // `setState(initial, true)` above re-arms a debounce timer via the persist
   // middleware. resetAllStores is fully synchronous, so no timer can fire
@@ -253,8 +278,6 @@ export async function resetAllStores(): Promise<void> {
   // and the ones the resets just armed, so nothing lands after clearKvStorage.
   dropAllPendingPersistWrites();
 
-  // Last: the derived backstop. The targeted teardown above also clears in-memory and
-  // on-disk state, so it stays; this only guarantees no KEPT table keeps rows, whatever
-  // was or was not remembered there.
+  // The backstop: a download, scrobble or image write that landed during the teardown.
   await clearKeptTables();
 }

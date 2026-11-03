@@ -106,20 +106,29 @@ jest.mock('../../store/migrationStore', () => ({
 }));
 
 let mockSqliteGetItem: () => string | null = () => null;
+let mockLogoutPending = false;
 
 // Both adapters, with writes, so the stores the splash rehydrates can persist; reads are
-// whatever the test seeds.
+// whatever the test seeds, except the logout flag.
 jest.mock('../../store/persistence/kvStorage', () => {
   const adapter = {
-    getItem: () => mockSqliteGetItem(),
+    getItem: (key: string) =>
+      key === 'substreamer-logout-pending' ? (mockLogoutPending ? '1' : null) : mockSqliteGetItem(),
     setItem: () => {},
     removeItem: () => {},
   };
   return { kvStorage: adapter, kvStorageSync: adapter };
 });
 
+const mockFinishLogout = jest.fn();
+jest.mock('../../services/logoutService', () => ({
+  finishLogout: () => mockFinishLogout(),
+}));
+
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const AnimatedSplashScreen = require('../AnimatedSplashScreen').default;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { authStore } = require('../../store/authStore');
 
 beforeEach(() => {
   capturedAnimate = null;
@@ -128,6 +137,8 @@ beforeEach(() => {
   mockRunMigrations = jest.fn().mockResolvedValue(0);
   mockSetCompletedVersion.mockClear();
   mockSqliteGetItem = () => null;
+  mockLogoutPending = false;
+  mockFinishLogout.mockReset();
   jest.useFakeTimers();
 });
 
@@ -614,6 +625,140 @@ describe('AnimatedSplashScreen', () => {
 
       expect(onFinish).toHaveBeenCalledTimes(1);
       warnSpy.mockRestore();
+    });
+  });
+
+  /* ---------------------------------------------------------------- */
+  /*  A re-key about to run                                            */
+  /* ---------------------------------------------------------------- */
+
+  describe('a re-key about to run', () => {
+    const reidMarker = require('../../services/navidromeReid/reidMarker');
+    const runReid = require('../../services/navidromeReid/runNavidromeReid');
+    let decided: () => void = () => undefined;
+
+    beforeEach(() => {
+      jest.spyOn(reidMarker, 'isReidRequired').mockReturnValue(true);
+      jest.spyOn(runReid, 'runNavidromeReidIfNeeded').mockReturnValue(new Promise(() => {}));
+      jest.spyOn(runReid, 'awaitReidDecision').mockReturnValue(
+        new Promise<void>((resolve) => { decided = resolve; }),
+      );
+    });
+    afterEach(() => jest.restoreAllMocks());
+
+    async function expectHeldUntilDecided(onFinish: jest.Mock): Promise<void> {
+      act(() => { jest.advanceTimersByTime(2_000); });
+      act(() => { fireLastCallback(); });
+      expect(onFinish).not.toHaveBeenCalled();
+
+      await act(async () => {
+        decided();
+        await Promise.resolve();
+      });
+      act(() => { jest.advanceTimersByTime(2_000); });
+      act(() => { fireLastCallback(); });
+      expect(onFinish).toHaveBeenCalledTimes(1);
+    }
+
+    it('holds the splash until the pass decides, with nothing pending', async () => {
+      const onFinish = jest.fn();
+      render(<AnimatedSplashScreen onFinish={onFinish} />);
+      act(() => { completeBothFlags(); });
+
+      await expectHeldUntilDecided(onFinish);
+    });
+
+    it('holds the splash until the pass decides, after the chain', async () => {
+      mockPendingTasks = [{ version: 1, name: 'test-migration' }];
+      const onFinish = jest.fn();
+      render(<AnimatedSplashScreen onFinish={onFinish} />);
+      act(() => { completeBothFlags(); });
+      act(() => { fireLastCallback(); });
+      await act(async () => { await Promise.resolve(); });
+
+      await expectHeldUntilDecided(onFinish);
+    });
+  });
+
+  /* ---------------------------------------------------------------- */
+  /*  A logout killed part way                                         */
+  /* ---------------------------------------------------------------- */
+
+  describe('a pending logout', () => {
+    const calls: string[] = [];
+    let finish: () => void = () => undefined;
+
+    beforeEach(() => {
+      calls.length = 0;
+      // Nothing pending at the stored counter: the flag alone routes it to the chain.
+      mockSqliteGetItem = () => JSON.stringify({ state: { completedVersion: 33 } });
+      mockLogoutPending = true;
+      mockFinishLogout.mockImplementation(() => new Promise<void>((resolve) => {
+        calls.push('finishLogout');
+        finish = () => {
+          // What the wipe leaves: no flag, no migration counter.
+          mockLogoutPending = false;
+          mockSqliteGetItem = () => null;
+          resolve();
+        };
+      }));
+      mockRunMigrations = jest.fn(async (v: number) => { calls.push(`runMigrations(${v})`); return v; });
+      authStore.setState({ rehydrated: false });
+    });
+
+    function startChain(): void {
+      act(() => { completeBothFlags(); });
+      // The statusOpacity callback, which starts the chain.
+      act(() => { fireLastCallback(); });
+    }
+
+    it('finishes the logout first, then runs the chain from the wiped counter', async () => {
+      const onFinish = jest.fn();
+      render(<AnimatedSplashScreen onFinish={onFinish} />);
+      startChain();
+
+      expect(calls).toEqual(['finishLogout']);
+      // Held: the safety timeout does not fire while the logout finishes.
+      act(() => { jest.advanceTimersByTime(20_000); });
+      expect(onFinish).not.toHaveBeenCalled();
+
+      await act(async () => {
+        finish();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(calls).toEqual(['finishLogout', 'runMigrations(0)']);
+      expect(authStore.getState().rehydrated).toBe(true);
+
+      act(() => { jest.advanceTimersByTime(2_000); });
+      act(() => { fireLastCallback(); });
+      expect(onFinish).toHaveBeenCalledTimes(1);
+    });
+
+    it('still runs the chain when the logout could not finish', async () => {
+      mockFinishLogout.mockImplementation(async () => { calls.push('finishLogout'); });
+      render(<AnimatedSplashScreen onFinish={jest.fn()} />);
+      startChain();
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(calls).toEqual(['finishLogout', 'runMigrations(33)']);
+    });
+
+    it('never finishes a logout on a launch with migrations and no flag', async () => {
+      mockLogoutPending = false;
+      mockPendingTasks = [{ version: 34, name: 'test-migration' }];
+      render(<AnimatedSplashScreen onFinish={jest.fn()} />);
+      startChain();
+
+      await act(async () => { await Promise.resolve(); });
+
+      expect(mockFinishLogout).not.toHaveBeenCalled();
+      expect(calls).toEqual(['runMigrations(33)']);
     });
   });
 

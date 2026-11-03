@@ -16,6 +16,7 @@ import {
 import { CertificatePromptModal } from '../components/CertificatePromptModal';
 import { LanguageSelector } from '../components/LanguageSelector';
 import WaveformLogo from '../components/WaveformLogo';
+import { beginReidSession } from '../services/navidromeReid/reidSession';
 import { fetchServerInfo, login as subsonicLogin } from '../services/subsonicService';
 import { trustCertificateForHost } from '../services/sslTrustService';
 import { authStore } from '../store/authStore';
@@ -56,6 +57,11 @@ export function LoginScreen() {
     if (!certInfo || !certHostname) return;
 
     setCertModalVisible(false);
+    // Same refusal as `handleSubmit`: the manual trust button reaches this without it.
+    if (!isDbHealthy()) {
+      setError(t('persistenceDegradedLoginError'));
+      return;
+    }
     setLoading(true);
     setError(null);
 
@@ -69,9 +75,11 @@ export function LoginScreen() {
       const pass = password;
 
       const result = await subsonicLogin(url, user, pass, legacyAuth);
-      setLoading(false);
 
       if (result.success) {
+        // Before the session starts, and with the button still disabled: see handleSubmit.
+        await beginReidSession(result);
+        setLoading(false);
         setSession(url, user, pass, result.version, legacyAuth);
         // The streaming proxy is brought up by the session-driven effect in
         // _layout (runs whenever logged-in + hydrated), so no proxy call here.
@@ -79,6 +87,7 @@ export function LoginScreen() {
         if (info) serverInfoStore.getState().setServerInfo(info);
         router.replace('/');
       } else {
+        setLoading(false);
         setError(result.error || t('connectionFailedAfterTrust'));
       }
     } catch (e) {
@@ -177,6 +186,9 @@ export function LoginScreen() {
     const result = await subsonicLogin(url, user, pass, legacyAuth);
 
     if (result.success) {
+      // Settle the Navidrome re-key question before anything keyed on the session runs,
+      // and keep the button disabled until then so a second tap cannot start another.
+      await beginReidSession(result);
       setLoading(false);
       setSession(url, user, pass, result.version, legacyAuth);
       // Streaming proxy is brought up by the session-driven effect in _layout.

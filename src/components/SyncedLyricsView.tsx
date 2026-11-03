@@ -9,6 +9,8 @@ import {
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  type ScrollViewInstance,
+  type ViewInstance,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useSharedValue } from 'react-native-reanimated';
@@ -70,8 +72,8 @@ export const SyncedLyricsView = memo(function SyncedLyricsView({
   pillBackgroundColor,
 }: SyncedLyricsViewProps) {
   const { t } = useTranslation();
-  const scrollRef = useRef<ScrollView>(null);
-  const lineRefs = useRef<(View | null)[]>([]);
+  const scrollRef = useRef<ScrollViewInstance>(null);
+  const lineRefs = useRef<(ViewInstance | null)[]>([]);
 
   // Foreground/background gate. This is a background-audio app, so the JS
   // thread keeps running while backgrounded and the native player keeps

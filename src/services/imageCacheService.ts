@@ -38,6 +38,7 @@ import {
 import { authStore } from '../store/authStore';
 import { connectivityStore } from '../store/connectivityStore';
 import { offlineModeStore } from '../store/offlineModeStore';
+import { isReidRunning } from '../store/migrationGateStore';
 import { serverWorkAllowed } from '../utils/serverWorkAllowed';
 import { fireAndForget } from '../utils/fireAndForget';
 import { runWhenIdle } from '../utils/runWhenIdle';
@@ -592,6 +593,9 @@ export function initImageCache(): void {
             // failedRemoteIds until something clears it. The offline→online
             // toggle didn't fire if offlineMode never flipped, so clear here.
             clearFailedRemoteIds('appstate-active');
+            // Not during the re-key pass: it clears the image queue, and a repair would
+            // queue retired ids straight back into it.
+            if (isReidRunning()) return;
             await repairIncompleteImages('appstate-active');
           })(),
           'imageCache.appStateActive',
@@ -606,9 +610,9 @@ export function initImageCache(): void {
 
 /**
  * Unregister the AppState listener and clear cached module state.
- * Called from `resetAllStores()` on logout so a background→foreground
- * transition while logged out doesn't fire recovery against a reset store.
- * The next login re-arms the listener via `initImageCache()`.
+ * Called at the start of `resetAllStores()` so a background→foreground
+ * transition mid-logout doesn't fire recovery against a half-reset store.
+ * Logout's `clearImageCache()` re-initialises the cache, re-arming it.
  */
 export function teardownImageCache(): void {
   appStateSubscription?.remove();
@@ -709,6 +713,7 @@ offlineModeStore.subscribe((state, prev) => {
     (async () => {
       await awaitFirstPing();
       if (offlineModeStore.getState().offlineMode) return;
+      if (isReidRunning()) return;
       await repairIncompleteImages('offline-resume');
     })(),
     'imageCache.offlineResume',
@@ -2039,8 +2044,8 @@ export async function refreshCoverArt(
  * can't write a tmp file into a subdir we just removed.
  *
  * Pass `{ reinit: true }` when the cache will continue to be used (user-
- * triggered "Clear Cache"); `{ reinit: false }` when the session is over
- * (logout) and the next `initImageCache` will come from the auth flow.
+ * triggered "Clear Cache", logout); `{ reinit: false }` when the caller must not
+ * have the AppState listener re-armed (the Navidrome re-key pass).
  */
 async function teardownImageCacheState({ reinit }: { reinit: boolean }): Promise<void> {
   downloadQueue.length = 0;
@@ -2093,10 +2098,8 @@ async function teardownImageCacheState({ reinit }: { reinit: boolean }): Promise
  * Returns the number of bytes freed — derived from the DB aggregate (cheap
  * single SELECT) rather than a recursive directory walk.
  *
- * Pass `{ reinit: false }` from the logout flow — the session is over and
- * the next `initImageCache` will come from the auth flow on re-login;
- * re-arming the AppState listener here would fire repair passes against
- * an unauthenticated server.
+ * Pass `{ reinit: false }` to leave the AppState listener unarmed (the
+ * Navidrome re-key pass, which re-warms explicitly afterwards).
  */
 export async function clearImageCache(
   opts: { reinit?: boolean } = {},

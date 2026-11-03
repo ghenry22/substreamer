@@ -5,6 +5,7 @@
  * `rehydrate()` flips `hasHydrated` false synchronously and resolves a microtask
  * later, which is the window the gate exists to cover.
  */
+import { equalizerSettingsStore } from '../../equalizerSettingsStore';
 import { genreStore } from '../../genreStore';
 import { awaitKvHydration } from '../rehydrate';
 
@@ -23,5 +24,15 @@ describe('awaitKvHydration', () => {
     await awaitKvHydration();
 
     expect(genreStore.persist.hasHydrated()).toBe(true);
+  });
+
+  it('waits for the equalizer settings, which the player applies as soon as it resolves', async () => {
+    await awaitKvHydration();
+    void equalizerSettingsStore.persist.rehydrate();
+    expect(equalizerSettingsStore.persist.hasHydrated()).toBe(false);
+
+    await awaitKvHydration();
+
+    expect(equalizerSettingsStore.persist.hasHydrated()).toBe(true);
   });
 });

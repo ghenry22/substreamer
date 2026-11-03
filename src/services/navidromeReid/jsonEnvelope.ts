@@ -71,6 +71,11 @@ function walk(value: Json, lookup: (id: string) => string | undefined): Json {
   return out;
 }
 
+/** Rewrite the allowlisted ids inside an already-parsed object. The input is not mutated. */
+export function remapIdsInObject<T>(value: T, lookup: (id: string) => string | undefined): T {
+  return walk(value as unknown as Json, lookup) as unknown as T;
+}
+
 /**
  * Rewrite a stored JSON envelope, or return it unchanged.
  *

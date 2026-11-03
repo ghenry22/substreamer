@@ -19,9 +19,15 @@ import { getApiUnchecked } from './subsonicService';
  */
 type ConnectivityHook = () => unknown;
 let onServerDownHook: ConnectivityHook | null = null;
+let onServerUpHook: ConnectivityHook | null = null;
 
 export function setServerDownHook(hook: ConnectivityHook | null): void {
   onServerDownHook = hook;
+}
+
+/** Called after every successful ping, once the store records the server as reachable. */
+export function setServerUpHook(hook: ConnectivityHook | null): void {
+  onServerUpHook = hook;
 }
 
 function invokeHook(hook: ConnectivityHook | null, tag: string): void {
@@ -44,7 +50,8 @@ function invokeHook(hook: ConnectivityHook | null, tag: string): void {
 // radio warm (battery); 60s is plenty for the idle backstop.
 const PING_INTERVAL_REACHABLE_MS = 60_000;
 const PING_INTERVAL_UNREACHABLE_MS = 5_000;
-const PING_TIMEOUT_MS = 5_000;
+/** The one time limit for a server ping, shared by every caller that pings. */
+export const PING_TIMEOUT_MS = 5_000;
 const RECONNECTED_DISPLAY_MS = 2_500;
 
 /**
@@ -70,6 +77,9 @@ let lastNetKey: string | null = null;
 // Paused while the app is backgrounded — stops the ping heartbeat (and the
 // WiFi-event-driven pings) from running during background audio playback.
 let monitoringPaused = false;
+// Between startMonitoring and stopMonitoring. A ping still in flight when monitoring
+// stops must not record its result or restart the heartbeat.
+let monitoringActive = false;
 
 // First-ping signal: lets background tasks (e.g. image-cache repair) gate
 // destructive decisions on a confirmed server-reachability result rather
@@ -127,7 +137,7 @@ function schedulePing(): void {
   clearPingTimer();
   // Don't reschedule while backgrounded — an in-flight ping's completion must
   // not restart the heartbeat. Foreground resume re-pings explicitly.
-  if (monitoringPaused) return;
+  if (monitoringPaused || !monitoringActive) return;
   const { isServerReachable } = connectivityStore.getState();
   // Speed up polling as soon as we see ANY failure (not only after we've
   // flipped to unreachable). Catches transient blips faster so the
@@ -167,8 +177,10 @@ async function pingServer(): Promise<void> {
   pingInFlight = true;
   try {
     const response = await withTimeout(api.ping(), PING_TIMEOUT_MS);
+    if (!monitoringActive) return;
     handleServerResult(response.status === 'ok');
   } catch (err) {
+    if (!monitoringActive) return;
     const message = errMessage(err);
     if (isSSLError(message)) {
       handleSslError();
@@ -200,6 +212,7 @@ function handleServerResult(reachable: boolean): void {
         connectivityStore.getState().setBannerState('hidden');
       }, RECONNECTED_DISPLAY_MS);
     }
+    invokeHook(onServerUpHook, 'serverUp');
   } else {
     consecutiveFailures += 1;
     // Debounce: a single failed ping doesn't flip state or surface the
@@ -296,6 +309,7 @@ export async function recheckNow(): Promise<void> {
 
 export function startMonitoring(): void {
   if (unsubscribeNetInfo) return;
+  monitoringActive = true;
 
   initialCheck = true;
   pingInFlight = false;
@@ -322,6 +336,7 @@ export function startMonitoring(): void {
 }
 
 export function stopMonitoring(): void {
+  monitoringActive = false;
   if (unsubscribeNetInfo) {
     unsubscribeNetInfo();
     unsubscribeNetInfo = null;

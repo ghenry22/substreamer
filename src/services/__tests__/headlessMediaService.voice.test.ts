@@ -55,6 +55,9 @@ import {
   installHeadlessMediaService,
 } from '../headlessMediaService';
 import { offlineModeStore } from '../../store/offlineModeStore';
+import { authStore } from '../../store/authStore';
+import { clearKvStorage } from '../../store/persistence/kvStorage';
+import { markLogoutPending } from '../../store/logoutPending';
 import { musicCacheStore } from '../../store/musicCacheStore';
 import { fetchAlbumDetail, fetchPlaylistDetail } from '../detailFetchService';
 
@@ -83,6 +86,8 @@ beforeEach(() => {
   mockGetOfflineSongsByGenre.mockReset().mockReturnValue([]);
   mockPlayTrack.mockClear();
   mockLogVoiceSearch.mockReset();
+  mockRehydrateAllStores.mockClear();
+  authStore.setState({ isLoggedIn: true });
   offlineModeStore.setState({ offlineMode: true } as any);
   // These run offline, and album/playlist track lists are filtered to downloaded
   // songs there — seed the fixtures as downloaded so the filter is a no-op and the
@@ -374,5 +379,52 @@ describe('the registered playback handler', () => {
 
     expect(warn).toHaveBeenCalledWith('[headlessMediaService] ensureHeadlessDataReady failed:', err);
     expect(songs.map((s: any) => s.id)).toEqual(['sk']);
+  });
+});
+
+describe('headless with no session ready', () => {
+  const rnqp = require('react-native-queue-player');
+  let handler: any;
+
+  beforeEach(() => {
+    // Installed not ready, so the install's own hydration does not run either.
+    authStore.setState({ isLoggedIn: false });
+    __test.reset();
+    rnqp.registerPlaybackService.mockClear();
+    installHeadlessMediaService();
+    handler = rnqp.registerPlaybackService.mock.calls.at(-1)[0]();
+    mockSearchLibrary.mockResolvedValue({ songs: [korn], albums: [], artists: [] });
+  });
+  afterEach(() => {
+    __test.reset();
+    clearKvStorage();
+  });
+
+  const cases: Array<[string, () => void]> = [
+    ['logged out', () => undefined],
+    ['a logout pending', () => { authStore.setState({ isLoggedIn: true }); markLogoutPending(); }],
+  ];
+
+  it.each(cases)('%s: every entry point answers empty and nothing hydrates or plays', async (_, arrange) => {
+    arrange();
+
+    expect(await handler.onBrowseRequest('root')).toEqual([]);
+    expect(await handler.onSearchRequest('freak')).toEqual([]);
+    expect(await handler.onPlayFromIdRequest('search:0')).toEqual([]);
+    expect(await handler.onPlayFromSearchRequest(req({ query: 'freak' }))).toEqual([]);
+    await dispatchVoiceSearchRequest(req({ query: 'freak' }));
+
+    expect(mockSearchLibrary).not.toHaveBeenCalled();
+    expect(mockPlayTrack).not.toHaveBeenCalled();
+    expect(mockRehydrateAllStores).not.toHaveBeenCalled();
+  });
+
+  it('hydrates on the first request once the session is ready', async () => {
+    await handler.onSearchRequest('freak');
+    expect(mockRehydrateAllStores).not.toHaveBeenCalled();
+
+    authStore.setState({ isLoggedIn: true });
+    await handler.onSearchRequest('freak');
+    expect(mockRehydrateAllStores).toHaveBeenCalledTimes(1);
   });
 });

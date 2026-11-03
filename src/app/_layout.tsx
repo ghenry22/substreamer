@@ -29,9 +29,9 @@ import { AddToPlaylistSheet } from '../components/AddToPlaylistSheet';
 import { BookmarkNameSheet } from '../components/BookmarkNameSheet';
 import { MigrationGate } from '../components/MigrationGate';
 import {
-  acceptMidSessionReid,
+  chooseLegacyMode,
   confirmAndRunNavidromeReid,
-  declineMidSessionReid,
+  continueWithoutUpdating,
   retryNavidromeReid,
 } from '../services/navidromeReid/runNavidromeReid';
 import { RootErrorBoundary } from '../components/RootErrorBoundary';
@@ -186,8 +186,7 @@ try {
   console.warn('[layout] Dimensions.get failed; assuming phone:', errMessage(e));
 }
 
-// Lock orientation to portrait on phones; tablets rotate freely, governed at runtime by
-// the orientation lock setting in layoutPreferencesStore. The whole call is wrapped
+// Lock orientation to portrait on phones; tablets rotate freely. The whole call is wrapped
 // because the synchronous property access on ScreenOrientation.OrientationLock throws
 // when the native module is missing — the `.catch()` only covers promise rejection.
 if (!IS_TABLET) {
@@ -541,7 +540,10 @@ export default function RootLayout() {
     // checks `albumDetailStore.albums` 1500 ms later. Get the order wrong and every
     // launch shows a "full library resync" banner with `missing = library.length`.
     void (async () => {
-      await rehydrateAllStores();
+      // Not while the migration screen holds startup: the pass may be rewriting the very
+      // rows a hydration reads, and it rehydrates everything itself when it finishes. The
+      // effect runs again when the gate releases.
+      if (!startupBlocked) await rehydrateAllStores();
       // Also wait for the startup-critical async-persisted kvStorage stores (offlineMode,
       // the library lists). They hydrate a microtask after store creation; reading them
       // any earlier makes the resync comparison and the offline/auto-offline branches
@@ -938,9 +940,9 @@ export default function RootLayout() {
           them. Rendered after the splash so it layers above it during the handover. */}
       <MigrationGate
         onConfirm={() => { void confirmAndRunNavidromeReid(); }}
+        onLegacy={chooseLegacyMode}
         onRetry={() => { void retryNavidromeReid(); }}
-        onOfferAccept={() => { void acceptMidSessionReid(); }}
-        onOfferDecline={() => { declineMidSessionReid(); }}
+        onContinue={continueWithoutUpdating}
       />
       </RootErrorBoundary>
       </ThemeProvider>

@@ -367,6 +367,8 @@ import {
   deferredMusicCacheInit,
   recoverStalledDownloadsAsync,
   forceRecoverDownloadsAsync,
+  haltDownloadWorkers,
+  musicCacheReconcileInFlight,
   getLocalTrackUri,
   isItemCached,
   getTrackQueueStatus,
@@ -399,6 +401,7 @@ import {
 } from '../musicCacheService';
 
 import type { Child } from '../subsonicService';
+import { migrationGateStore } from '../../store/migrationGateStore';
 
 const mockCheckStorageLimit = checkStorageLimit as jest.Mock;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -2267,10 +2270,68 @@ describe('deleteStarredSongsDownload', () => {
 
 describe('download pipeline', () => {
   afterEach(async () => {
+    migrationGateStore.getState().reset();
     await waitForQueueIdle();
     mockCheckStorageLimit.mockReturnValue(true);
     await forceRecoverDownloadsAsync();
     await waitForQueueIdle();
+  });
+
+  it('discards a file that finishes after the re-key halted the workers', async () => {
+    // Recording it would write a row under an id the pass has already moved past.
+    mockFileExists = true;
+    mockFileSize = 5000;
+    mockDownloadFileAsyncWithProgress.mockImplementation(async () => {
+      migrationGateStore.getState().show('working');
+      haltDownloadWorkers();
+    });
+    mockFetchAlbum.mockResolvedValue({
+      id: 'album-halt',
+      name: 'Halt',
+      song: [makeChild('halt-t1', { albumId: 'album-halt' })],
+    });
+
+    await enqueueAlbumDownload('album-halt');
+    await waitForQueueIdle();
+
+    expect(mockDownloadFileAsyncWithProgress).toHaveBeenCalledTimes(1);
+    expect(musicCacheStore.getState().cachedSongs['halt-t1']).toBeUndefined();
+    expect(musicCacheStore.getState().cachedItems['album-halt']).toBeUndefined();
+    expect(musicCacheStore.getState().downloadQueue).toHaveLength(0);
+  });
+
+  it('does not start downloading while the re-key pass runs', async () => {
+    migrationGateStore.getState().show('working');
+    mockFileExists = true;
+    mockDownloadFileAsyncWithProgress.mockResolvedValue(undefined);
+    mockFetchAlbum.mockResolvedValue({
+      id: 'album-held',
+      name: 'Held',
+      song: [makeChild('held-t1', { albumId: 'album-held' })],
+    });
+
+    await enqueueAlbumDownload('album-held');
+    await waitForQueueIdle();
+
+    expect(mockDownloadFileAsyncWithProgress).not.toHaveBeenCalled();
+  });
+
+  it('keeps a file that finishes across an offline toggle, as before', async () => {
+    mockFileExists = true;
+    mockFileSize = 5000;
+    mockDownloadFileAsyncWithProgress.mockImplementationOnce(async () => {
+      await forceRecoverDownloadsAsync();
+    });
+    mockFetchAlbum.mockResolvedValue({
+      id: 'album-tog',
+      name: 'Toggle',
+      song: [makeChild('tog-t1', { albumId: 'album-tog' })],
+    });
+
+    await enqueueAlbumDownload('album-tog');
+    await waitForQueueIdle();
+
+    expect(musicCacheStore.getState().cachedSongs['tog-t1']).toBeDefined();
   });
 
   it('downloads and marks item complete', async () => {
@@ -3166,6 +3227,32 @@ describe('syncStarredSongsDownload via subscription', () => {
 /* ------------------------------------------------------------------ */
 
 describe('reconcileMusicCacheAsync', () => {
+  afterEach(() => migrationGateStore.getState().reset());
+
+  it('does not start while the re-key pass runs', async () => {
+    // The pass moves files; a walk over its half-done state deletes them as orphans.
+    migrationGateStore.getState().show('working');
+    await reconcileMusicCacheAsync();
+    expect(mockListDirectoryAsync).not.toHaveBeenCalled();
+  });
+
+  it('exposes the walk in progress so the re-key can wait for it', async () => {
+    let release: (v: string[]) => void = () => undefined;
+    mockListDirectoryAsync.mockImplementationOnce(
+      () => new Promise<string[]>((r) => { release = r; }),
+    );
+    const walk = reconcileMusicCacheAsync();
+    let waited = false;
+    const wait = musicCacheReconcileInFlight().then(() => { waited = true; });
+    await Promise.resolve();
+    expect(waited).toBe(false);
+
+    release([]);
+    await walk;
+    await wait;
+    expect(waited).toBe(true);
+  });
+
   it('no-ops when the albums directory does not exist', async () => {
     mockDirExists = false;
     await expect(reconcileMusicCacheAsync()).resolves.toBeUndefined();

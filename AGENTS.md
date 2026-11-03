@@ -189,10 +189,10 @@ Substreamer — React Native music streaming client for Subsonic-compatible serv
 
 ### Stack
 
-Verified against `package.json` on 2026-08-06 — correct a line here the moment it stops being true.
+Verified against `package.json` on 2026-10-23 — correct a line here the moment it stops being true.
 
-- React Native 0.86 + Expo SDK 57 (New Architecture + Hermes, both SDK defaults).
-- TypeScript ~6.0 strict, React 19.2. Path alias: `@/*` → `./src/*`.
+- React Native 0.88 + Expo SDK 58 (New Architecture + Hermes, both SDK defaults). RN 0.88's Strict TypeScript API is on: type refs with `ViewInstance` / `ScrollViewInstance` / `TextInputInstance`, not the component.
+- TypeScript ~6.0 strict, React 19.3. Path alias: `@/*` → `./src/*`.
 - Routing: Expo Router (file-based). State: Zustand v5.
 - Persistence: **op-SQLite** (`@op-engineering/op-sqlite`) — one connection to `substreamer7.db`. `expo-sqlite` is gone; do not reintroduce it.
 - Audio: **`react-native-queue-player`** — our own package (`github.com/ghenry22/react-native-queue-player`), installed from npm, NOT in `modules/`. Media3-based on Android. (It replaced `react-native-track-player`; that name should appear nowhere in new code.)
@@ -374,7 +374,7 @@ Prefer Symdex MCP server (when available) over Glob/Grep for symbol lookup, file
 ### The write path (atomic-writes programme, Phases 1–3, 2026-08)
 
 - **There is NO JS-side write mutex.** `serializeDbWrite` and `withTransactionAsync` were deleted. The native pool is ONE thread, FIFO (`cpp/OPThreadPool.cpp`), so it serializes work that reaches it. Do not add a JS mutex back.
-- **A BATCH DOES NOT REACH THE POOL WHEN YOU CALL IT — a read issued after a batch runs BEFORE it.** op-SQLite's JS layer parks every `executeBatch` on a transaction lock and starts it from a **`setImmediate`** (`node_modules/@op-engineering/op-sqlite/src/functions.ts:66-68,122-131`), serialized behind every other in-flight batch. `execute` — every read, and every `runAsync` write — passes straight through at call time. So the pool's FIFO orders *arrival*, and batches arrive at least a macrotask late.
+- **A BATCH DOES NOT REACH THE POOL WHEN YOU CALL IT — a read issued after a batch runs BEFORE it.** op-SQLite's JS layer parks every `executeBatch` on a transaction lock and starts it from a **`setImmediate`** (`node_modules/@op-engineering/op-sqlite/src/functions.ts:64-66,114-123`), serialized behind every other in-flight batch. `execute` — every read, and every `runAsync` write — passes straight through at call time. So the pool's FIFO orders *arrival*, and batches arrive at least a macrotask late.
 
   **Never fire a batch un-awaited and then read what it wrote in the same tick.** Two live bugs came from exactly that: a queued download read its own payload rows before the insert landed and errored "Failed to read songs" on every album, and `cached_item_songs` edges written with bare `runAsync` hit an FK against parents still sitting in a deferred batch, were rejected, and were swallowed — losing the edge for a song the user had downloaded. Either await the write, or put the dependent write in the SAME batch so it shares the lane.
 
@@ -435,5 +435,6 @@ When the user corrects your approach, append a one-line rule here before ending 
 - **Don't paste plan/tracker contents back into chat.** Summarize the headlines; the file is the artifact.
 - **Commit as you go; never spend time splitting a missed commit.** If changes piled up and do not separate cleanly by whole file, bundle them into one commit — no hand-built intermediate file states, no asking how to split.
 - Affirmative action in a confirmation dialog uses a positive label (OK/Delete), never Cancel.
+- User-facing copy: never a comma before "and"; write "one time" as two words, never "one-time".
 - Shares exist for albums, playlists and the player queue — not individual songs.
 - Drop a one-line status note when working silently for a long stretch.

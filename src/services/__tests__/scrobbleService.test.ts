@@ -1,4 +1,9 @@
 jest.mock('../subsonicService');
+let mockHoldScrobbles = false;
+jest.mock('../navidromeReid/reidMarker', () => ({
+  ...jest.requireActual('../navidromeReid/reidMarker'),
+  shouldHoldScrobbles: () => mockHoldScrobbles,
+}));
 jest.mock('../../store/persistence/kvStorage', () => require('../../store/persistence/__mocks__/kvStorage'));
 jest.mock('../../store/albumListsStore', () => ({
   albumListsStore: {
@@ -36,6 +41,7 @@ beforeEach(() => {
   musicCacheStore.setState({ cachedSongs: {} } as any);
   mockGetApi.mockReturnValue(null);
   mockApplyLocalPlay.mockClear();
+  mockHoldScrobbles = false;
 });
 
 describe('addCompletedScrobble', () => {
@@ -236,6 +242,20 @@ describe('sendNowPlaying', () => {
 });
 
 describe('processScrobbles (via addCompletedScrobble)', () => {
+  it('holds pending scrobbles while the Navidrome re-key says to', async () => {
+    // Navidrome answers OK to a scrobble it cannot register, so sending one under a
+    // retired id deletes it for good.
+    mockHoldScrobbles = true;
+    const mockScrobble = jest.fn().mockResolvedValue(undefined);
+    mockGetApi.mockReturnValue({ scrobble: mockScrobble });
+
+    await addCompletedScrobble({ id: 's1', title: 'Song', artist: 'A' } as any);
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(mockScrobble).not.toHaveBeenCalled();
+    expect(pendingScrobbleStore.getState().pendingScrobbles).toHaveLength(1);
+  });
+
   it('submits pending scrobble to API and moves to completed', async () => {
     const mockScrobble = jest.fn().mockResolvedValue(undefined);
     mockGetApi.mockReturnValue({ scrobble: mockScrobble });

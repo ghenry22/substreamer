@@ -94,11 +94,7 @@ const styles = StyleSheet.create({
     height: CAPSULE_HEIGHT,
     paddingHorizontal: 20,
     gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 8,
+    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
   },
   label: {
     flexShrink: 1,
