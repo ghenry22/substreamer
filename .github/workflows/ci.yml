@@ -1,0 +1,50 @@
+name: Build for Android
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        
+      - name: Install expo
+        run: npm install expo
+        
+      - name: Install npm dependencies
+        run: npm install
+
+      - name: Run prebuild with expo only for android
+        run: npx expo prebuild -p android
+
+      - name: set up java - 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Setup gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build APK
+        run: |
+          cd android
+          ./gradlew --no-daemon assembleRelease -Dorg.gradle.jvmargs='-Xmx4g'
+
+      - name: Upload artifact non zipped
+        uses: actions/upload-artifact@v7
+        with:
+          path: ./android/app/build/outputs/apk/release/app-release.apk
+          name: substreamer-release.apk
+          archive: false
+        
