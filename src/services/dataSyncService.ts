@@ -11,6 +11,7 @@
 import { albumListsStore } from '../store/albumListsStore';
 import { favoritesStore } from '../store/favoritesStore';
 import { genreStore } from '../store/genreStore';
+import { authStore } from '../store/authStore';
 import { offlineModeStore } from '../store/offlineModeStore';
 import { getDb } from '../store/persistence/db';
 import { albumIdsPresent, countAlbums, listAlbumIds, upsertAlbums } from '../db/repository/albums';
@@ -25,7 +26,13 @@ import { refreshDownloadedMetadata } from './downloadedMetadataService';
 import { logLibrarySync } from './librarySyncLogger';
 import { probeServerVersion } from './navidromeReid/reidProbe';
 import { runNavidromeReidIfNeeded } from './navidromeReid/runNavidromeReid';
-import { shouldBlockLibraryWrites } from './navidromeReid/reidMarker';
+import {
+  hasServerAnswered,
+  isLegacyThisSession,
+  reidVerdict,
+  shouldBlockLibraryWrites,
+} from './navidromeReid/reidMarker';
+import { setServerUpHook } from './connectivityService';
 import { serverInfoStore } from '../store/serverInfoStore';
 import { syncStatusStore, type SyncScope } from '../store/syncStatusStore';
 import { fireAndForget } from '../utils/fireAndForget';
@@ -246,7 +253,23 @@ let resumeInFlight: Promise<void> | null = null;
 let lastResumeAt = 0;
 const RESUME_MIN_INTERVAL_MS = 30_000;
 
+/**
+ * A ping succeeded. If both of this session's server checks timed out (a VPN still
+ * connecting, a container restarting), library writes are still blocked and nothing else
+ * would ask again until the server first drops and comes back. Run the resume flow, which
+ * checks again. Does nothing once the server has answered, and nothing for any install
+ * whose writes are not blocked.
+ */
+function onServerUp(): void {
+  if (!authStore.getState().isLoggedIn) return;
+  if (offlineModeStore.getState().offlineMode) return;
+  if (hasServerAnswered() || !shouldBlockLibraryWrites()) return;
+  void onOnlineResume();
+}
+
 async function startupOrResumeFlow(throttled = false): Promise<void> {
+  // Idempotent. Here so a launch in offline mode, which never calls `onStartup`, has it too.
+  setServerUpHook(onServerUp);
   // De-duplication always: two callers racing must not run the fan-out twice.
   if (resumeInFlight) return resumeInFlight;
   // Throttling only for the caller that can repeat on its own. Startup and the
@@ -261,27 +284,31 @@ async function startupOrResumeFlow(throttled = false): Promise<void> {
 
 async function resumeFlowBody(): Promise<void> {
   // Settle the Navidrome re-key question BEFORE anything fetches. The probe is a no-op
-  // once the splash has run it; it does real work only on an online-resume, which is the
-  // path that can discover an upgraded server mid-session. Awaiting rather than
-  // early-returning on a blocked verdict matters: nothing re-triggers this flow, so a
-  // bare `return` while the answer was still pending would cost the session its sync.
+  // once the server has answered this session; it does real work when the launch could
+  // not reach the server and this flow runs again once it can. Awaiting rather than
+  // early-returning on a blocked verdict matters: a bare `return` while the answer was
+  // still pending would cost the session its sync.
   await (probeServerVersion() ?? Promise.resolve());
-  if (shouldBlockLibraryWrites()) {
+  // An undetermined server version shows its prompt here as well as at the splash, so a
+  // login or a launch that could not reach the server still gets it.
+  const askPending = reidVerdict() === 'ask' && !isLegacyThisSession();
+  if (shouldBlockLibraryWrites() || askPending) {
     // The ids this fan-out would write do not match the ones the rest of the install
-    // holds. Writing both is what doubles the library.
-    //
-    // Refusing is not enough on its own. This is the ONLY path that re-probes, and the
-    // pass is otherwise reachable only from the splash — so a user who launches in
-    // offline mode and then turns it off would land here, be refused, and sit online
-    // with no sync, no interstitial and no banner until they relaunched. Offer the pass
-    // instead: the gate renders mid-session, and startup resumes when it finishes.
-    logLibrarySync('[reid] startup fan-out refused — re-key outstanding; offering the pass');
-    void runNavidromeReidIfNeeded({ midSession: true });
+    // holds. Writing both is what doubles the library. Run the pass (or show the prompt)
+    // instead: the gate renders over the live app, and startup resumes when it finishes.
+    logLibrarySync('[reid] startup fan-out held — re-key outstanding or version undetermined');
+    void runNavidromeReidIfNeeded();
     return;
   }
 
+  // Not awaited, and with no network timeout it can land after a logout, or after the
+  // next login as someone else. Keep it only for the session that asked.
+  const askedFor = authStore.getState();
   fetchServerInfo().then((info) => {
-    if (info) serverInfoStore.getState().setServerInfo(info);
+    const now = authStore.getState();
+    if (!info || !now.isLoggedIn) return;
+    if (now.serverUrl !== askedFor.serverUrl || now.username !== askedFor.username) return;
+    serverInfoStore.getState().setServerInfo(info);
   });
   fetchScanStatus();
   // Eager home-list refresh, gated on offline/reachability via refreshAllIfDue(0)
@@ -296,6 +323,9 @@ async function resumeFlowBody(): Promise<void> {
   // network fan-out off the splash → first-paint critical path.
   runWhenIdle(() => {
     setTimeout(async () => {
+      // A Pause (or logout) during the startup sync bumps this; nothing below may then
+      // start a fresh run and undo it.
+      const startGen = syncStatusStore.getState().generation;
       // Full album-LIST fetch only when it isn't already complete on disk. A
       // completed library with rows present skips straight to change-detection;
       // an interrupted/partial fetch (librarySyncComplete=false) resumes the
@@ -395,6 +425,7 @@ async function resumeFlowBody(): Promise<void> {
       } catch {
         /* library fetch swallows its own errors; walk will see empty albums */
       }
+      if (syncStatusStore.getState().generation !== startGen) return;
       if (!offlineModeStore.getState().offlineMode) {
         // Detect changes since last session (scan status or newest-album probe) and
         // surface any new albums + their songs. Detect errors are swallowed — fire

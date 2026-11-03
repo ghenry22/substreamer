@@ -8,7 +8,7 @@ jest.mock('../../store/persistence/kvStorage', () => require('../../store/persis
 
 import React from 'react';
 import { ActivityIndicator } from 'react-native';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, waitForElementToBeRemoved } from '@testing-library/react-native';
 
 /* ------------------------------------------------------------------ */
 /*  Mutable mock state (read through closures by the mocks below)      */
@@ -652,7 +652,7 @@ describe('MoreOptionsSheet — favourites', () => {
     (toggleStar as jest.Mock).mockResolvedValue(undefined);
     open(entity);
     fireEvent.press(screen.getByText('Add to Favorites'));
-    await waitFor(sheetClosed);
+    await waitForElementToBeRemoved(() => screen.queryByTestId('bottom-sheet'));
     expect(toggleStar).toHaveBeenCalledWith(type, entity.item.id);
   });
 
@@ -672,7 +672,7 @@ describe('MoreOptionsSheet — favourites', () => {
     (toggleStar as jest.Mock).mockRejectedValue(new Error('offline'));
     open(albumEntity);
     fireEvent.press(screen.getByText('Add to Favorites'));
-    await waitFor(sheetClosed);
+    await waitForElementToBeRemoved(() => screen.queryByTestId('bottom-sheet'));
     expect(toggleStar).toHaveBeenCalledWith('album', 'al1');
   });
 });

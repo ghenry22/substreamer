@@ -21,13 +21,12 @@
 import { authStore, type ServerSlot } from '../store/authStore';
 import { errMessage } from '../utils/errorMessage';
 import { connectivityStore } from '../store/connectivityStore';
-import { setServerDownHook } from './connectivityService';
+import { PING_TIMEOUT_MS, setServerDownHook } from './connectivityService';
 import { retryRemoteImagesForServerSwitch } from './imageCacheService';
 import { rebuildQueueForServerSwitch } from './playerService';
 import { buildPingApi, clearApiCache, ensureCoverArtAuth } from './subsonicService';
 import { withTimeout } from '../utils/withTimeout';
 
-const PING_TIMEOUT_MS = 5_000;
 
 let switchInFlight = false;
 /** Latest switch intent that arrived while a switch was in flight (replayed on

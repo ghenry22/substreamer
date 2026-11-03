@@ -32,13 +32,11 @@ export interface MigrationStage {
 
 /**
  * `working`  — running; reports progress and cannot be dismissed.
- * `asking`   — the server's version cannot settle whether the re-key is needed, so the
- *   user decides. They know whether they updated their server; we do not.
- * `offering` — we KNOW it is needed, but the app is already running and in use. A cold
- *   start just runs; interrupting a live session asks first.
+ * `asking`   — the server reports no version number, so the user decides: update now,
+ *   or run in legacy mode for this session.
  * `complete` — finished, waiting to be dismissed.
  */
-export type MigrationGateMode = 'working' | 'asking' | 'offering' | 'complete';
+export type MigrationGateMode = 'working' | 'asking' | 'complete';
 
 interface MigrationGateState {
   /** True while the app must stay behind the screen. */
@@ -51,11 +49,13 @@ interface MigrationGateState {
   /** Set when the run failed; the screen surfaces a retry rather than hanging. */
   failed: boolean;
   /**
-   * The re-key is needed but has not run — no reachable server, or the user chose Later.
-   * The app stays usable and stale: library writes are refused for the whole session, so
-   * this is what lets a surface explain a Sync button that would otherwise do nothing.
+   * The re-key is needed but has not run — no reachable server yet, or the user chose to
+   * continue after a failed run. Library writes are refused meanwhile, so this is what
+   * lets a surface explain a Sync button that would otherwise do nothing.
    */
   deferred: boolean;
+  /** `deferred` because a run failed and the user continued; retried next launch. */
+  deferredAfterFailure: boolean;
   /**
    * True once the run has committed a write. A failure BEFORE any write is safe to walk
    * away from; a failure after one leaves the database re-keyed with files still at their
@@ -71,6 +71,8 @@ interface MigrationGateState {
   clearFailure: () => void;
   /** Record, or clear, "needed but not run". Set on a deferral, cleared when one starts. */
   setDeferred: (deferred: boolean) => void;
+  /** Deferred because the user continued after a failed run. */
+  setDeferredAfterFailure: () => void;
   beginStage: (id: MigrationStageId, total?: number) => void;
   advanceStage: (id: MigrationStageId, done: number) => void;
   fail: () => void;
@@ -90,6 +92,7 @@ const initial = {
   mode: 'working' as MigrationGateMode,
   hasWritten: false,
   deferred: false,
+  deferredAfterFailure: false,
   activeStage: null as MigrationStageId | null,
   stages: {} as Partial<Record<MigrationStageId, MigrationStage>>,
   failed: false,
@@ -102,7 +105,8 @@ export const migrationGateStore = create<MigrationGateState>()((set) => ({
   hide: () => set({ visible: false }),
   confirm: () => set({ mode: 'working' }),
   clearFailure: () => set({ failed: false, activeStage: null, stages: {} }),
-  setDeferred: (deferred) => set({ deferred }),
+  setDeferred: (deferred) => set({ deferred, deferredAfterFailure: false }),
+  setDeferredAfterFailure: () => set({ deferred: true, deferredAfterFailure: true }),
 
   beginStage: (id, total) =>
     set((s) => ({
@@ -125,3 +129,12 @@ export const migrationGateStore = create<MigrationGateState>()((set) => ({
 
 /** Non-reactive read for services that must not subscribe. */
 export const isMigrationGateVisible = (): boolean => migrationGateStore.getState().visible;
+
+/**
+ * Is the re-key pass running right now? The download and image workers check this before
+ * starting, so nothing they write lands in the middle of it.
+ */
+export const isReidRunning = (): boolean => {
+  const { visible, mode } = migrationGateStore.getState();
+  return visible && mode === 'working';
+};

@@ -58,6 +58,8 @@ import { favoritesStore } from '../store/favoritesStore';
 import { albumListsStore } from '../store/albumListsStore';
 import { fetchAlbumDetail, fetchPlaylistDetail } from './detailFetchService';
 import { offlineModeStore } from '../store/offlineModeStore';
+import { authStore } from '../store/authStore';
+import { isLogoutPending } from '../store/logoutPending';
 import { syncStatusStore } from '../store/syncStatusStore';
 import { musicCacheStore } from '../store/musicCacheStore';
 import { layoutPreferencesStore } from '../store/layoutPreferencesStore';
@@ -106,6 +108,14 @@ const SEARCH_ID_PREFIX = 'search:';
  */
 function isOffline(): boolean {
   return offlineModeStore.getState().offlineMode || shouldBlockContent();
+}
+
+/**
+ * Headless serves nothing without an account, or while a logout is pending: the tables
+ * may still hold the previous account's library, and the splash is what finishes the wipe.
+ */
+function headlessSessionReady(): boolean {
+  return authStore.getState().isLoggedIn && !isLogoutPending();
 }
 
 /** All library albums from the normalized `albums` table (sort-title order). This is a
@@ -297,6 +307,16 @@ async function buildSnapshot(): Promise<BrowseSnapshot> {
     (await playlistSet()).slice(0, CAR_MAX_ITEMS_PER_NODE).map(playlistRow),
   );
 
+  return snapshotOf(homeItems, favItems, albumItems, playlistItems);
+}
+
+/** The four tabs, always all four: CarPlay's tab bar is never left empty. */
+function snapshotOf(
+  homeItems: BrowseItem[],
+  favItems: BrowseItem[],
+  albumItems: BrowseItem[],
+  playlistItems: BrowseItem[],
+): BrowseSnapshot {
   const sections: BrowseSection[] = [
     { id: sectionId('home'), title: i18n.t('home'), icon: SectionIcon.Home, items: homeItems },
     {
@@ -593,6 +613,7 @@ async function resolveVoice(request: MediaSearchRequest): Promise<Child[]> {
  * route) through the same resolver + playback path as `onPlayFromSearchRequest`.
  */
 export async function dispatchVoiceSearchRequest(request: MediaSearchRequest): Promise<void> {
+  if (!headlessSessionReady()) return;
   // No re-key refusal: `resolveVoice` runs through the same offline-aware resolvers as
   // browse, so a pending re-key narrows this to downloads rather than blocking it.
   const queue = await resolveVoice(request);
@@ -655,13 +676,17 @@ async function pushSnapshot(): Promise<void> {
     // browse tree: a pending re-key narrows it to downloaded music, which plays from
     // local files and needs no server. Refusing outright used to leave a driver with
     // downloads on the device and an empty car UI.
+    // Not ready still pushes, empty: the native snapshot keeps the last one pushed, which
+    // after a logout is the previous account's library.
+    const ready = headlessSessionReady();
     if (getTrackPlayer().isCarConnected()) {
-      const snapshot = await buildSnapshot();
+      const snapshot = ready ? await buildSnapshot() : snapshotOf([], [], [], []);
       getTrackPlayer().setBrowseSnapshot(snapshot);
     }
     // Siri vocabulary is iOS SiriKit (INVocabulary) — phone-side, independent of any
     // car connection — so it is NOT car-gated (unlike the browse snapshot above).
-    await donateVocabulary();
+    if (ready) await donateVocabulary();
+    else getTrackPlayer().donateVoiceVocabulary({ artists: [], playlists: [] });
   } catch (e) {
     console.warn(`${LOG_TAG} pushSnapshot failed:`, e);
   }
@@ -674,9 +699,11 @@ async function pushSnapshot(): Promise<void> {
 const handler: PlaybackServiceHandler = {
   // No blanket refusal here any more: `isOffline()` already covers a pending re-key, so
   // these resolve the downloads-only view rather than an empty one.
-  onBrowseRequest: async (parentId) => resolveBrowseChildren(parentId),
-  onSearchRequest: async (query) => resolveSearch(query),
+  onBrowseRequest: async (parentId) =>
+    (headlessSessionReady() ? resolveBrowseChildren(parentId) : []),
+  onSearchRequest: async (query) => (headlessSessionReady() ? resolveSearch(query) : []),
   onPlayFromIdRequest: async (mediaId) => {
+    if (!headlessSessionReady()) return [];
     const { queue, startIndex, sourcePlaylistId } = await resolvePlayback(mediaId);
     if (queue.length === 0) return [];
     // Fire-and-forget playTrack (carries app bookkeeping); native steps back and
@@ -686,6 +713,7 @@ const handler: PlaybackServiceHandler = {
     return rnTracks;
   },
   onPlayFromSearchRequest: async (request) => {
+    if (!headlessSessionReady()) return [];
     const queue = await resolveVoice(request);
     if (queue.length === 0) return [];
     void playTrack(queue[0], queue, null);
@@ -737,11 +765,13 @@ function scheduleRefresh(): void {
  * `rehydrateAllStores()` + `awaitKvHydration()`) never runs. We run the SAME pair
  * here so every headless surface — browse, voice, and CarPlay if plugged in after
  * a voice-triggered start — reads fully-hydrated stores (same data the app uses).
- * Memoized: runs once per process, and is a cheap no-op await once the app has
- * been opened (every store already hydrated). Awaited by `hydrateThenPush` and at
+ * Memoized: runs once per process once the session is ready (before that it does
+ * nothing and is not memoized, so a call after login hydrates), and is a cheap no-op
+ * await once the app has been opened (every store already hydrated). Awaited by `hydrateThenPush` and at
  * the top of each RNQP resolver so nothing reads `isOffline()`/stores too early.
  */
 function ensureHeadlessDataReady(): Promise<void> {
+  if (!headlessSessionReady()) return Promise.resolve();
   if (!dataReadyPromise) {
     dataReadyPromise = Promise.all([rehydrateAllStores(), awaitKvHydration()])
       // Run the full player + scrobble init now that the stores are hydrated. On

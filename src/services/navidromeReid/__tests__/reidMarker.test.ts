@@ -41,16 +41,23 @@ jest.mock('../../../store/serverInfoStore', () => ({
   serverInfoStore: { getState: () => ({ serverType: mockServerType, serverVersion: mockServerVersion }) },
 }));
 
-import { probeServerVersion, resetReidProbeInFlightForTests } from '../reidProbe';
+import { probeServerVersion, resetProbeState } from '../reidProbe';
 import {
   clearReidMarker,
-  resetReidProbeForTests,
+  resetReidProbeState,
   shouldBlockLibraryWrites,
   isReidComplete,
   isReidRequired,
+  hasContinuedAfterFailureThisSession,
+  hasServerAnswered,
+  isLegacyThisSession,
   reidVerdict,
+  resetReidSessionLatches,
+  setContinuedAfterFailureThisSession,
+  setLegacyThisSession,
   setReidState,
   shouldBlockContent,
+  shouldHoldScrobbles,
 } from '../reidMarker';
 
 beforeEach(() => {
@@ -63,8 +70,9 @@ beforeEach(() => {
   mockOfflineMode = false;
   mockHasConnection = true;
   mockServerReachable = true;
-  resetReidProbeForTests();
-  resetReidProbeInFlightForTests();
+  resetReidProbeState();
+  resetProbeState();
+  resetReidSessionLatches();
 });
 
 describe('reidMarker', () => {
@@ -93,10 +101,10 @@ describe('reidMarker', () => {
     expect(isReidRequired()).toBe(false);
   });
 
-  it('runs unattended on a development build', () => {
+  it('asks when the version has no number, development builds included', () => {
     mockServerVersion = 'dev';
-    expect(reidVerdict()).toBe('run');
-    expect(isReidRequired()).toBe(true);
+    expect(reidVerdict()).toBe('ask');
+    expect(isReidRequired()).toBe(false);
   });
 
   it('asks rather than guessing on an ambiguous snapshot', () => {
@@ -117,10 +125,40 @@ describe('reidMarker', () => {
     expect(isReidRequired()).toBe(true);
   });
 
-  it('blocks headless content while undecided, not just while required', () => {
+  it('serves headless content for an undetermined version (legacy mode)', () => {
     mockServerVersion = '0.0.0-SNAPSHOT (deadbee)';
     expect(isReidRequired()).toBe(false);
+    expect(shouldBlockContent()).toBe(false);
+  });
+
+  it('blocks headless content while the pass is outstanding', () => {
     expect(shouldBlockContent()).toBe(true);
+  });
+
+  it('holds scrobbles while the pass is outstanding', () => {
+    expect(shouldHoldScrobbles()).toBe(true);
+  });
+
+  it('holds scrobbles for an undetermined version until legacy mode is chosen', () => {
+    // Navidrome answers OK to a scrobble it cannot register, so one sent under the wrong
+    // ids is lost; the answer decides which ids are right.
+    mockServerVersion = 'dev';
+    expect(shouldHoldScrobbles()).toBe(true);
+    setLegacyThisSession();
+    expect(shouldHoldScrobbles()).toBe(false);
+  });
+
+  it('submits scrobbles for an unaffected server', () => {
+    mockServerVersion = '0.63.2';
+    expect(shouldHoldScrobbles()).toBe(false);
+  });
+
+  it('forgets both session answers on reset', () => {
+    setLegacyThisSession();
+    setContinuedAfterFailureThisSession();
+    resetReidSessionLatches();
+    expect(isLegacyThisSession()).toBe(false);
+    expect(hasContinuedAfterFailureThisSession()).toBe(false);
   });
 
   it('treats an unknown marker value as not done', () => {
@@ -212,6 +250,15 @@ describe('the live version probe', () => {
     expect(shouldBlockLibraryWrites()).toBe(true);   // unsettled - fail safe
     await (probeServerVersion() ?? Promise.resolve());
     expect(shouldBlockLibraryWrites()).toBe(true);   // settled, and it IS affected
+  });
+
+  it('leaves writes open for an undetermined version once the server answers', async () => {
+    // Legacy mode is fully functional on the old ids.
+    mockServerVersion = 'dev';
+    mockPing = { status: 'ok', serverVersion: 'dev' };
+    await (probeServerVersion() ?? Promise.resolve());
+    expect(reidVerdict()).toBe('ask');
+    expect(shouldBlockLibraryWrites()).toBe(false);
   });
 
   it('releases writes once the probe confirms an unaffected server', async () => {
@@ -323,6 +370,21 @@ describe('a timed-out probe stays retryable', () => {
     await (second ?? Promise.resolve());
 
     expect(reidVerdict()).toBe('run');
+  });
+
+  it('answers a server that takes 4.5s, which the heartbeat counts as reachable', async () => {
+    // One time limit for every ping: a server the heartbeat accepts is never one the
+    // probe gives up on.
+    jest.useFakeTimers();
+    try {
+      mockPingDelayMs = 4_500;
+      const probe = probeServerVersion();
+      await jest.advanceTimersByTimeAsync(4_600);
+      await probe;
+      expect(hasServerAnswered()).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('stops probing once the server has actually answered', async () => {

@@ -63,6 +63,7 @@ import {
 import { logImageCache } from './imageCacheLogger';
 import { logLibrarySync } from './librarySyncLogger';
 import { shouldBlockContent } from './navidromeReid/reidMarker';
+import { isReidRunning } from '../store/migrationGateStore';
 import { processingOverlayStore } from '../store/processingOverlayStore';
 import { playbackSettingsStore } from '../store/playbackSettingsStore';
 import { resolveEffectiveFormat } from '../utils/effectiveFormat';
@@ -222,7 +223,7 @@ export function initMusicCache(): void {
 
     if (!appStateSubscription) {
       appStateSubscription = onAppForeground(() => {
-        if (!isProcessing) recoverStalledDownloadsAsync();
+        if (!isProcessing && !isReidRunning()) recoverStalledDownloadsAsync();
       });
     }
     if (!offlineSubscription) {
@@ -233,6 +234,7 @@ export function initMusicCache(): void {
       // where it stopped (and retries whatever errored while the network was gone).
       offlineSubscription = offlineModeStore.subscribe((state, prev) => {
         if (state.offlineMode === prev.offlineMode) return;
+        if (isReidRunning()) return;
         // The trailing pump is what resumes: after a pause the items sit in 'queued',
         // so the recovery pass finds nothing to recover and would never restart on its
         // own. Going offline it is a no-op — the gate turns it straight back.
@@ -250,9 +252,9 @@ export function initMusicCache(): void {
 
 /**
  * Unregister the AppState listener and clear the cached directory handle.
- * Called from `resetAllStores()` on logout so a background→foreground
- * transition while logged out doesn't fire recovery against a reset store.
- * The next login re-arms the listener via `initMusicCache()`.
+ * Called at the start of `resetAllStores()` so a background→foreground
+ * transition mid-logout doesn't fire recovery against a half-reset store.
+ * Logout's `clearMusicCache()` re-initialises the cache, re-arming it.
  */
 export function teardownMusicCache(): void {
   appStateSubscription?.remove();
@@ -445,7 +447,24 @@ export async function rebuildTrackMaps(): Promise<void> {
  *
  * Logs a one-line summary when any drift was healed.
  */
-export async function reconcileMusicCacheAsync(): Promise<void> {
+/** The reconcile walk in progress, if any. */
+let reconcileInFlight: Promise<void> | null = null;
+
+/** Resolves once any running reconcile has finished. The Navidrome re-key waits on it. */
+export function musicCacheReconcileInFlight(): Promise<void> {
+  return reconcileInFlight ?? Promise.resolve();
+}
+
+export function reconcileMusicCacheAsync(): Promise<void> {
+  // The re-key moves files and rewrites rows; a walk over its half-done state would
+  // delete the moved files as orphans.
+  if (isReidRunning()) return Promise.resolve();
+  if (reconcileInFlight) return reconcileInFlight;
+  reconcileInFlight = doReconcileMusicCache().finally(() => { reconcileInFlight = null; });
+  return reconcileInFlight;
+}
+
+async function doReconcileMusicCache(): Promise<void> {
   const dir = ensureCacheDir();
   if (!dir.exists) return;
 
@@ -734,6 +753,17 @@ export async function recoverStalledDownloadsAsync(
  * Force-recover the queue regardless of current processing state. Bumps the
  * generation counter so active workers exit at their next check.
  */
+/**
+ * Stop every download worker without restarting anything, and drop the in-memory queue.
+ * The Navidrome re-key calls this before its first write; its own `download_queue`
+ * delete clears the rows.
+ */
+export function haltDownloadWorkers(): void {
+  processingId++;
+  isProcessing = false;
+  musicCacheStore.setState({ downloadQueue: [] });
+}
+
 export async function forceRecoverDownloadsAsync(): Promise<void> {
   processingId++;
   isProcessing = false;
@@ -1066,6 +1096,7 @@ function isPausedForOffline(): boolean {
 
 async function processQueue(): Promise<void> {
   if (isPausedForOffline()) return;
+  if (isReidRunning()) return;
   if (isProcessing) return;
   isProcessing = true;
   const myId = ++processingId;
@@ -1350,8 +1381,12 @@ async function downloadItem(queueItem: DownloadQueueItem, myId: number): Promise
       if (preScannedSongs.has(`${idx}`)) continue;
 
       try {
-        let result = await downloadSong(song);
-        if (!result) result = await downloadSong(song);
+        // Halted by the re-key: write nothing more under the old ids. (An offline toggle
+        // also moves `processingId`; a song finished then is kept, as before.)
+        const halted = (): boolean => myId !== processingId && isReidRunning();
+        let result = await downloadSong(song, myId);
+        if (!result && !halted()) result = await downloadSong(song, myId);
+        if (halted()) return;
         if (result) {
           itemSongsForCommit.set(song.id, result);
           // Membership comes from the loop's source `song`, not from `result` —
@@ -1442,7 +1477,12 @@ async function downloadItem(queueItem: DownloadQueueItem, myId: number): Promise
  * Retry-once (for the transient "null from getDownloadStreamUrl") happens
  * in the caller.
  */
-async function downloadSong(track: Child): Promise<CachedSongMeta | null> {
+/**
+ * @param workerId The worker generation that asked. When the re-key halts the workers
+ *   mid-transfer, the finished file is discarded rather than recorded under an id the
+ *   pass has already moved past.
+ */
+async function downloadSong(track: Child, workerId: number): Promise<CachedSongMeta | null> {
   const existing = musicCacheStore.getState().cachedSongs[track.id];
   if (existing && cachedFileMatchesSetting(existing, track)) return existing;
 
@@ -1464,6 +1504,11 @@ async function downloadSong(track: Child): Promise<CachedSongMeta | null> {
     beginDownload(track.id);
     const tmpDest = new File(albumDir, tmpName);
     await downloadFileAsyncWithProgress(url, tmpDest.uri, track.id);
+    if (workerId !== processingId && isReidRunning()) {
+      try { tmpDest.delete(); } catch { /* best-effort */ }
+      clearDownload(track.id);
+      return null;
+    }
 
     const dest = new File(albumDir, fileName);
     if (dest.exists) {

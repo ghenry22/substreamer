@@ -40,8 +40,10 @@ module.exports = {
       setupFiles: [
         '<rootDir>/src/test-utils/i18nSetup.ts',
         '<rootDir>/src/test-utils/keyboardControllerSetup.ts',
+        '<rootDir>/src/test-utils/gestureHandlerSetup.ts',
       ],
       setupFilesAfterEnv: ['<rootDir>/src/test-utils/asyncTimeouts.ts'],
+      resolver: '<rootDir>/src/test-utils/jestResolver.js',
       transformIgnorePatterns,
       modulePathIgnorePatterns,
     },
@@ -62,8 +64,10 @@ module.exports = {
       setupFiles: [
         '<rootDir>/src/test-utils/i18nSetup.ts',
         '<rootDir>/src/test-utils/keyboardControllerSetup.ts',
+        '<rootDir>/src/test-utils/gestureHandlerSetup.ts',
       ],
       setupFilesAfterEnv: ['<rootDir>/src/test-utils/asyncTimeouts.ts'],
+      resolver: '<rootDir>/src/test-utils/jestResolver.js',
       transformIgnorePatterns,
       modulePathIgnorePatterns,
     },

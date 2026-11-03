@@ -347,6 +347,7 @@ import { connectivityStore } from '../../store/connectivityStore';
 import { imageCacheStore } from '../../store/imageCacheStore';
 import { musicCacheStore } from '../../store/musicCacheStore';
 import { offlineModeStore } from '../../store/offlineModeStore';
+import { migrationGateStore } from '../../store/migrationGateStore';
 
 const { fetch: mockFetch } = jest.requireMock('expo/fetch') as { fetch: jest.Mock };
 
@@ -368,6 +369,10 @@ function jpegBuffer(size: number): ArrayBuffer {
  * and need to observe the post-await repair pass that's been moved to a
  * non-blocking spawned task in the production code.
  */
+/** The module-scope offline-mode subscribers, captured before any test clears mocks. */
+const offlineSubscribers: Array<(s: { offlineMode: boolean }, p: { offlineMode: boolean }) => void> =
+  (offlineModeStore.subscribe as jest.Mock).mock.calls.map((c) => c[0]);
+
 async function flushSpawned(): Promise<void> {
   // Two setImmediate rounds is sufficient: the first lets the spawned
   // chain's first await (awaitFirstPing) progress past the boundary; the
@@ -1399,6 +1404,24 @@ describe('deferredImageCacheInit — throttle + idle deferral', () => {
 
     // Repair's SQL query fired even though reconcile was throttled.
     expect(mockFindIncompleteCovers).toHaveBeenCalled();
+  });
+
+  it('does not repair on coming back online while the re-key pass runs', async () => {
+    // The pass clears the image queue; a repair would queue retired ids straight back.
+    mockOfflineMode.offlineMode = false;
+    migrationGateStore.getState().show('working');
+    try {
+      for (const sub of offlineSubscribers) sub({ offlineMode: false }, { offlineMode: true });
+      await flushSpawned();
+      expect(mockFindIncompleteCovers).not.toHaveBeenCalled();
+
+      migrationGateStore.getState().reset();
+      for (const sub of offlineSubscribers) sub({ offlineMode: false }, { offlineMode: true });
+      await flushSpawned();
+      expect(mockFindIncompleteCovers).toHaveBeenCalled();
+    } finally {
+      migrationGateStore.getState().reset();
+    }
   });
 
   it('skips repair when offline (unchanged legacy behaviour)', async () => {

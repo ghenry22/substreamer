@@ -82,6 +82,11 @@ jest.mock('../reidLibrary', () => ({
   discardLibrary: () => { mockCalls.push('discardLibrary'); return Promise.resolve(45); },
 }));
 
+let mockHoldsServerIds = true;
+jest.mock('../reidInstall', () => ({
+  installHoldsServerIds: () => Promise.resolve(mockHoldsServerIds),
+}));
+
 let mockCannotAsk = false;
 jest.mock('../reidProbe', () => ({ cannotAskNow: () => mockCannotAsk }));
 
@@ -94,11 +99,17 @@ const mockSetReidState = jest.fn((s: string) => {
   // Modelled here so a log written after the pass cannot quietly report the wrong cause.
   if (s === 'complete') mockVerdict = 'skip';
 });
+let mockLegacy = false;
+let mockContinued = false;
 jest.mock('../reidMarker', () => ({
   hasServerAnswered: () => mockServerAnswered,
   reidVerdict: () => mockVerdict,
   setReidState: (s: string) => mockSetReidState(s),
   setUserConfirmedReid: jest.fn(),
+  isLegacyThisSession: () => mockLegacy,
+  setLegacyThisSession: () => { mockLegacy = true; },
+  hasContinuedAfterFailureThisSession: () => mockContinued,
+  setContinuedAfterFailureThisSession: () => { mockContinued = true; },
 }));
 
 const mockAppendReidLog = jest.fn();
@@ -106,11 +117,28 @@ jest.mock('../reidMigrationLog', () => ({
   appendReidLog: (...args: unknown[]) => mockAppendReidLog(...args),
 }));
 
+let mockConversion: Promise<unknown> | null = null;
+jest.mock('../../../store/persistence/musicCacheTables', () => ({
+  legacyMetadataConversionInFlight: () => {
+    if (mockConversion) mockCalls.push('awaitConversion');
+    return mockConversion ?? Promise.resolve();
+  },
+}));
+
 jest.mock('../../../store/persistence/rehydrate', () => ({
   rehydrateAllStores: () => { mockCalls.push('rehydrateAllStores'); return Promise.resolve({ failed: [] }); },
 }));
+let mockReconcile: Promise<void> | null = null;
 jest.mock('../../musicCacheService', () => ({
   rebuildTrackMaps: record('rebuildTrackMaps'),
+  haltDownloadWorkers: () => { mockCalls.push('haltDownloadWorkers'); },
+  musicCacheReconcileInFlight: () => {
+    if (mockReconcile) mockCalls.push('awaitReconcile');
+    return mockReconcile ?? Promise.resolve();
+  },
+}));
+jest.mock('../../playerService', () => ({
+  clearQueue: () => { mockCalls.push('clearQueue'); return Promise.resolve(); },
 }));
 jest.mock('../../../store/ratingStore', () => ({
   ratingStore: { persist: { rehydrate: () => Promise.resolve() } },
@@ -150,12 +178,13 @@ jest.mock('../../dataModelUpgradeService', () => ({
   },
 }));
 
+import { appStateStore } from '../../../store/appStateStore';
 import { migrationGateStore } from '../../../store/migrationGateStore';
 import { syncStatusStore } from '../../../store/syncStatusStore';
 import {
-  acceptMidSessionReid,
-  declineMidSessionReid,
-  resetMidSessionAcceptanceForTests,
+  chooseLegacyMode,
+  confirmAndRunNavidromeReid,
+  continueWithoutUpdating,
   runNavidromeReidIfNeeded,
 } from '../runNavidromeReid';
 
@@ -171,7 +200,12 @@ beforeEach(() => {
   mockServerAnswered = true;
   mockEtlInFlight = null;
   mockLog.mockClear();
-  resetMidSessionAcceptanceForTests();
+  mockLegacy = false;
+  mockContinued = false;
+  mockHoldsServerIds = true;
+  mockConversion = null;
+  mockReconcile = null;
+  appStateStore.setState({ isActive: true });
   mockSetReidState.mockClear();
   mockAppendReidLog.mockClear();
   mockStorage.clear();
@@ -269,12 +303,32 @@ describe('the pass refuses to write when it should', () => {
     expect(migrationGateStore.getState().hasWritten).toBe(true);
   });
 
-  it('asks rather than running when the verdict is undecided', async () => {
+  it('asks rather than running when the version is undetermined', async () => {
     mockVerdict = 'ask';
     await runNavidromeReidIfNeeded();
 
     expect(mockCalls).toEqual([]);
     expect(migrationGateStore.getState().mode).toBe('asking');
+    // Legacy mode works until the user answers, so nothing claims an update is pending.
+    expect(migrationGateStore.getState().deferred).toBe(false);
+  });
+
+  it('does not ask again once legacy mode was chosen this session', async () => {
+    mockVerdict = 'ask';
+    mockLegacy = true;
+    await runNavidromeReidIfNeeded();
+
+    expect(mockCalls).toEqual([]);
+    expect(migrationGateStore.getState().visible).toBe(false);
+  });
+
+  it('waits for a server answer before asking, without claiming a pending update', async () => {
+    mockVerdict = 'ask';
+    mockServerAnswered = false;
+    await runNavidromeReidIfNeeded();
+
+    expect(migrationGateStore.getState().visible).toBe(false);
+    expect(migrationGateStore.getState().deferred).toBe(false);
   });
 });
 
@@ -364,9 +418,33 @@ describe('without a server to refill from', () => {
   mockServerAnswered = true;
   mockEtlInFlight = null;
   mockLog.mockClear();
-  resetMidSessionAcceptanceForTests();
     await runNavidromeReidIfNeeded();
     expect(mockCalls).toContain('discardLibrary');
+    expect(mockCalls).toContain('setReidState:complete');
+  });
+});
+
+describe('the download metadata conversion', () => {
+  // A hydration converting legacy download rows writes them back by key; one read before
+  // the re-key would write retired artist and album ids back after it.
+  it('writes nothing until a conversion in flight has finished', async () => {
+    let finish = (): void => {};
+    mockConversion = new Promise<void>((r) => { finish = r; });
+    const run = runNavidromeReidIfNeeded();
+    try {
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(mockCalls).toContain('awaitConversion');
+      expect(mockCalls).not.toContain('clearLiveQueue');
+      expect(mockCalls).not.toContain('rekeyPlainColumns');
+    } finally {
+      // Always release it: a stuck pass would hold `inFlight` for every later test.
+      finish();
+      await run;
+    }
+
+    expect(idx('awaitConversion')).toBeLessThan(idx('clearLiveQueue'));
     expect(mockCalls).toContain('setReidState:complete');
   });
 });
@@ -432,50 +510,108 @@ describe('the blob ETL race', () => {
   });
 });
 
-describe('interrupting a live session', () => {
-  // A cold start just runs — the user is sat at a splash expecting startup work. Mid
-  // session they may be listening, and the pass clears the queue, discards the library
-  // and cannot be paused once started. So it is offered, not imposed.
-  it('offers rather than starting when the app is already running', async () => {
-    await runNavidromeReidIfNeeded({ midSession: true });
-
-    expect(mockCalls).toEqual([]);
-    expect(migrationGateStore.getState().mode).toBe('offering');
-    expect(migrationGateStore.getState().visible).toBe(true);
-  });
-
-  it('runs straight through on a cold start', async () => {
+describe('a pass that starts while the app is in use', () => {
+  // The launch could not reach the server; it now can. There is no offer: everything
+  // online is broken until the ids match, so the pass simply runs.
+  it('runs straight through, without an offer', async () => {
     await runNavidromeReidIfNeeded();
-
-    expect(mockCalls).toContain('discardLibrary');
-    expect(migrationGateStore.getState().mode).not.toBe('offering');
-  });
-
-  it('runs once the user accepts', async () => {
-    await runNavidromeReidIfNeeded({ midSession: true });
-    expect(mockCalls).toEqual([]);
-
-    await acceptMidSessionReid();
 
     expect(mockCalls).toContain('discardLibrary');
     expect(mockCalls).toContain('setReidState:complete');
   });
 
-  // Declining must cost nothing: the marker stays pending so the next launch runs it.
-  it('writes nothing when the user declines, and leaves the marker alone', async () => {
-    await runNavidromeReidIfNeeded({ midSession: true });
+  it('quiets the player and the download workers before the first write', async () => {
+    await runNavidromeReidIfNeeded();
 
-    declineMidSessionReid();
+    expect(idx('haltDownloadWorkers')).toBeGreaterThan(-1);
+    expect(idx('clearQueue')).toBeGreaterThan(-1);
+    expect(idx('haltDownloadWorkers')).toBeLessThan(idx('clearLiveQueue'));
+    expect(idx('clearQueue')).toBeLessThan(idx('clearLiveQueue'));
+    expect(idx('clearQueue')).toBeLessThan(idx('rekeyPlainColumns'));
+  });
+
+  it('lets a running download reconcile finish before writing', async () => {
+    // The reconcile reads the store and would delete moved files as orphans.
+    let finish = (): void => {};
+    mockReconcile = new Promise<void>((r) => { finish = r; });
+    const run = runNavidromeReidIfNeeded();
+    await Promise.resolve();
+    expect(mockCalls).not.toContain('clearLiveQueue');
+
+    finish();
+    await run;
+
+    expect(idx('awaitReconcile')).toBeLessThan(idx('haltDownloadWorkers'));
+    expect(mockCalls).toContain('setReidState:complete');
+  });
+
+  it('waits for the foreground, then runs once', async () => {
+    appStateStore.setState({ isActive: false });
+    await runNavidromeReidIfNeeded();
+    await runNavidromeReidIfNeeded();
+    expect(mockCalls).toEqual([]);
+
+    appStateStore.setState({ isActive: true });
+    await new Promise((r) => setTimeout(r, 0));
+    await runNavidromeReidIfNeeded();
+
+    expect(mockCalls.filter((c) => c === 'discardLibrary')).toHaveLength(1);
+  });
+
+  it('does not retry in the same session after the user continued past a failure', async () => {
+    mockContinued = true;
+    await runNavidromeReidIfNeeded();
 
     expect(mockCalls).toEqual([]);
-    expect(mockSetReidState).not.toHaveBeenCalled();
-    expect(migrationGateStore.getState().visible).toBe(false);
   });
 });
 
+describe('the user\'s answers', () => {
+  it('Update now on an empty install marks it done without running the pass', async () => {
+    // Nothing to convert: what it syncs next already carries the current ids.
+    mockHoldsServerIds = false;
+    mockVerdict = 'ask';
+    migrationGateStore.getState().show('asking');
 
+    await confirmAndRunNavidromeReid();
 
+    expect(mockSetReidState).toHaveBeenCalledWith('complete');
+    expect(mockCalls).not.toContain('discardLibrary');
+    expect(migrationGateStore.getState().visible).toBe(false);
+  });
 
+  it('Update now on an install with data runs the full pass', async () => {
+    mockVerdict = 'run';
+    migrationGateStore.getState().show('asking');
+
+    await confirmAndRunNavidromeReid();
+
+    expect(mockCalls).toContain('discardLibrary');
+    expect(mockCalls).toContain('setReidState:complete');
+  });
+
+  it('legacy mode hides the prompt for the session', () => {
+    migrationGateStore.getState().show('asking');
+
+    chooseLegacyMode();
+
+    expect(mockLegacy).toBe(true);
+    expect(migrationGateStore.getState().visible).toBe(false);
+    expect(migrationGateStore.getState().deferred).toBe(false);
+  });
+
+  it('continuing after a failure hides the gate and says why sync is off', () => {
+    migrationGateStore.getState().show('working');
+    migrationGateStore.getState().fail();
+
+    continueWithoutUpdating();
+
+    expect(mockContinued).toBe(true);
+    expect(migrationGateStore.getState().visible).toBe(false);
+    expect(migrationGateStore.getState().deferred).toBe(true);
+    expect(migrationGateStore.getState().deferredAfterFailure).toBe(true);
+  });
+});
 
 // A deferred pass leaves the app working but stale, and blocks every library write for
 // the session. This flag is what lets a surface say so instead of leaving the user with
@@ -490,11 +626,11 @@ describe('reporting that the pass was deferred', () => {
     expect(migrationGateStore.getState().deferred).toBe(true);
   });
 
-  it('raises the flag when the user declines mid-session', async () => {
-    await runNavidromeReidIfNeeded({ midSession: true });
-    declineMidSessionReid();
+  it('raises the failure flag only after a failed run, not for a missing server', async () => {
+    mockServerAnswered = false;
+    await runNavidromeReidIfNeeded();
 
-    expect(migrationGateStore.getState().deferred).toBe(true);
+    expect(migrationGateStore.getState().deferredAfterFailure).toBe(false);
   });
 
   it('lowers it once the pass actually runs', async () => {

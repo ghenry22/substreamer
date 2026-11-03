@@ -26,10 +26,13 @@ import {
   getPendingTasks,
   runMigrations,
 } from '../services/migrationService';
+import { finishLogout } from '../services/logoutService';
 import { rehydrateAllStores } from '../store/persistence/rehydrate';
 import { isReidRequired } from '../services/navidromeReid/reidMarker';
 import { probeServerVersion } from '../services/navidromeReid/reidProbe';
 import { awaitReidDecision, runNavidromeReidIfNeeded } from '../services/navidromeReid/runNavidromeReid';
+import { authStore } from '../store/authStore';
+import { isLogoutPending } from '../store/logoutPending';
 import { migrationStore } from '../store/migrationStore';
 // Synchronous adapter: the splash reads `completedVersion` before the store
 // has hydrated, so it must be a synchronous SQLite read.
@@ -58,6 +61,22 @@ const DOT_SIZE = 8;
 const DOT_GAP = 10;
 
 type MigrationPhase = 'idle' | 'running' | 'done';
+
+/**
+ * Read completedVersion directly from SQLite (synchronous) rather than from the Zustand
+ * store, which may not have rehydrated from persistence yet. Without this,
+ * completedVersion reads as 0 and all migrations appear pending on every launch.
+ */
+function readCompletedVersion(): number {
+  try {
+    const raw = kvStorage.getItem('substreamer-migration') as string | null;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return parsed?.state?.completedVersion ?? 0;
+    }
+  } catch { /* fall back to 0 — migrations will re-run safely */ }
+  return 0;
+}
 
 type Props = {
   onFinish: () => void;
@@ -156,7 +175,10 @@ export default function AnimatedSplashScreen({ onFinish }: Props) {
           // probe and would read `cached_songs` and `favorite_songs` WHILE the pass is
           // rewriting their ids — landing a mixture of retired and canonical ids in
           // memory, some of it through the SYNC adapter. The pass does its own
-          // `rehydrateAllStores()` at the end, once the ids have settled.
+          // `rehydrateAllStores()` at the end, once the ids have settled. A hydration
+          // can still be running from the splash's no-migration branch below or the
+          // headless bootstrap; the pass waits for its one writer, the download
+          // metadata conversion, before its first write.
           if (!isReidRequired()) void rehydrateAllStores();
           // The chain has finished, which is the only moment the re-key can trust the
           // schema. Deliberately NOT keyed off the splash finishing: the safety timeout
@@ -234,22 +256,25 @@ export default function AnimatedSplashScreen({ onFinish }: Props) {
     return () => clearTimeout(timeout);
   }, [migrationPhase, dot0Scale, dot1Scale, dot2Scale, dotsOpacity, dotsScale, checkOpacity, checkScale, validatingOpacity, completeOpacity, fadeOut]);
 
+  // A logout killed part way is finished first, then the chain runs from the counter the
+  // wipe left. The reset puts `rehydrated` back to false, which would hold the auth
+  // redirect for the rest of the launch.
+  const beginMigrations = useCallback(
+    (completedVersion: number) => {
+      if (!isLogoutPending()) { startMigrations(completedVersion); return; }
+      void finishLogout().then(() => {
+        authStore.getState().setRehydrated(true);
+        startMigrations(readCompletedVersion());
+      });
+    },
+    [startMigrations],
+  );
+
   const handleRippleComplete = useCallback(() => {
-    // Read completedVersion directly from SQLite (synchronous) rather than
-    // from the Zustand store, which may not have rehydrated from persistence
-    // yet. Without this, completedVersion reads as 0 and all migrations
-    // appear pending on every launch.
-    let completedVersion = 0;
-    try {
-      const raw = kvStorage.getItem('substreamer-migration') as string | null;
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        completedVersion = parsed?.state?.completedVersion ?? 0;
-      }
-    } catch { /* fall back to 0 — migrations will re-run safely */ }
+    const completedVersion = readCompletedVersion();
     const pending = getPendingTasks(completedVersion);
 
-    if (pending.length === 0) {
+    if (pending.length === 0 && !isLogoutPending()) {
       // No migrations to run, but the per-row stores still need to be
       // hydrated from SQLite on every launch. Fire async hydration (IO on a
       // background thread) and fade out; the stores populate reactively and
@@ -283,13 +308,13 @@ export default function AnimatedSplashScreen({ onFinish }: Props) {
       1,
       { duration: 500, easing: Easing.out(Easing.cubic) },
       (finished) => {
-        if (finished) runOnJS(startMigrations)(completedVersion);
+        if (finished) runOnJS(beginMigrations)(completedVersion);
       },
     );
 
     // Start breathing dots
     startBreathingDots();
-  }, [fadeOut, logoScale, logoTranslateY, statusOpacity, startMigrations, startBreathingDots]);
+  }, [fadeOut, logoScale, logoTranslateY, statusOpacity, beginMigrations, startBreathingDots]);
 
   // Two-flag rendezvous: both the BootSplash animate() callback and the
   // waveform completion must fire before we proceed. Whichever arrives

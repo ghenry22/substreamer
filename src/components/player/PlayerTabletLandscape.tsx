@@ -657,11 +657,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     overflow: 'hidden',
     backgroundColor: 'rgba(0,0,0,0.06)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.35,
-    shadowRadius: 24,
-    elevation: 14,
+    boxShadow: '0 12px 48px rgba(0, 0, 0, 0.35)',
   },
   coverImage: {
     width: '100%',

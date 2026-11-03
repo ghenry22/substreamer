@@ -246,8 +246,8 @@ describe('LyricsBrowserScreen — swipe left→right: delete', () => {
     const deletes = await findAllByTestId('action-trash-outline');
     fireEvent.press(deletes[0]); // "Apple"
 
+    expect(queryByText('Apple')).toBeNull();
     await waitFor(() => expect(mockDelete).toHaveBeenCalledWith('s2'));
-    await waitFor(() => expect(queryByText('Apple')).toBeNull());
     expect(queryByText('Zebra')).toBeTruthy();
   });
 

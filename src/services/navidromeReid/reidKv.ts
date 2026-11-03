@@ -45,7 +45,7 @@ function moved(id: string): string | undefined {
 }
 
 /** Re-key the keys of an id-keyed record, leaving its values alone. */
-function rekeyRecordKeys(record: Record<string, unknown>): Record<string, unknown> {
+export function rekeyRecordKeys(record: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(record)) {
     out[moved(key) ?? key] = value;

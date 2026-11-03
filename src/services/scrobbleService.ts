@@ -16,7 +16,7 @@ import { offlineModeStore } from '../store/offlineModeStore';
 import { pendingScrobbleStore } from '../store/pendingScrobbleStore';
 import { scrobbleExclusionStore } from '../store/scrobbleExclusionStore';
 import { applyLocalPlay } from './playStatsService';
-import { shouldBlockContent } from './navidromeReid/reidMarker';
+import { shouldHoldScrobbles } from './navidromeReid/reidMarker';
 import { getApi, type Child } from './subsonicService';
 
 /**
@@ -162,7 +162,7 @@ async function runScrobblePass(): Promise<void> {
   // Submitting anyway does not merely fail: a missing id comes back as HTTP 200 with
   // error code 70, our wrapper throws only on `!res.ok`, so it reads as SUCCESS and the
   // row is deleted. Listening history has no server copy.
-  if (shouldBlockContent()) return;
+  if (shouldHoldScrobbles()) return;
   try {
     const api = getApi();
     if (!api) return;

@@ -524,7 +524,7 @@ export function PlaylistDetailScreen() {
   /* ---- List header ---- */
 
   const listHeader = useMemo(() => {
-    if (!playlist) return null;
+    if (!playlist) return undefined;
     const displayTracks = editing ? editedTracks : tracks;
     const songCount = editing ? editedTracks.length : playlist.songCount;
     const duration = editing

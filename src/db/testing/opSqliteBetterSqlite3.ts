@@ -91,10 +91,10 @@ function makeDb(bs: Database.Database, dbPath: string): DB {
 
   /**
    * op-SQLite's JS-side transaction lock, mirroring `enhanceDB`
-   * (`@op-engineering/op-sqlite/src/functions.ts:46-70`, used at `:95-133` and
-   * `:205-290`). `executeBatch` and `transaction` do NOT reach the engine when you
+   * (`@op-engineering/op-sqlite/src/functions.ts:44-68`, used at `:93-125` and
+   * `:187-267`). `executeBatch` and `transaction` do NOT reach the engine when you
    * call them: each parks on the queue and the head is started from a `setImmediate`
-   * (`:66-68`), one at a time. `execute`/`executeSync`/`executeRaw` pass straight
+   * (`:64-66`), one at a time. `execute`/`executeSync`/`executeRaw` pass straight
    * through to the binding at call time (`:142-191`).
    *
    * So a read — or a bare `runAsync` write — issued AFTER a batch is applied BEFORE
@@ -144,7 +144,7 @@ function makeDb(bs: Database.Database, dbPath: string): DB {
     executeSync: (query, params) => run(query, params),
     // N statements in AUTOCOMMIT, matching the native implementation: op-SQLite's
     // `opsqlite_execute_batch` loops `opsqlite_execute` with its `BEGIN EXCLUSIVE
-    // TRANSACTION` commented out (cpp/bridge.cpp) and leaves the transaction to the JS
+    // TRANSACTION` commented out (cpp/OPBridge.cpp) and leaves the transaction to the JS
     // caller. Wrapping a BEGIN here would both hide that (a batch would look atomic when
     // it is not) and make a caller's own outer transaction a nested-BEGIN error.
     // `runAtomicBatchAsync` gets its atomicity by passing SAVEPOINT/RELEASE as ordinary
@@ -153,7 +153,7 @@ function makeDb(bs: Database.Database, dbPath: string): DB {
       onTransactionLock(async () => {
         // Bracketed in BEGIN/COMMIT, with ROLLBACK on failure, because op-SQLite's JS
         // wrapper does exactly that around every `executeBatch`
-        // (`op-sqlite/src/functions.ts:95-131`) — the native layer's autocommit is not
+        // (`op-sqlite/src/functions.ts:93-123`) — the native layer's autocommit is not
         // what callers actually observe. Without this the adapter made a batch
         // non-atomic, so the app's own SAVEPOINT+recovery scaffolding looked load-bearing
         // in tests while on device it was the thing rolling other callers' writes back.
@@ -180,7 +180,7 @@ function makeDb(bs: Database.Database, dbPath: string): DB {
         bs.exec('BEGIN');
         const tx: Transaction = {
           execute: (query, params) => Promise.resolve(run(query, params)),
-          commit: () => Promise.resolve({ rows: [], rowsAffected: 0 }),
+          commit: () => ({ rows: [], rowsAffected: 0 }),
           rollback: () => ({ rows: [], rowsAffected: 0 }),
         };
         try {
@@ -212,6 +212,7 @@ function makeDb(bs: Database.Database, dbPath: string): DB {
         bind: (params: Scalar[]) => { bound = params; return Promise.resolve(); },
         bindSync: (params: Scalar[]) => { bound = params; },
         execute: () => Promise.resolve(run(query, bound)),
+        executeSync: () => run(query, bound),
       };
     },
     getDbPath: () => dbPath,

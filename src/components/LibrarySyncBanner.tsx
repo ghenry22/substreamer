@@ -284,11 +284,7 @@ const styles = StyleSheet.create({
     paddingLeft: 20,
     paddingRight: 12,
     gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 8,
+    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
   },
   label: {
     flexShrink: 1,

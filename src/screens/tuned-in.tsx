@@ -13,7 +13,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import type { StyleProp, ViewStyle } from 'react-native';
+import type { ScrollViewInstance, StyleProp, ViewStyle } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import Animated, {
   FadeInDown,
@@ -744,7 +744,7 @@ const MixBuilderSheet = memo(function MixBuilderSheet({
 }) {
   const { t } = useTranslation();
   const builder = useMixBuilder(availableGenres);
-  const chipScrollRef = useRef<ScrollView>(null);
+  const chipScrollRef = useRef<ScrollViewInstance>(null);
 
   const onSelectResult = useCallback(
     (genre: string) => {

@@ -183,6 +183,30 @@ jest.mock('../../utils/stringHelpers', () => {
   return { ...actual, minDelay: () => Promise.resolve() };
 });
 
+let mockVerdict = 'skip';
+let mockLegacy = false;
+let mockWritesBlocked: boolean | null = null;
+let mockAnswered: boolean | null = null;
+jest.mock('../navidromeReid/reidMarker', () => {
+  const actual = jest.requireActual('../navidromeReid/reidMarker');
+  return {
+    ...actual,
+    reidVerdict: () => mockVerdict,
+    isLegacyThisSession: () => mockLegacy,
+    shouldBlockLibraryWrites: () => mockWritesBlocked ?? actual.shouldBlockLibraryWrites(),
+    hasServerAnswered: () => mockAnswered ?? actual.hasServerAnswered(),
+  };
+});
+let mockServerUpHook: (() => unknown) | null = null;
+jest.mock('../connectivityService', () => ({
+  ...jest.requireActual('../connectivityService'),
+  setServerUpHook: (hook: (() => unknown) | null) => { mockServerUpHook = hook; },
+}));
+const mockRunReid = jest.fn(() => Promise.resolve());
+jest.mock('../navidromeReid/runNavidromeReid', () => ({
+  runNavidromeReidIfNeeded: () => mockRunReid(),
+}));
+
 // subsonicService uses the shared __mocks__ automock. We opt into it here and
 // reach for `fetchServerInfo` via the imported namespace.
 jest.mock('../subsonicService');
@@ -416,9 +440,38 @@ describe('dataSyncService — pass-through invocations', () => {
   it('onStartup applies serverInfo when fetchServerInfo returns non-null', async () => {
     const info = { version: '1.16.1' };
     mockFetchServerInfo.mockResolvedValueOnce(info);
+    authStore.setState({ isLoggedIn: true, serverUrl: 'https://a', username: 'u' });
     await onStartup();
     await new Promise((r) => setImmediate(r));
     expect(mockSetServerInfo).toHaveBeenCalledWith(info);
+  });
+
+  describe('a server-info answer that lands late', () => {
+    // Not awaited and no network timeout: it can arrive after logout, and must not refill
+    // the store with the old server's details.
+    const startWithHeldInfo = async () => {
+      let answer: (v: unknown) => void = () => undefined;
+      mockFetchServerInfo.mockImplementationOnce(() => new Promise((r) => { answer = r; }));
+      authStore.setState({ isLoggedIn: true, serverUrl: 'https://a', username: 'u' });
+      await onStartup();
+      return (info: unknown) => answer(info);
+    };
+
+    it('is dropped after logout', async () => {
+      const answer = await startWithHeldInfo();
+      authStore.setState({ isLoggedIn: false, serverUrl: null, username: null });
+      answer({ version: '1.16.1' });
+      await new Promise((r) => setImmediate(r));
+      expect(mockSetServerInfo).not.toHaveBeenCalled();
+    });
+
+    it('is dropped after logout and a login as another account', async () => {
+      const answer = await startWithHeldInfo();
+      authStore.setState({ isLoggedIn: true, serverUrl: 'https://b', username: 'other' });
+      answer({ version: '1.16.1' });
+      await new Promise((r) => setImmediate(r));
+      expect(mockSetServerInfo).not.toHaveBeenCalled();
+    });
   });
 
   it('onStartup is a no-op when offline', async () => {
@@ -597,6 +650,54 @@ describe('dataSyncService — deferred startup prefetches', () => {
     expect(mockRunNormalizedLibrarySync).not.toHaveBeenCalled();
     // Still paused after the launch, not quietly reset.
     expect(syncStatusStore.getState().librarySyncPhase).toBe('paused-error');
+  });
+
+  it('does not start a new sync after the user pauses the startup sync', async () => {
+    // Pause bumps the generation and the startup run bails, which resolves the startup
+    // library promise. Launching the song sync after that would undo the Pause.
+    albumLibraryState.albums = [];
+    syncStatusStore.setState({ librarySyncComplete: false, songSyncComplete: false });
+    let finishFetch: () => void = () => undefined;
+    mockFetchAllAlbums.mockImplementationOnce(
+      () => new Promise<void>((resolve) => { finishFetch = resolve; }),
+    );
+
+    await onStartup();
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(mockRunNormalizedLibrarySync).toHaveBeenCalledTimes(1);
+
+    cancelAllSyncs('user-cancel');
+    finishFetch();
+    await jest.advanceTimersByTimeAsync(2000);
+
+    expect(mockRunNormalizedLibrarySync).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds the fan-out and shows the prompt for an undetermined server version', async () => {
+    mockVerdict = 'ask';
+    try {
+      await onStartup();
+      await jest.advanceTimersByTimeAsync(2000);
+      expect(mockRunReid).toHaveBeenCalled();
+      expect(mockFetchStarred).not.toHaveBeenCalled();
+      expect(mockRunNormalizedLibrarySync).not.toHaveBeenCalled();
+    } finally {
+      mockVerdict = 'skip';
+    }
+  });
+
+  it('runs the fan-out once legacy mode was chosen', async () => {
+    mockVerdict = 'ask';
+    mockLegacy = true;
+    try {
+      await onStartup();
+      await jest.advanceTimersByTimeAsync(2000);
+      expect(mockRunReid).not.toHaveBeenCalled();
+      expect(mockFetchStarred).toHaveBeenCalled();
+    } finally {
+      mockVerdict = 'skip';
+      mockLegacy = false;
+    }
   });
 
   it('does NOT refresh playlists on startup when offline', async () => {
@@ -944,3 +1045,57 @@ describe('pausing a running sync', () => {
   });
 });
 
+describe('a ping after both launch checks timed out', () => {
+  // Nothing else asks the server again until it first drops and comes back, so without
+  // this a VPN still connecting at launch left every library write blocked all session.
+  beforeEach(async () => {
+    mockServerUpHook = null;
+    authStore.setState({ isLoggedIn: true });
+    offlineState.offline = false;
+    await onStartup();
+    mockRunReid.mockClear();
+    mockWritesBlocked = true;
+    mockAnswered = false;
+  });
+  afterEach(() => {
+    mockWritesBlocked = null;
+    mockAnswered = null;
+  });
+
+  it('runs the resume flow, which checks the server again', async () => {
+    mockServerUpHook!();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(mockRunReid).toHaveBeenCalled();
+  });
+
+  it('does nothing once the server has answered', async () => {
+    mockAnswered = true;
+    mockServerUpHook!();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(mockRunReid).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when writes are not blocked (every other install)', async () => {
+    mockWritesBlocked = false;
+    mockServerUpHook!();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(mockRunReid).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when logged out or in offline mode', async () => {
+    authStore.setState({ isLoggedIn: false });
+    mockServerUpHook!();
+    authStore.setState({ isLoggedIn: true });
+    offlineState.offline = true;
+    mockServerUpHook!();
+    offlineState.offline = false;
+    await new Promise((r) => setTimeout(r, 0));
+    expect(mockRunReid).not.toHaveBeenCalled();
+  });
+
+  it('is registered on a launch that started in offline mode', async () => {
+    mockServerUpHook = null;
+    await onOnlineResume();
+    expect(mockServerUpHook).not.toBeNull();
+  });
+});

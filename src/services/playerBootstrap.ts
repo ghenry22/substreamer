@@ -49,6 +49,9 @@ void getTrackPlayer()
     // natively. Native re-emits immediately on foreground so the UI resumes live.
     progressUpdateIntervalMs: 500,
     backgroundProgressUpdateIntervalMs: 10000,
+    // iOS: RNQP's NowPlaying / AudioSession / RemoteCommand lines go to the
+    // unified log (subsystem com.margelo.nitro.queueplayer) for device archives.
+    enableDiagnosticLogs: true,
   })
   .then(() => {
     // Register the CarPlay / Android Auto browse service AFTER configure() has

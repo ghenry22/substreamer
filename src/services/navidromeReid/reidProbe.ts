@@ -9,6 +9,7 @@
 
 import { connectivityStore } from '../../store/connectivityStore';
 import { offlineModeStore } from '../../store/offlineModeStore';
+import { PING_TIMEOUT_MS } from '../connectivityService';
 import { getApi } from '../subsonicService';
 import {
   currentServerInfo,
@@ -20,18 +21,25 @@ import {
 } from './reidMarker';
 
 /**
- * Cap on the probe. Comfortably under the splash's 15s backstop
- * (`AnimatedSplashScreen.tsx:39`) so a slow server delays launch rather than stranding it.
+ * Cap on the probe: the same limit as every other server ping, so a server the heartbeat
+ * counts as reachable is never one the probe gives up on. Well under the splash's 15s
+ * backstop (`AnimatedSplashScreen.tsx:42`), so a slow server delays launch rather than
+ * stranding it.
  */
-const PROBE_TIMEOUT_MS = 4_000;
+const PROBE_TIMEOUT_MS = PING_TIMEOUT_MS;
 
 let probeInFlight: Promise<void> | null = null;
 let probeDone = false;
 
-/** Test-only: allow another probe. */
-export function resetReidProbeInFlightForTests(): void {
+/** Forget this session's probe, so the next session asks afresh. Called at login. */
+export function resetProbeState(): void {
   probeInFlight = null;
   probeDone = false;
+}
+
+/** Login's own ping already answered for this session; do not ping again. */
+export function markProbeDone(): void {
+  probeDone = true;
 }
 
 /**

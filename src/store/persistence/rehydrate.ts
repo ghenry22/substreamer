@@ -3,6 +3,7 @@ import { albumListsStore, hydrateAlbumListsFromDb } from '../albumListsStore';
 import { autoOfflineStore } from '../autoOfflineStore';
 import { bookmarksStore } from '../bookmarksStore';
 import { completedScrobbleStore } from '../completedScrobbleStore';
+import { equalizerSettingsStore } from '../equalizerSettingsStore';
 import { favoritesStore } from '../favoritesStore';
 import { genreStore } from '../genreStore';
 import { imageCacheStore } from '../imageCacheStore';
@@ -130,6 +131,8 @@ const STARTUP_KV_STORES = [
   // Settings the headless (car/voice) service reads offline before any UI mounts —
   // awaited here so a headless start + the app boot both have them ready.
   playbackSettingsStore,
+  // Read by `initPlayer`, which runs as soon as this resolves.
+  equalizerSettingsStore,
 ];
 
 /**
