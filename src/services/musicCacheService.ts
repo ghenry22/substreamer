@@ -137,6 +137,16 @@ function getTrackFileExtension(track: Child): string {
   return 'dat';
 }
 
+/** Whether a cached file can be reused under the current download format. `raw` reuses anything. */
+function cachedFileMatchesSetting(
+  existing: { suffix?: string },
+  track: Child,
+): boolean {
+  const { downloadFormat } = playbackSettingsStore.getState();
+  if (downloadFormat === 'raw') return true;
+  return existing.suffix === getTrackFileExtension(track);
+}
+
 /* ------------------------------------------------------------------ */
 /*  Module state                                                       */
 /* ------------------------------------------------------------------ */
@@ -1029,7 +1039,7 @@ export async function enqueueSongDownload(song: Child): Promise<void> {
   // just create the `song:` item + edge so it shows up in the browser, and
   // refresh the promoted metadata with whatever the caller supplied. The real
   // `Child` goes along, so the `cached_song_*` mirrors are rebuilt too.
-  if (song.id in state.cachedSongs) {
+  if (song.id in state.cachedSongs && cachedFileMatchesSetting(state.cachedSongs[song.id], song)) {
     const existing = state.cachedSongs[song.id];
     musicCacheStore.getState().upsertCachedSong(
       { ...existing, ...promotedSongFieldsFromChild(song) },
@@ -1333,7 +1343,7 @@ async function downloadItem(queueItem: DownloadQueueItem, myId: number): Promise
     }
     seen.add(song.id);
     const existing = state0.cachedSongs[song.id];
-    if (existing) {
+    if (existing && cachedFileMatchesSetting(existing, song)) {
       preScannedSongs.add(`${i}`);
       itemEdges.push({ position, songId: song.id });
       itemSongsForCommit.set(song.id, existing);
@@ -1474,7 +1484,7 @@ async function downloadItem(queueItem: DownloadQueueItem, myId: number): Promise
  */
 async function downloadSong(track: Child, workerId: number): Promise<CachedSongMeta | null> {
   const existing = musicCacheStore.getState().cachedSongs[track.id];
-  if (existing) return existing;
+  if (existing && cachedFileMatchesSetting(existing, track)) return existing;
 
   await ensureCoverArtAuth();
 
@@ -1505,6 +1515,14 @@ async function downloadSong(track: Child, workerId: number): Promise<CachedSongM
       try { dest.delete(); } catch { /* best-effort */ }
     }
     await tmpDest.move(dest);
+
+    // Remove the old-format file this download replaced.
+    if (existing && existing.suffix !== ext) {
+      const stale = resolveSongFile(existing);
+      if (stale.exists && stale.uri !== dest.uri) {
+        try { stale.delete(); } catch { /* best-effort */ }
+      }
+    }
 
     const bytes = dest.exists ? dest.size ?? 0 : 0;
 
