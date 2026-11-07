@@ -80,7 +80,7 @@ function buildTightSvg(logoColor) {
 
 async function generate() {
   // 1. App icon (iOS + Android fallback) – 1024×1024, black bg, white logo
-  const iconSvg = buildSvg(1024, BLACK, WHITE, 0.62, 0);
+  const iconSvg = buildSvg(1024, BLACK, WHITE, 0.88, 0);
   await sharp(Buffer.from(iconSvg))
     .png()
     .toFile(path.join(ASSETS_DIR, 'icon.png'));
