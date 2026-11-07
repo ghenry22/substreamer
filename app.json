@@ -47,7 +47,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./src/assets/adaptive-icon.png",
-        "backgroundColor": "#1D9BF0"
+        "backgroundColor": "#000000"
       },
       "permissions": [
         "ACCESS_FINE_LOCATION",
@@ -68,7 +68,7 @@
         {
           "logo": "./src/assets/splash-logo.svg",
           "logoWidth": 130,
-          "background": "#1D9BF0"
+          "background": "#000000"
         }
       ],
       "./plugins/silence-hermes-warning",
