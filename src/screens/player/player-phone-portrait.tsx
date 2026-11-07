@@ -26,7 +26,6 @@ import { useTranslation } from 'react-i18next';
 import { AlbumInfoContent } from '@/components/AlbumInfoContent';
 import { LyricsContent } from '@/components/LyricsContent';
 import { CachedImage } from '@/components/CachedImage';
-import { CastButton } from '@/components/RoutePicker';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { EmptyState } from '@/components/EmptyState';
 import { MarqueeText } from '@/components/MarqueeText';
@@ -66,6 +65,9 @@ import { mixHexColors } from '@/utils/colors';
 
 import { absoluteFill } from '@/utils/styles';
 const HERO_PADDING = 32;
+/** Side margin of the cover art; smaller than HERO_PADDING so the cover is larger. */
+const HERO_COVER_PADDING = 16;
+const HERO_COVER_MAX_WIDTH = 520;
 const HERO_COVER_SIZE = 600;
 const HEADER_BAR_HEIGHT = Platform.OS === 'ios' ? 44 : 56;
 
@@ -494,14 +496,15 @@ const PlayerContent = memo(function PlayerContent({
   }, [windowWidth, m.sideIcon, m.transportWidth]);
 
   // Shrink the hero to leave room for the controls; never below the tier floor.
-  // Scaled to ~90% of the fitted size to give the controls a little more room.
+  // Extra gap between the cover and the title on tiers that have room for it.
+  const coverGap = m.showSecondaryRow ? 16 : 0;
   const heroSize = useMemo(() => {
-    const naturalWidth = Math.min(windowWidth - 2 * HERO_PADDING, 464 - 2 * HERO_PADDING);
-    const reserved = insets.top + HEADER_BAR_HEIGHT + insets.bottom + m.reserved;
+    const naturalWidth = Math.min(windowWidth - 2 * HERO_COVER_PADDING, HERO_COVER_MAX_WIDTH);
+    const reserved = insets.top + HEADER_BAR_HEIGHT + insets.bottom + m.reserved + coverGap;
     const maxHero = windowHeight - reserved;
     const fitted = Math.max(Math.min(naturalWidth, maxHero), m.heroFloor);
-    return Math.round(fitted * 0.9);
-  }, [windowHeight, windowWidth, insets.top, insets.bottom, m.reserved, m.heroFloor]);
+    return Math.round(fitted);
+  }, [windowHeight, windowWidth, insets.top, insets.bottom, m.reserved, m.heroFloor, coverGap]);
 
   const marqueeStyle = useMemo(
     () => [styles.trackTitle, { color: colors.textPrimary, fontSize: m.titleFont }],
@@ -526,7 +529,7 @@ const PlayerContent = memo(function PlayerContent({
           already offset via top: headerTopPadding. */}
       {Platform.OS === 'ios' && <View style={{ height: insets.top + HEADER_BAR_HEIGHT }} />}
       {/* Hero cover art */}
-      <View style={[styles.hero, { paddingBottom: m.heroPadBottom }]}>
+      <View style={[styles.hero, { paddingBottom: m.heroPadBottom + coverGap }]}>
         <View style={[styles.heroImageWrap, { width: heroSize, height: heroSize }]}>
           <CachedImage
             coverArtId={songCoverArtId}
@@ -557,7 +560,6 @@ const PlayerContent = memo(function PlayerContent({
             >
               {currentTrack.artist ?? t('unknownArtist')}
             </Text>
-            <CastButton />
           </View>
           <MoreOptionsButton
             onPress={() =>
@@ -691,7 +693,7 @@ const PlayerContent = memo(function PlayerContent({
         </>
       )}
 
-      <View style={styles.playerSpacer} />
+      <View style={m.showSecondaryRow ? styles.pillBottomGap : styles.playerSpacer} />
     </View>
   );
 });
@@ -883,9 +885,9 @@ const styles = StyleSheet.create({
   },
   hero: {
     width: '100%',
-    maxWidth: 464,
+    maxWidth: HERO_COVER_MAX_WIDTH + 2 * HERO_COVER_PADDING,
     alignSelf: 'center',
-    paddingHorizontal: HERO_PADDING,
+    paddingHorizontal: HERO_COVER_PADDING,
     paddingTop: 8,
     paddingBottom: 24,
     alignItems: 'center',
@@ -968,6 +970,9 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'flex-end',
     justifyContent: 'center',
+  },
+  pillBottomGap: {
+    height: 20,
   },
   pillRow: {
     flexDirection: 'row',
