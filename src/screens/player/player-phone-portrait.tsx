@@ -25,21 +25,17 @@ import { useTranslation } from 'react-i18next';
 
 import { AlbumInfoContent } from '@/components/AlbumInfoContent';
 import { LyricsContent } from '@/components/LyricsContent';
-import { BookmarkButton } from '@/components/BookmarkButton';
 import { CachedImage } from '@/components/CachedImage';
 import { CastButton } from '@/components/RoutePicker';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { EmptyState } from '@/components/EmptyState';
 import { MarqueeText } from '@/components/MarqueeText';
 import { MoreOptionsButton } from '@/components/MoreOptionsButton';
-import { PlaybackRateButton } from '@/components/PlaybackRateButton';
 import { PlayerProgressBar } from '@/components/PlayerProgressBar';
-import { PlayerTabBar, type PlayerTab } from '@/components/PlayerTabBar';
+import { type PlayerTab } from '@/components/PlayerTabBar';
 import { RepeatButton } from '@/components/RepeatButton';
 import { ShuffleButton } from '@/components/ShuffleButton';
 import { ShuffleOverlay } from '@/components/ShuffleOverlay';
-import { SkipIntervalButton } from '@/components/SkipIntervalButton';
-import { SleepTimerButton } from '@/components/SleepTimerButton';
 import { SleepTimerCapsule } from '@/components/SleepTimerCapsule';
 import { PlaybackSourceBadge } from '@/components/PlaybackSourceBadge';
 import { QueueItemRow } from '@/components/QueueItemRow';
@@ -52,7 +48,6 @@ import { usePlaybackState } from '@/hooks/usePlaybackState';
 import { useShuffleOverlay } from '@/hooks/useShuffleOverlay';
 import { getPlayerSize } from '@/hooks/playerSize';
 import { useTheme } from '@/hooks/useTheme';
-import { offlineModeStore } from '@/store/offlineModeStore';
 import {
   clearQueue,
   retryPlayback,
@@ -64,7 +59,6 @@ import { sanitizeBiographyText } from '@/utils/formatters';
 import { type Child } from '@/services/subsonicService';
 import { usePlayerAlbumInfo } from '@/hooks/usePlayerAlbumInfo';
 import { usePlayerLyrics, type PlayerLyricsResult } from '@/hooks/usePlayerLyrics';
-import { playbackSettingsStore } from '@/store/playbackSettingsStore';
 import { moreOptionsStore } from '@/store/moreOptionsStore';
 import { playerStore } from '@/store/playerStore';
 import { mixHexColors } from '@/utils/colors';
@@ -78,6 +72,15 @@ const HEADER_BAR_HEIGHT = Platform.OS === 'ios' ? 44 : 56;
 const TAB_FADE_DURATION = 300;
 const TAB_FADE_EASING = Easing.out(Easing.cubic);
 const TAB_SLIDE_DISTANCE = 12;
+
+/** Black or white, whichever reads better on the given #RRGGBB accent. */
+function readableOn(hex: string): string {
+  if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return '#FFFFFF';
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return 0.299 * r + 0.587 * g + 0.114 * b > 160 ? '#000000' : '#FFFFFF';
+}
 
 /** Static content inset for the queue list — module-scope so FlashList isn't
  *  handed a fresh object on every parent re-render. */
@@ -115,8 +118,6 @@ export function PlayerPhonePortrait() {
     songAlbumId,
   );
 
-  const offlineMode = offlineModeStore((s) => s.offlineMode);
-
   // Lyrics are fetched at the screen, not inside the lazily-mounted Lyrics tab,
   // so they load whenever the player is open rather than only once it is selected.
   const {
@@ -134,6 +135,15 @@ export function PlayerPhonePortrait() {
   /* ---- Tab state ---- */
   const [activeTab, setActiveTab] = useState<PlayerTab>('player');
   const [mountedTabs, setMountedTabs] = useState<Set<PlayerTab>>(() => new Set(['player']));
+
+  // From any secondary tab, back returns to the player; from the player it dismisses.
+  const handleBack = useCallback(() => {
+    if (activeTab !== 'player') setActiveTab('player');
+    else onClose();
+  }, [activeTab, onClose]);
+  const handleOpenQueue = useCallback(() => setActiveTab('queue'), []);
+  const handleOpenLyrics = useCallback(() => setActiveTab('lyrics'), []);
+  const handleOpenInfo = useCallback(() => setActiveTab('info'), []);
 
 
 
@@ -202,30 +212,21 @@ export function PlayerPhonePortrait() {
     transform: [{ translateY: interpolate(lyricsOpacity.value, [0, 1], [TAB_SLIDE_DISTANCE, 0]) }],
   }));
 
-  /* ---- Header: dismiss button + more options ---- */
+  /* ---- Header: dismiss / back button ---- */
   useEffect(() => {
     if (Platform.OS === 'ios') return;
     navigation.setOptions({
       headerLeft: () => (
         <GHPressable
-          onPress={onClose}
+          onPress={handleBack}
           hitSlop={12}
           style={({ pressed }) => [{ opacity: 1 }, pressed && styles.pressed]}
         >
           <Ionicons name="chevron-down" size={28} color={colors.textPrimary} />
         </GHPressable>
       ),
-      headerRight: () =>
-        currentTrack ? (
-          <MoreOptionsButton
-            onPress={() =>
-              moreOptionsStore.getState().show({ type: 'song', item: currentTrack }, 'player-phone-portrait')
-            }
-            color={colors.textPrimary}
-          />
-        ) : null,
     });
-  }, [currentTrack, navigation, onClose, colors.textPrimary]);
+  }, [navigation, handleBack, colors.textPrimary]);
 
   const onClearConfirmed = useCallback(() => {
     onClose();
@@ -311,14 +312,7 @@ export function PlayerPhonePortrait() {
       {Platform.OS === 'ios' && (
         <>
           <Stack.Toolbar placement="left">
-            <Stack.Toolbar.Button icon="chevron.down" onPress={onClose} />
-          </Stack.Toolbar>
-          <Stack.Toolbar placement="right">
-            <Stack.Toolbar.Button
-              icon="ellipsis"
-              onPress={() => moreOptionsStore.getState().show({ type: 'song', item: currentTrack! }, 'player-phone-portrait')}
-              hidden={!currentTrack}
-            />
+            <Stack.Toolbar.Button icon="chevron.down" onPress={handleBack} />
           </Stack.Toolbar>
         </>
       )}
@@ -355,6 +349,9 @@ export function PlayerPhonePortrait() {
               handleSeek={handleSeek}
               handleShuffle={handleShuffle}
               shuffling={shuffling}
+              onOpenQueue={handleOpenQueue}
+              onOpenLyrics={handleOpenLyrics}
+              onOpenInfo={handleOpenInfo}
             />
           </Animated.View>
 
@@ -420,10 +417,7 @@ export function PlayerPhonePortrait() {
           </Animated.View>
         </View>
 
-        {/* Tab bar */}
-        <View style={{ paddingBottom: insets.bottom }}>
-          <PlayerTabBar activeTab={activeTab} onSelect={setActiveTab} colors={colors} offlineMode={offlineMode} />
-        </View>
+        <View style={{ paddingBottom: insets.bottom }} />
 
         {/* Shuffle overlay */}
         <ShuffleOverlay
@@ -448,6 +442,9 @@ interface PlayerContentProps {
   handleSeek: (seconds: number) => void;
   handleShuffle: () => void;
   shuffling: boolean;
+  onOpenQueue: () => void;
+  onOpenLyrics: () => void;
+  onOpenInfo: () => void;
 }
 
 const PlayerContent = memo(function PlayerContent({
@@ -457,6 +454,9 @@ const PlayerContent = memo(function PlayerContent({
   handleSeek,
   handleShuffle,
   shuffling,
+  onOpenQueue,
+  onOpenLyrics,
+  onOpenInfo,
 }: PlayerContentProps) {
   const { t } = useTranslation();
   const songCoverArtId = currentTrack?.coverArt ?? undefined;
@@ -471,8 +471,6 @@ const PlayerContent = memo(function PlayerContent({
   const retrying = playerStore((s) => s.retrying);
   const queueLength = playerStore((s) => s.queue.length);
 
-  const showSkipInterval = playbackSettingsStore((s) => s.showSkipIntervalButtons);
-  const showSleepTimer = playbackSettingsStore((s) => s.showSleepTimerButton);
   const { canSkipNext, canSkipPrevious } = useCanSkip();
 
   // Content-height budget (window minus header + top/bottom safe-area insets)
@@ -494,11 +492,6 @@ const PlayerContent = memo(function PlayerContent({
     const maxCenter = windowWidth - 2 * HERO_PADDING - 2 * sideMin;
     return Math.max(120, Math.min(m.transportWidth, maxCenter));
   }, [windowWidth, m.sideIcon, m.transportWidth]);
-  const secondaryCenterWidth = useMemo(() => {
-    const sideMin = m.sideIcon + 8;
-    const maxCenter = windowWidth - 2 * HERO_PADDING - 2 * sideMin;
-    return Math.max(120, Math.min(m.secondaryCenterWidth, maxCenter));
-  }, [windowWidth, m.sideIcon, m.secondaryCenterWidth]);
 
   // Shrink the hero to leave room for the controls; never below the tier floor.
   // Scaled to ~90% of the fitted size to give the controls a little more room.
@@ -566,7 +559,12 @@ const PlayerContent = memo(function PlayerContent({
             </Text>
             <CastButton />
           </View>
-          <FavoriteButton trackId={currentTrack.id} style={styles.favoriteButton} />
+          <MoreOptionsButton
+            onPress={() =>
+              moreOptionsStore.getState().show({ type: 'song', item: currentTrack }, 'player-phone-portrait')
+            }
+            color={colors.textPrimary}
+          />
         </View>
       </View>
 
@@ -621,17 +619,17 @@ const PlayerContent = memo(function PlayerContent({
             onPress={togglePlayPause}
             style={({ pressed }) => [
               styles.playPauseButton,
-              { width: m.playButton, height: m.playButton, borderRadius: m.playButton / 2, backgroundColor: colors.textPrimary },
+              { width: m.playButton, height: m.playButton, borderRadius: m.playButton / 2, backgroundColor: colors.primary },
               pressed && styles.playPausePressed,
             ]}
           >
             {isBuffering ? (
-              <ActivityIndicator size="small" color={colors.background} />
+              <ActivityIndicator size="small" color={readableOn(colors.primary)} />
             ) : (
               <Ionicons
                 name={isPlaying ? 'pause' : 'play'}
                 size={m.playIcon}
-                color={colors.background}
+                color={readableOn(colors.primary)}
                 style={!isPlaying ? styles.playIcon : undefined}
               />
             )}
@@ -651,38 +649,44 @@ const PlayerContent = memo(function PlayerContent({
           </Pressable>
         </View>
 
-        {/* Repeat toggle */}
+        {/* Favorite toggle */}
         <View style={styles.controlSideRight}>
-          <RepeatButton size={m.sideIcon} />
+          <FavoriteButton trackId={currentTrack.id} style={styles.favoriteButton} />
         </View>
       </View>
 
-      {/* Secondary controls row — dropped on the smallest tier
-          (m.showSecondaryRow === false) so the transport controls clear the nav
-          bar. When present, its own middle spacer keeps both rows
-          evenly distributed; when absent, the two remaining spacers center the
-          single primary row. */}
+      {/* Pill row: repeat, queue, lyrics, album info. Dropped on the smallest tier. */}
       {m.showSecondaryRow && (
         <>
           <View style={styles.playerSpacer} />
-          <View style={styles.secondaryControls}>
-            <View style={[styles.controlSideLeft, styles.secondaryLeftInset]}>
-              {showSleepTimer && <SleepTimerButton />}
+          <View style={styles.pillRow}>
+            <View style={[styles.pill, { backgroundColor: colors.card }]}>
+              <RepeatButton size={24} />
             </View>
-            <View style={[styles.secondaryCenterRow, { width: secondaryCenterWidth }]}>
-              {showSkipInterval && (
-                <SkipIntervalButton direction="backward" size={32} />
-              )}
-              <View style={styles.secondaryRateSlot}>
-                <PlaybackRateButton />
-              </View>
-              {showSkipInterval && (
-                <SkipIntervalButton direction="forward" size={32} />
-              )}
-            </View>
-            <View style={styles.controlSideRight}>
-              <BookmarkButton style={styles.favoriteButton} />
-            </View>
+            <Pressable
+              onPress={onOpenQueue}
+              accessibilityRole="button"
+              accessibilityLabel={t('queue')}
+              style={({ pressed }) => [styles.pill, { backgroundColor: colors.card }, pressed && styles.pressed]}
+            >
+              <Ionicons name="list" size={24} color={colors.textPrimary} />
+            </Pressable>
+            <Pressable
+              onPress={onOpenLyrics}
+              accessibilityRole="button"
+              accessibilityLabel={t('lyrics')}
+              style={({ pressed }) => [styles.pill, { backgroundColor: colors.card }, pressed && styles.pressed]}
+            >
+              <Ionicons name="text" size={22} color={colors.textPrimary} />
+            </Pressable>
+            <Pressable
+              onPress={onOpenInfo}
+              accessibilityRole="button"
+              accessibilityLabel={t('albumInfo')}
+              style={({ pressed }) => [styles.pill, { backgroundColor: colors.card }, pressed && styles.pressed]}
+            >
+              <Ionicons name="information-circle-outline" size={24} color={colors.textPrimary} />
+            </Pressable>
           </View>
         </>
       )}
@@ -938,9 +942,6 @@ const styles = StyleSheet.create({
     paddingLeft: 12,
     paddingVertical: 4,
   },
-  secondaryLeftInset: {
-    paddingLeft: 4,
-  },
   progressSection: {
     paddingHorizontal: HERO_PADDING,
     maxWidth: 464,
@@ -968,29 +969,20 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'center',
   },
-  secondaryCenterRow: {
+  pillRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-evenly',
-  },
-  secondaryRateSlot: {
-    width: 64,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  secondaryControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 40,
-    // No vertical margin: the three equal flex spacers (above the primary row,
-    // between the rows, and below the secondary row) own ALL the inter-row
-    // spacing. A fixed marginTop here is asymmetric — it inflates the gap above
-    // the secondary row but not below it, so on short screens (where the
-    // spacers shrink) the row gets pushed down against the tab bar.
+    gap: 12,
     paddingHorizontal: HERO_PADDING,
     maxWidth: 464,
     width: '100%',
     alignSelf: 'center',
+  },
+  pill: {
+    flex: 1,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   transportControls: {
     flexDirection: 'row',

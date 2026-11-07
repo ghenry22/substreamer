@@ -115,11 +115,6 @@ jest.mock('@/components/PlayerProgressBar', () => {
   return { PlayerProgressBar: () => <View testID="progress-bar" /> };
 });
 
-jest.mock('@/components/PlaybackRateButton', () => {
-  const { View } = require('react-native');
-  return { PlaybackRateButton: () => <View testID="rate-button" /> };
-});
-
 jest.mock('@/components/RepeatButton', () => {
   const { View } = require('react-native');
   return { RepeatButton: () => <View testID="repeat-button" /> };
@@ -128,11 +123,6 @@ jest.mock('@/components/RepeatButton', () => {
 jest.mock('@/components/ShuffleButton', () => {
   const { View } = require('react-native');
   return { ShuffleButton: () => <View testID="shuffle-button" /> };
-});
-
-jest.mock('@/components/SkipIntervalButton', () => {
-  const { View } = require('react-native');
-  return { SkipIntervalButton: () => <View testID="skip-interval" /> };
 });
 
 jest.mock('@/components/QueueItemRow', () => {
@@ -301,7 +291,7 @@ describe('PlayerPhonePortrait', () => {
   });
 
   it('renders player content by default (player tab)', () => {
-    const { getByText, queryByText } = render(<PlayerPhonePortrait />);
+    const { getByText, queryByText, getByTestId, getByLabelText } = render(<PlayerPhonePortrait />);
 
     // Hero player content visible
     expect(getByText('Test Song')).toBeTruthy();
@@ -309,11 +299,11 @@ describe('PlayerPhonePortrait', () => {
 
     // Queue items should NOT be visible (queue tab is not active)
     // The FlashList is mounted but hidden via opacity
-    // Tab bar should be visible with all icons
-    expect(getByText('musical-notes')).toBeTruthy();
-    expect(getByText('playlist-music')).toBeTruthy();
-    expect(getByText('information-outline')).toBeTruthy();
-    expect(getByText('comment-quote-outline')).toBeTruthy();
+    // Pill row shows repeat plus the queue, lyrics and album info shortcuts
+    expect(getByTestId('repeat-button')).toBeTruthy();
+    expect(getByLabelText('Queue')).toBeTruthy();
+    expect(getByLabelText('Lyrics')).toBeTruthy();
+    expect(getByLabelText('Album Info')).toBeTruthy();
   });
 
   it('switches to queue tab when queue icon pressed', () => {
@@ -375,23 +365,6 @@ describe('PlayerPhonePortrait', () => {
     });
 
     expect(getByText('AlbumInfoContent')).toBeTruthy();
-  });
-
-  it('returns to player tab when Now Playing pressed', () => {
-    const { getByLabelText, getAllByText } = render(<PlayerPhonePortrait />);
-
-    // Switch to queue
-    act(() => {
-      fireEvent.press(getByLabelText('Queue'));
-    });
-
-    // Switch back to player
-    act(() => {
-      fireEvent.press(getByLabelText('Now Playing'));
-    });
-
-    // Player content should be visible (may appear in queue too, so check at least one exists)
-    expect(getAllByText('Test Song').length).toBeGreaterThanOrEqual(1);
   });
 
   it('renders loading state when queue is loading', () => {
