@@ -99,9 +99,10 @@ async function playRandomMix(): Promise<void> {
 }
 
 const SHUFFLE_KEY = '__shuffle__';
-const ICON_SIZE = 60;
+const ICON_TILE = 76;
+const ICON_GLYPH = 44;
 const TAB_BAR_BASE_HEIGHT = 56;
-const SPREAD = 0.8;
+const SPREAD = 0.78;
 const RIM = 1.5;
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
@@ -175,11 +176,11 @@ const FanCard = memo(function FanCard({
     const input = [-2, -1, 0, 1, 2];
     return {
       zIndex: 10 - Math.round(Math.abs(d)),
-      opacity: interpolate(d, input, [0.25, 0.5, 1, 0.5, 0.25], Extrapolation.CLAMP),
+      opacity: interpolate(d, input, [0.5, 0.78, 1, 0.78, 0.5], Extrapolation.CLAMP),
       transform: [
-        { translateY: interpolate(d, input, [64, 30, 0, 30, 64], Extrapolation.CLAMP) },
+        { translateY: interpolate(d, input, [48, 22, 0, 22, 48], Extrapolation.CLAMP) },
         { rotate: `${interpolate(d, input, [-6, -3, 0, 3, 6], Extrapolation.CLAMP)}deg` },
-        { scale: interpolate(d, input, [0.72, 0.86, 1, 0.86, 0.72], Extrapolation.CLAMP) },
+        { scale: interpolate(d, input, [0.8, 0.9, 1, 0.9, 0.8], Extrapolation.CLAMP) },
       ],
     };
   });
@@ -234,13 +235,22 @@ const FanCard = memo(function FanCard({
             style={StyleSheet.absoluteFill}
           />
         </View>
-        <View style={styles.iconWrap}>
+        <View
+          style={[
+            styles.iconTile,
+            { backgroundColor: hexWithAlpha(tint, 0.3), borderColor: 'rgba(255,255,255,0.3)' },
+          ]}
+        >
+          <LinearGradient
+            colors={['rgba(255,255,255,0.28)', 'rgba(255,255,255,0)']}
+            style={StyleSheet.absoluteFill}
+          />
           {loading ? (
             <ActivityIndicator size="large" color={glowColor} />
           ) : (
             <Ionicons
               name={icon}
-              size={ICON_SIZE}
+              size={ICON_GLYPH}
               color={glowColor}
               style={{
                 textShadowColor: hexWithAlpha(tint, 0.6),
@@ -506,9 +516,9 @@ export const GenreChipSection = memo(function GenreChipSection({
         scrollEventThrottle={16}
         style={[
           styles.fan,
-          { height: cardHeight + ICON_SIZE * 0.7, marginBottom: tabBarHeight - 28 },
+          { height: cardHeight + ICON_TILE * 0.6, marginBottom: tabBarHeight - 28 },
         ]}
-        contentContainerStyle={{ paddingHorizontal: sidePad, paddingTop: ICON_SIZE * 0.7 }}
+        contentContainerStyle={{ paddingHorizontal: sidePad, paddingTop: ICON_TILE * 0.6 }}
       >
         {items.map((genre, index) => (
           <FanCard
@@ -546,16 +556,16 @@ const styles = StyleSheet.create({
   },
   artistTitle: {
     alignSelf: 'stretch',
-    fontSize: 46,
+    fontSize: 42,
     fontWeight: '800',
     letterSpacing: -1,
     textAlign: 'center',
-    lineHeight: 50,
+    lineHeight: 46,
   },
   cover: {
-    width: 104,
-    height: 104,
-    borderRadius: 20,
+    width: 120,
+    height: 120,
+    borderRadius: 26,
     marginTop: 14,
   },
   controlRow: {
@@ -636,12 +646,15 @@ const styles = StyleSheet.create({
     bottom: 0,
     overflow: 'hidden',
   },
-  iconWrap: {
-    width: ICON_SIZE,
-    height: ICON_SIZE,
+  iconTile: {
+    width: ICON_TILE,
+    height: ICON_TILE,
+    borderRadius: 24,
+    borderWidth: 1,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: -ICON_SIZE / 2,
+    marginTop: -ICON_TILE * 0.55,
     transform: [{ rotate: '-6deg' }],
   },
   cardTitle: {
