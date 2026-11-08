@@ -43,11 +43,11 @@ export const GenreGlyph = memo(function GenreGlyph({ name, color, size }: GenreG
     case 'note':
       shape = (
         <>
-          <Path d="M36 22 L90 8 V30 L36 44 Z" fill={fill} />
-          <Rect x="36" y="24" width="10" height="52" fill={fill} />
-          <Rect x="82" y="12" width="10" height="52" fill={fill} />
-          <Circle cx="26" cy="76" r="15" fill={fill} />
-          <Circle cx="72" cy="64" r="15" fill={fill} />
+          <Path d="M33 26 L89 10 V32 L33 48 Z" fill={fill} />
+          <Rect x="33" y="30" width="10" height="46" fill={fill} />
+          <Rect x="79" y="16" width="10" height="46" fill={fill} />
+          <Circle cx="29" cy="76" r="14" fill={fill} />
+          <Circle cx="75" cy="62" r="14" fill={fill} />
         </>
       );
       break;

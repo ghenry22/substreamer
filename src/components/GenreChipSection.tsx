@@ -103,7 +103,7 @@ const SHUFFLE_KEY = '__shuffle__';
 const ICON_GLYPH = 54;
 const ICON_OVERLAP = 0.6;
 const TAB_BAR_BASE_HEIGHT = 56;
-const SPREAD = 0.78;
+const SPREAD = 0.84;
 const RIM = 1.5;
 
 interface GenreStyle {
@@ -169,7 +169,7 @@ const FanCard = memo(function FanCard({
     const input = [-2, -1, 0, 1, 2];
     return {
       zIndex: 10 - Math.round(Math.abs(d)),
-      opacity: interpolate(d, input, [0.55, 0.82, 1, 0.82, 0.55], Extrapolation.CLAMP),
+      opacity: interpolate(d, input, [0.3, 0.75, 1, 0.75, 0.3], Extrapolation.CLAMP),
       transform: [
         { translateY: interpolate(d, input, [44, 20, 0, 20, 44], Extrapolation.CLAMP) },
         { rotate: `${interpolate(d, input, [-4, -2, 0, 2, 4], Extrapolation.CLAMP)}deg` },
@@ -353,8 +353,8 @@ export const GenreChipSection = memo(function GenreChipSection({
     scrollX.value = e.contentOffset.x;
   });
 
-  const cardWidth = Math.min(Math.round(screenWidth * 0.31), 170);
-  const cardHeight = Math.round(cardWidth * 1.7);
+  const cardWidth = Math.min(Math.round(screenWidth * 0.4), 190);
+  const cardHeight = Math.round(cardWidth * 1.55);
   // Neighbouring cards overlap: the layout pitch equals the snap interval, so the
   // card the fan rests on is always the one centred on screen.
   const itemSize = Math.round(cardWidth * SPREAD);
@@ -631,7 +631,7 @@ const styles = StyleSheet.create({
   cardTitle: {
     marginTop: 8,
     paddingHorizontal: 8,
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',
   },
