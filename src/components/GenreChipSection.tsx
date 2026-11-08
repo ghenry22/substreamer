@@ -1,6 +1,6 @@
 import Ionicons from "@react-native-vector-icons/ionicons/static";
 import { useRouter } from 'expo-router';
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState, type ComponentProps } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
@@ -98,8 +98,9 @@ const SHUFFLE_KEY = '__shuffle__';
 const CARD_GAP = 0;
 const ICON_SIZE = 64;
 const SPREAD = 0.86;
+const RIM = 1.5;
 
-type IconName = React.ComponentProps<typeof Ionicons>['name'];
+type IconName = ComponentProps<typeof Ionicons>['name'];
 
 interface GenreStyle {
   icon: IconName;
@@ -161,6 +162,8 @@ const FanCard = memo(function FanCard({
     () => (genre ? genreStyle(genre) : { icon: 'shuffle', color: '#E6E6E6' }),
     [genre],
   );
+
+  const glowColor = useMemo(() => mixHexColors(tint, '#FFFFFF', 0.3), [tint]);
 
   const animatedStyle = useAnimatedStyle(() => {
     const d = (scrollX.value - index * itemSize) / itemSize;
@@ -326,6 +329,17 @@ export const GenreChipSection = memo(function GenreChipSection({
     }
   }, [mixLoading]);
 
+  const onScroll = useAnimatedScrollHandler((e) => {
+    scrollX.value = e.contentOffset.x;
+  });
+
+  const cardWidth = Math.min(Math.round(screenWidth * 0.46), 220);
+  const cardHeight = Math.round(cardWidth * 1.6);
+  const itemSize = Math.round(cardWidth * SPREAD) + CARD_GAP;
+  const sidePad = (screenWidth - cardWidth) / 2 - CARD_GAP / 2 + (cardWidth - Math.round(cardWidth * SPREAD)) / 2;
+  const playBg = primaryColor ?? colors.textPrimary;
+  const items = useMemo<(string | null)[]>(() => [null, ...genres], [genres]);
+
   const settledIndex = useRef(0);
   const handleSettle = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -338,17 +352,6 @@ export const GenreChipSection = memo(function GenreChipSection({
     },
     [itemSize, items],
   );
-
-  const onScroll = useAnimatedScrollHandler((e) => {
-    scrollX.value = e.contentOffset.x;
-  });
-
-  const cardWidth = Math.min(Math.round(screenWidth * 0.46), 220);
-  const cardHeight = Math.round(cardWidth * 1.6);
-  const itemSize = Math.round(cardWidth * SPREAD) + CARD_GAP;
-  const sidePad = (screenWidth - cardWidth) / 2 - CARD_GAP / 2 + (cardWidth - Math.round(cardWidth * SPREAD)) / 2;
-  const playBg = primaryColor ?? colors.textPrimary;
-  const items = useMemo<(string | null)[]>(() => [null, ...genres], [genres]);
   const glow = useMemo(
     () => [
       currentTrack && palettePrimary ? palettePrimary : genreColor(genres[0] ?? 'a'),
