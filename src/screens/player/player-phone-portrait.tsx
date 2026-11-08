@@ -80,8 +80,7 @@ const TAB_SLIDE_DISTANCE = 12;
 const QUEUE_CONTENT_CONTAINER_STYLE = { paddingBottom: 12 } as const;
 
 export function PlayerPhonePortrait() {
-  const { colors, primaryColor } = useTheme();
-  const playAccent = primaryColor ?? colors.textPrimary;
+  const { colors } = useTheme();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -453,6 +452,8 @@ const PlayerContent = memo(function PlayerContent({
   onOpenInfo,
 }: PlayerContentProps) {
   const { t } = useTranslation();
+  const { primaryColor } = useTheme();
+  const playAccent = primaryColor ?? colors.textPrimary;
   const songCoverArtId = currentTrack?.coverArt ?? undefined;
   const songAlbumId = currentTrack?.albumId;
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
