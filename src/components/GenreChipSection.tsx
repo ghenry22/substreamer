@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { memo, useCallback, useMemo, useRef, useState, type ComponentProps } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
   ActivityIndicator,
   Pressable,
@@ -18,16 +19,18 @@ import Animated, {
   FadeIn,
   FadeOut,
   interpolate,
+  runOnJS,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
+  withSpring,
   type SharedValue,
 } from 'react-native-reanimated';
 
 import { type ThemeColors } from '../constants/theme';
 import { getOfflineSongsByGenre, getOfflineSongsAll } from '../services/searchService';
 import { getRandomSongs, type Child } from '../services/subsonicService';
-import { playTrack, togglePlayPause } from '../services/playerService';
+import { playTrack, skipToNext, skipToPrevious, togglePlayPause } from '../services/playerService';
 import { shuffleArray } from '../utils/arrayHelpers';
 import { connectivityStore } from '../store/connectivityStore';
 import { genreStore } from '../store/genreStore';
@@ -95,9 +98,8 @@ async function playRandomMix(): Promise<void> {
 }
 
 const SHUFFLE_KEY = '__shuffle__';
-const CARD_GAP = 0;
-const ICON_SIZE = 64;
-const SPREAD = 0.86;
+const ICON_SIZE = 72;
+const SPREAD = 0.8;
 const RIM = 1.5;
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
@@ -170,11 +172,11 @@ const FanCard = memo(function FanCard({
     const input = [-2, -1, 0, 1, 2];
     return {
       zIndex: 10 - Math.round(Math.abs(d)),
-      opacity: interpolate(d, input, [0.45, 0.72, 1, 0.72, 0.45], Extrapolation.CLAMP),
+      opacity: interpolate(d, input, [0.4, 0.7, 1, 0.7, 0.4], Extrapolation.CLAMP),
       transform: [
-        { translateY: interpolate(d, input, [70, 34, 0, 34, 70], Extrapolation.CLAMP) },
+        { translateY: interpolate(d, input, [110, 52, 0, 52, 110], Extrapolation.CLAMP) },
         { rotate: `${interpolate(d, input, [-6, -3, 0, 3, 6], Extrapolation.CLAMP)}deg` },
-        { scale: interpolate(d, input, [0.8, 0.9, 1, 0.9, 0.8], Extrapolation.CLAMP) },
+        { scale: interpolate(d, input, [0.74, 0.87, 1, 0.87, 0.74], Extrapolation.CLAMP) },
       ],
     };
   });
@@ -194,7 +196,7 @@ const FanCard = memo(function FanCard({
   return (
     <Animated.View
       style={[
-        { width, height, marginHorizontal: CARD_GAP / 2, transformOrigin: 'center bottom' },
+        { width, height, marginHorizontal: (itemSize - width) / 2, transformOrigin: 'center bottom' },
         animatedStyle,
       ]}
     >
@@ -224,7 +226,7 @@ const FanCard = memo(function FanCard({
             style={StyleSheet.absoluteFill}
           />
           <LinearGradient
-            colors={[hexWithAlpha(tint, 0.42), hexWithAlpha(tint, 0.1), hexWithAlpha(tint, 0)]}
+            colors={[hexWithAlpha(tint, 0.5), hexWithAlpha(tint, 0.14), hexWithAlpha(tint, 0)]}
             locations={[0, 0.5, 1]}
             style={StyleSheet.absoluteFill}
           />
@@ -280,6 +282,34 @@ export const GenreChipSection = memo(function GenreChipSection({
   );
   const scrollX = useSharedValue(0);
 
+  const heroShift = useSharedValue(0);
+  const heroShiftStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: heroShift.value }],
+  }));
+  const handleSwipeSkip = useCallback((direction: 'next' | 'previous') => {
+    selectionAsync();
+    void (direction === 'next' ? skipToNext() : skipToPrevious()).catch(() => {});
+  }, []);
+  const hasTrack = currentTrack != null;
+  const swipeGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(hasTrack)
+        .activeOffsetX([-20, 20])
+        .failOffsetY([-15, 15])
+        .onUpdate((e) => {
+          heroShift.value = e.translationX * 0.4;
+        })
+        .onEnd((e) => {
+          if (e.translationX < -60) runOnJS(handleSwipeSkip)('next');
+          else if (e.translationX > 60) runOnJS(handleSwipeSkip)('previous');
+        })
+        .onFinalize(() => {
+          heroShift.value = withSpring(0, { damping: 18, stiffness: 180 });
+        }),
+    [hasTrack, heroShift, handleSwipeSkip],
+  );
+
   const genres = useMemo(() => {
     // Start with listening history genres sorted by play count
     const historyGenres = Object.entries(genreCounts)
@@ -333,10 +363,12 @@ export const GenreChipSection = memo(function GenreChipSection({
     scrollX.value = e.contentOffset.x;
   });
 
-  const cardWidth = Math.min(Math.round(screenWidth * 0.46), 220);
+  const cardWidth = Math.min(Math.round(screenWidth * 0.44), 210);
   const cardHeight = Math.round(cardWidth * 1.6);
-  const itemSize = Math.round(cardWidth * SPREAD) + CARD_GAP;
-  const sidePad = (screenWidth - cardWidth) / 2 - CARD_GAP / 2 + (cardWidth - Math.round(cardWidth * SPREAD)) / 2;
+  // Neighbouring cards overlap: the layout pitch equals the snap interval, so the
+  // card the fan rests on is always the one centred on screen.
+  const itemSize = Math.round(cardWidth * SPREAD);
+  const sidePad = (screenWidth - cardWidth) / 2 - (itemSize - cardWidth) / 2;
   const playBg = primaryColor ?? colors.textPrimary;
   const items = useMemo<(string | null)[]>(() => [null, ...genres], [genres]);
 
@@ -376,7 +408,8 @@ export const GenreChipSection = memo(function GenreChipSection({
           style={StyleSheet.absoluteFill}
         />
       </Animated.View>
-      <View style={[styles.hero, { paddingTop: headerHeight }]}>
+      <GestureDetector gesture={swipeGesture}>
+      <Animated.View style={[styles.hero, { paddingTop: headerHeight }, heroShiftStyle]}>
         {currentTrack ? (
           <>
             <Text
@@ -456,7 +489,8 @@ export const GenreChipSection = memo(function GenreChipSection({
             <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
           </Pressable>
         )}
-      </View>
+      </Animated.View>
+      </GestureDetector>
       <Animated.ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
