@@ -15,6 +15,8 @@ import {
 } from 'react-native';
 import Animated, {
   Extrapolation,
+  FadeIn,
+  FadeOut,
   interpolate,
   useAnimatedScrollHandler,
   useAnimatedStyle,
@@ -238,7 +240,7 @@ export const GenreChipSection = memo(function GenreChipSection({
   const currentTrack = playerStore((s) => s.currentTrack);
   const headerHeight = searchStore((s) => s.headerHeight);
   const { isPlaying, isBuffering } = usePlaybackState();
-  const { primary: palettePrimary } = useImagePalette(
+  const { primary: palettePrimary, secondary: paletteSecondary } = useImagePalette(
     currentTrack?.coverArt ?? undefined,
     currentTrack?.albumId,
   );
@@ -319,19 +321,27 @@ export const GenreChipSection = memo(function GenreChipSection({
   const glow = useMemo(
     () => [
       currentTrack && palettePrimary ? palettePrimary : genreColor(genres[0] ?? 'a'),
-      genreColor(genres[1] ?? 'b'),
+      currentTrack && paletteSecondary ? paletteSecondary : genreColor(genres[1] ?? 'b'),
     ],
-    [genres, currentTrack, palettePrimary],
+    [genres, currentTrack, palettePrimary, paletteSecondary],
   );
 
   return (
     <View style={styles.section}>
-      <LinearGradient
-        colors={[hexWithAlpha(glow[0], 0.5), hexWithAlpha(glow[1], 0.22), 'transparent']}
-        locations={[0, 0.45, 1]}
+      {/* Re-keyed per colour pair so each new track cross-fades the glow. */}
+      <Animated.View
+        key={`${glow[0]}${glow[1]}`}
+        entering={FadeIn.duration(700)}
+        exiting={FadeOut.duration(700)}
         style={styles.glow}
         pointerEvents="none"
-      />
+      >
+        <LinearGradient
+          colors={[hexWithAlpha(glow[0], 0.6), hexWithAlpha(glow[1], 0.28), 'transparent']}
+          locations={[0, 0.45, 1]}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
       <View style={[styles.hero, { paddingTop: headerHeight }]}>
         {currentTrack ? (
           <>
