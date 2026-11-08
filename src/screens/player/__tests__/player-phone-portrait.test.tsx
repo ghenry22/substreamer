@@ -105,8 +105,6 @@ jest.mock('@/components/CachedImage', () => {
   return { CachedImage: (props: { coverArtId?: string }) => <View testID={`cover-${props.coverArtId}`} /> };
 });
 
-jest.mock('@/components/LightRaysBackground', () => ({ LightRaysBackground: () => null }));
-
 jest.mock('@/components/MarqueeText', () => {
   const { Text } = require('react-native');
   return { MarqueeText: ({ children, style }: { children: React.ReactNode; style?: object }) => <Text style={style}>{children}</Text> };

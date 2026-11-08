@@ -27,7 +27,6 @@ import { AlbumInfoContent } from '@/components/AlbumInfoContent';
 import { LyricsContent } from '@/components/LyricsContent';
 import { CachedImage } from '@/components/CachedImage';
 import { FavoriteButton } from '@/components/FavoriteButton';
-import { LightRaysBackground } from '@/components/LightRaysBackground';
 import { EmptyState } from '@/components/EmptyState';
 import { MarqueeText } from '@/components/MarqueeText';
 import { MoreOptionsButton } from '@/components/MoreOptionsButton';
@@ -323,7 +322,6 @@ export function PlayerPhonePortrait() {
             style={absoluteFill}
           />
         </Animated.View>
-        <LightRaysBackground />
 
         {/* Content area with tab switching */}
         <View style={styles.contentArea}>
