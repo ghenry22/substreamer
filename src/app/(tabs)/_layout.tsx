@@ -67,6 +67,16 @@ export default function TabLayout() {
           name="index"
           options={{
             title: t('home'),
+            // Overlay the scene so the genre fan runs to the screen's bottom edge.
+            tabBarStyle: {
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'transparent',
+              borderTopColor: 'transparent',
+              elevation: 0,
+            },
             tabBarIcon: ({ color, size }) => (
               <WaveformLogo size={size} color={color} />
             ),

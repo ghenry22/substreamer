@@ -1,6 +1,6 @@
 import Ionicons from "@react-native-vector-icons/ionicons/static";
 import { useRouter } from 'expo-router';
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
@@ -10,6 +10,8 @@ import {
   Text,
   useWindowDimensions,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native';
 import Animated, {
   Extrapolation,
@@ -87,7 +89,38 @@ async function playRandomMix(): Promise<void> {
 }
 
 const SHUFFLE_KEY = '__shuffle__';
-const CARD_GAP = 14;
+const CARD_GAP = 2;
+const ICON_TILE = 76;
+
+type IconName = React.ComponentProps<typeof Ionicons>['name'];
+
+const GENRE_ICON_RULES: [RegExp, IconName][] = [
+  [/rap|hip|trap|drill|grime/, 'mic'],
+  [/metal|hardcore|grind/, 'skull'],
+  [/rock|punk|grunge/, 'flash'],
+  [/electro|techno|house|dance|edm|trance|dub|synth/, 'pulse'],
+  [/r&b|rnb|soul|funk|disco/, 'heart'],
+  [/jazz|blues|swing/, 'cafe'],
+  [/classic|orchestra|opera|piano/, 'musical-notes'],
+  [/folk|country|acoustic|bluegrass/, 'leaf'],
+  [/ambient|chill|lofi|lo-fi|downtempo|sleep/, 'moon'],
+  [/reggae|ska|tropical|latin|salsa/, 'sunny'],
+  [/indie|alternative|shoegaze|dream/, 'planet'],
+  [/pop|k-pop|j-pop/, 'sparkles'],
+  [/soundtrack|score|film|game/, 'film'],
+];
+const FALLBACK_ICONS: IconName[] = ['disc', 'headset', 'radio', 'rocket', 'diamond', 'star', 'earth', 'flame'];
+
+/** Icon for a genre: keyword match first, otherwise a stable pick from a fallback set. */
+function genreIcon(genre: string): IconName {
+  const g = genre.toLowerCase();
+  for (const [re, icon] of GENRE_ICON_RULES) {
+    if (re.test(g)) return icon;
+  }
+  let hash = 0;
+  for (let i = 0; i < g.length; i++) hash = (hash * 31 + g.charCodeAt(i)) | 0;
+  return FALLBACK_ICONS[Math.abs(hash) % FALLBACK_ICONS.length];
+}
 
 interface FanCardProps {
   index: number;
@@ -111,16 +144,17 @@ const FanCard = memo(function FanCard({
 }: FanCardProps) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
-  const tint = useMemo(() => (genre ? genreColor(genre) : '#6B6B6B'), [genre]);
+  const tint = useMemo(() => (genre ? genreColor(genre) : '#8A8A8A'), [genre]);
+  const icon = useMemo<IconName>(() => (genre ? genreIcon(genre) : 'shuffle'), [genre]);
 
   const animatedStyle = useAnimatedStyle(() => {
     const d = (scrollX.value - index * itemSize) / itemSize;
     const input = [-2, -1, 0, 1, 2];
     return {
       transform: [
-        { translateY: interpolate(d, input, [64, 22, 0, 22, 64], Extrapolation.CLAMP) },
-        { rotate: `${interpolate(d, input, [-26, -13, 0, 13, 26], Extrapolation.CLAMP)}deg` },
-        { scale: interpolate(d, input, [0.84, 0.93, 1, 0.93, 0.84], Extrapolation.CLAMP) },
+        { translateY: interpolate(d, input, [70, 30, 0, 30, 70], Extrapolation.CLAMP) },
+        { rotate: `${interpolate(d, input, [-14, -7, 0, 7, 14], Extrapolation.CLAMP)}deg` },
+        { scale: interpolate(d, input, [0.88, 0.94, 1, 0.94, 0.88], Extrapolation.CLAMP) },
       ],
     };
   });
@@ -139,31 +173,35 @@ const FanCard = memo(function FanCard({
 
   return (
     <Animated.View
-      style={[{ width, height, marginHorizontal: CARD_GAP / 2, transformOrigin: 'center bottom' }, animatedStyle]}
+      style={[
+        { width, height, marginHorizontal: CARD_GAP / 2, transformOrigin: 'center bottom' },
+        animatedStyle,
+      ]}
     >
-      <Pressable onPress={handlePress} style={[styles.card, { borderTopLeftRadius: width / 2, borderTopRightRadius: width / 2 }]}>
+      <Pressable onPress={handlePress} style={styles.card}>
         <LinearGradient
-          colors={[hexWithAlpha(tint, 0.85), hexWithAlpha(tint, 0.25), colors.card]}
-          locations={[0, 0.55, 1]}
-          style={StyleSheet.absoluteFill}
+          colors={[hexWithAlpha(tint, 0.9), hexWithAlpha(tint, 0.4), hexWithAlpha(tint, 0)]}
+          locations={[0, 0.5, 1]}
+          style={[
+            styles.arch,
+            { borderTopLeftRadius: width / 2, borderTopRightRadius: width / 2 },
+          ]}
         />
-        <View style={styles.cardIcon}>
-          {genre ? (
-            <Ionicons name="musical-notes" size={44} color="rgba(255,255,255,0.9)" />
-          ) : (
-            <Ionicons name="shuffle" size={52} color="rgba(255,255,255,0.9)" />
-          )}
-        </View>
-        <View style={styles.cardFooter}>
-          <Text style={[styles.cardTitle, { color: colors.textPrimary }]} numberOfLines={2}>
-            {genre ?? t('mixItUp')}
-          </Text>
+        <View
+          style={[
+            styles.iconTile,
+            { backgroundColor: hexWithAlpha(tint, 0.55), borderColor: 'rgba(255,255,255,0.35)' },
+          ]}
+        >
           {loading ? (
-            <ActivityIndicator size="small" color={colors.textPrimary} />
+            <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
-            <Ionicons name="play" size={16} color={colors.textPrimary} />
+            <Ionicons name={icon} size={38} color="#FFFFFF" />
           )}
         </View>
+        <Text style={[styles.cardTitle, { color: colors.textPrimary }]} numberOfLines={2}>
+          {genre ?? t('randomMix')}
+        </Text>
       </Pressable>
     </Animated.View>
   );
@@ -240,12 +278,25 @@ export const GenreChipSection = memo(function GenreChipSection({
     }
   }, [mixLoading]);
 
+  const settledIndex = useRef(0);
+  const handleSettle = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const i = Math.round(e.nativeEvent.contentOffset.x / itemSize);
+      if (i === settledIndex.current || i < 0 || i >= items.length) return;
+      settledIndex.current = i;
+      selectionAsync();
+      const genre = items[i];
+      void (genre ? playGenre(genre) : playRandomMix()).catch(() => {});
+    },
+    [itemSize, items],
+  );
+
   const onScroll = useAnimatedScrollHandler((e) => {
     scrollX.value = e.contentOffset.x;
   });
 
-  const cardWidth = Math.min(Math.round(screenWidth * 0.5), 220);
-  const cardHeight = Math.round(cardWidth * 1.45);
+  const cardWidth = Math.min(Math.round(screenWidth * 0.42), 200);
+  const cardHeight = Math.round(cardWidth * 1.5);
   const itemSize = cardWidth + CARD_GAP;
   const sidePad = (screenWidth - cardWidth) / 2 - CARD_GAP / 2;
   const playBg = primaryColor ?? colors.textPrimary;
@@ -271,7 +322,7 @@ export const GenreChipSection = memo(function GenreChipSection({
           onPress={handlePlayAll}
           style={({ pressed }) => [styles.playButton, { backgroundColor: playBg }, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel={t('mixItUp')}
+          accessibilityLabel={t('randomMix')}
         >
           {mixLoading ? (
             <ActivityIndicator size="small" color={readableOn(playBg)} />
@@ -313,9 +364,10 @@ export const GenreChipSection = memo(function GenreChipSection({
         snapToInterval={itemSize}
         decelerationRate="fast"
         onScroll={onScroll}
+        onMomentumScrollEnd={handleSettle}
         scrollEventThrottle={16}
-        style={[styles.fan, { height: Math.round(cardHeight * 0.8) + 8 }]}
-        contentContainerStyle={{ paddingHorizontal: sidePad, paddingTop: 8 }}
+        style={[styles.fan, { height: cardHeight + ICON_TILE }]}
+        contentContainerStyle={{ paddingHorizontal: sidePad, paddingTop: ICON_TILE / 2 }}
       >
         {items.map((genre, index) => (
           <FanCard
@@ -400,26 +452,30 @@ const styles = StyleSheet.create({
   },
   card: {
     flex: 1,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    overflow: 'hidden',
-  },
-  cardIcon: {
-    height: 120,
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    paddingBottom: 6,
   },
-  cardFooter: {
-    flexDirection: 'row',
+  arch: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  iconTile: {
+    width: ICON_TILE,
+    height: ICON_TILE,
+    borderRadius: 22,
+    borderWidth: 1,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    padding: 14,
+    justifyContent: 'center',
+    marginTop: -ICON_TILE / 2,
+    transform: [{ rotate: '-6deg' }],
   },
   cardTitle: {
-    flex: 1,
-    fontSize: 16,
+    marginTop: 14,
+    paddingHorizontal: 12,
+    fontSize: 17,
     fontWeight: '700',
+    textAlign: 'center',
   },
 });
