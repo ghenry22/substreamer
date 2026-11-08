@@ -3,7 +3,6 @@ import { useRouter } from 'expo-router';
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
   ActivityIndicator,
   Pressable,
@@ -19,18 +18,16 @@ import Animated, {
   FadeIn,
   FadeOut,
   interpolate,
-  runOnJS,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
   type SharedValue,
 } from 'react-native-reanimated';
 
 import { type ThemeColors } from '../constants/theme';
 import { getOfflineSongsByGenre, getOfflineSongsAll } from '../services/searchService';
 import { getRandomSongs, type Child } from '../services/subsonicService';
-import { playTrack, skipToNext, skipToPrevious, togglePlayPause } from '../services/playerService';
+import { playTrack, togglePlayPause } from '../services/playerService';
 import { shuffleArray } from '../utils/arrayHelpers';
 import { connectivityStore } from '../store/connectivityStore';
 import { genreStore } from '../store/genreStore';
@@ -329,33 +326,6 @@ export const GenreChipSection = memo(function GenreChipSection({
     }
   }, [mixLoading]);
 
-  const heroShift = useSharedValue(0);
-  const heroShiftStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: heroShift.value }],
-  }));
-  const handleSwipeSkip = useCallback((direction: 'next' | 'previous') => {
-    selectionAsync();
-    void (direction === 'next' ? skipToNext() : skipToPrevious()).catch(() => {});
-  }, []);
-  const swipeGesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .enabled(currentTrack != null)
-        .activeOffsetX([-20, 20])
-        .failOffsetY([-15, 15])
-        .onUpdate((e) => {
-          heroShift.value = e.translationX * 0.4;
-        })
-        .onEnd((e) => {
-          if (e.translationX < -60) runOnJS(handleSwipeSkip)('next');
-          else if (e.translationX > 60) runOnJS(handleSwipeSkip)('previous');
-        })
-        .onFinalize(() => {
-          heroShift.value = withSpring(0, { damping: 18, stiffness: 180 });
-        }),
-    [currentTrack, heroShift, handleSwipeSkip],
-  );
-
   const settledIndex = useRef(0);
   const handleSettle = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -403,8 +373,7 @@ export const GenreChipSection = memo(function GenreChipSection({
           style={StyleSheet.absoluteFill}
         />
       </Animated.View>
-      <GestureDetector gesture={swipeGesture}>
-      <Animated.View style={[styles.hero, { paddingTop: headerHeight }, heroShiftStyle]}>
+      <View style={[styles.hero, { paddingTop: headerHeight }]}>
         {currentTrack ? (
           <>
             <Text
@@ -484,8 +453,7 @@ export const GenreChipSection = memo(function GenreChipSection({
             <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
           </Pressable>
         )}
-      </Animated.View>
-      </GestureDetector>
+      </View>
       <Animated.ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
