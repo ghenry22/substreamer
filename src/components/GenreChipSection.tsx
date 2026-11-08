@@ -39,6 +39,7 @@ import { CachedImage } from './CachedImage';
 import { FavoriteButton } from './FavoriteButton';
 import { hexWithAlpha, readableOn } from '../utils/colors';
 import { GenreCarousel, genreColor } from './GenreCarousel';
+import { LightRaysBackground } from './LightRaysBackground';
 
 const MAX_GENRES = 8;
 
@@ -217,6 +218,8 @@ export const GenreChipSection = memo(function GenreChipSection({
           style={StyleSheet.absoluteFill}
         />
       </Animated.View>
+      {/* Above the cover-colour glow so the beams stay visible. */}
+      <LightRaysBackground />
       <GestureDetector gesture={swipeGesture}>
       <Animated.View style={[styles.hero, { paddingTop: headerHeight }, heroShiftStyle]}>
         {currentTrack ? (
