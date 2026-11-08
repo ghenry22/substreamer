@@ -35,17 +35,17 @@ interface RaySpec {
 }
 
 const RAYS: RaySpec[] = [
-  { angle: -82, width: 0.34, length: 0.7, opacity: [0.05, 0.4], sway: 5, duration: 13000, phase: 0.1, color: '#BDEFFF' },
-  { angle: -58, width: 0.22, length: 0.95, opacity: [0.12, 0.5], sway: 4, duration: 10500, phase: 0.6, color: '#FFFFFF' },
-  { angle: -37, width: 0.3, length: 0.85, opacity: [0.04, 0.42], sway: 6, duration: 15000, phase: 0.3, color: '#9FE6F2' },
-  { angle: -18, width: 0.16, length: 1.0, opacity: [0.15, 0.55], sway: 3, duration: 9000, phase: 0.85, color: '#E6FAFF' },
-  { angle: 4, width: 0.26, length: 1.0, opacity: [0.1, 0.5], sway: 4, duration: 12000, phase: 0.45, color: '#FFFFFF' },
-  { angle: 24, width: 0.18, length: 0.9, opacity: [0.14, 0.52], sway: 4, duration: 9800, phase: 0.2, color: '#B5F0F5' },
-  { angle: 44, width: 0.32, length: 0.8, opacity: [0.03, 0.4], sway: 6, duration: 14500, phase: 0.75, color: '#D4F6FF' },
-  { angle: 63, width: 0.2, length: 0.95, opacity: [0.1, 0.46], sway: 4, duration: 11200, phase: 0.5, color: '#FFFFFF' },
-  { angle: 86, width: 0.36, length: 0.7, opacity: [0.04, 0.36], sway: 5, duration: 16000, phase: 0.95, color: '#A6E9F7' },
-  { angle: 168, width: 0.24, length: 0.3, opacity: [0.03, 0.3], sway: 6, duration: 12500, phase: 0.35, color: '#CFF5FF' },
-  { angle: -164, width: 0.2, length: 0.3, opacity: [0.03, 0.28], sway: 5, duration: 13500, phase: 0.65, color: '#FFFFFF' },
+  { angle: -82, width: 0.34, length: 0.7, opacity: [0.10, 0.68], sway: 5, duration: 13000, phase: 0.1, color: '#BDEFFF' },
+  { angle: -58, width: 0.22, length: 0.95, opacity: [0.24, 0.85], sway: 4, duration: 10500, phase: 0.6, color: '#FFFFFF' },
+  { angle: -37, width: 0.3, length: 0.85, opacity: [0.08, 0.71], sway: 6, duration: 15000, phase: 0.3, color: '#9FE6F2' },
+  { angle: -18, width: 0.16, length: 1.0, opacity: [0.30, 0.94], sway: 3, duration: 9000, phase: 0.85, color: '#E6FAFF' },
+  { angle: 4, width: 0.26, length: 1.0, opacity: [0.20, 0.85], sway: 4, duration: 12000, phase: 0.45, color: '#FFFFFF' },
+  { angle: 24, width: 0.18, length: 0.9, opacity: [0.28, 0.88], sway: 4, duration: 9800, phase: 0.2, color: '#B5F0F5' },
+  { angle: 44, width: 0.32, length: 0.8, opacity: [0.06, 0.68], sway: 6, duration: 14500, phase: 0.75, color: '#D4F6FF' },
+  { angle: 63, width: 0.2, length: 0.95, opacity: [0.20, 0.78], sway: 4, duration: 11200, phase: 0.5, color: '#FFFFFF' },
+  { angle: 86, width: 0.36, length: 0.7, opacity: [0.08, 0.61], sway: 5, duration: 16000, phase: 0.95, color: '#A6E9F7' },
+  { angle: 168, width: 0.24, length: 0.3, opacity: [0.06, 0.51], sway: 6, duration: 12500, phase: 0.35, color: '#CFF5FF' },
+  { angle: -164, width: 0.2, length: 0.3, opacity: [0.06, 0.48], sway: 5, duration: 13500, phase: 0.65, color: '#FFFFFF' },
 ];
 
 interface BlobSpec {
@@ -207,7 +207,7 @@ export const LightRaysBackground = memo(function LightRaysBackground() {
   const sy = height * SOURCE_Y;
 
   const pulse = useOscillation(6500, 0.3);
-  const coreSize = width * 1.3;
+  const coreSize = width * 1.7;
   const coreStyle = useAnimatedStyle(() => ({
     opacity: 0.75 + 0.25 * pulse.value,
     transform: [{ scale: 0.94 + 0.12 * pulse.value }],
@@ -222,6 +222,11 @@ export const LightRaysBackground = memo(function LightRaysBackground() {
 
   return (
     <View style={styles.root} pointerEvents="none">
+      <LinearGradient
+        colors={['rgba(120,220,245,0.45)', 'rgba(60,170,200,0.2)', 'rgba(0,0,0,0)']}
+        locations={[0, 0.5, 1]}
+        style={[styles.sky, { height: height * 0.6 }]}
+      />
       {BLOBS.map((spec) => (
         <Blob key={spec.color} spec={spec} screenWidth={width} screenHeight={height} />
       ))}
@@ -251,8 +256,8 @@ export const LightRaysBackground = memo(function LightRaysBackground() {
           <Defs>
             <RadialGradient id="core-light" cx="50%" cy="50%" rx="50%" ry="50%">
               <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0.95" />
-              <Stop offset="0.12" stopColor="#F2FCFF" stopOpacity="0.7" />
-              <Stop offset="0.35" stopColor="#8FE1F0" stopOpacity="0.28" />
+              <Stop offset="0.15" stopColor="#F2FCFF" stopOpacity="0.8" />
+              <Stop offset="0.4" stopColor="#8FE1F0" stopOpacity="0.4" />
               <Stop offset="0.7" stopColor="#3AB9D0" stopOpacity="0.08" />
               <Stop offset="1" stopColor="#3AB9D0" stopOpacity="0" />
             </RadialGradient>
@@ -277,6 +282,12 @@ const styles = StyleSheet.create({
   root: {
     ...StyleSheet.absoluteFillObject,
     overflow: 'hidden',
+  },
+  sky: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
   },
   fade: {
     position: 'absolute',
