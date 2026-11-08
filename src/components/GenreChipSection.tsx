@@ -28,6 +28,7 @@ import { shuffleArray } from '../utils/arrayHelpers';
 import { connectivityStore } from '../store/connectivityStore';
 import { genreStore } from '../store/genreStore';
 import { playerStore } from '../store/playerStore';
+import { searchStore } from '../store/searchStore';
 import { layoutPreferencesStore } from '../store/layoutPreferencesStore';
 import { offlineModeStore } from '../store/offlineModeStore';
 import { selectionAsync } from '../utils/haptics';
@@ -187,6 +188,7 @@ export const GenreChipSection = memo(function GenreChipSection({
   const online = !offlineMode && isServerReachable;
   const [mixLoading, setMixLoading] = useState(false);
   const currentTrack = playerStore((s) => s.currentTrack);
+  const headerHeight = searchStore((s) => s.headerHeight);
   const scrollX = useSharedValue(0);
 
   const genres = useMemo(() => {
@@ -261,7 +263,7 @@ export const GenreChipSection = memo(function GenreChipSection({
         style={styles.glow}
         pointerEvents="none"
       />
-      <View style={styles.hero}>
+      <View style={[styles.hero, { paddingTop: headerHeight }]}>
         <Text style={[styles.heroTitle, { color: colors.textPrimary }]} numberOfLines={1}>
           {t('homeHeroTitle')}
         </Text>
@@ -312,7 +314,7 @@ export const GenreChipSection = memo(function GenreChipSection({
         decelerationRate="fast"
         onScroll={onScroll}
         scrollEventThrottle={16}
-        style={[styles.fan, { height: cardHeight + 72 }]}
+        style={[styles.fan, { height: Math.round(cardHeight * 0.8) + 8 }]}
         contentContainerStyle={{ paddingHorizontal: sidePad, paddingTop: 8 }}
       >
         {items.map((genre, index) => (
@@ -401,12 +403,12 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
     overflow: 'hidden',
-    justifyContent: 'space-between',
   },
   cardIcon: {
-    flex: 1,
+    height: 120,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
+    paddingBottom: 6,
   },
   cardFooter: {
     flexDirection: 'row',

@@ -23,7 +23,7 @@ export default function TabLayout() {
   const renderTabBar = useCallback(
     (props: React.ComponentProps<typeof BottomTabBar>) => (
       <>
-        <BottomChrome />
+        <BottomChrome hideMiniPlayer={props.state.routes[props.state.index]?.name === 'index'} />
         <BottomTabBar {...props} />
       </>
     ),
