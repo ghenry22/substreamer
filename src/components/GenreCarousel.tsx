@@ -19,7 +19,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Defs, Ellipse, G, LinearGradient, Path, RadialGradient, Stop } from 'react-native-svg';
+import Svg, { Defs, LinearGradient, Path, RadialGradient, Stop } from 'react-native-svg';
 
 import { type ThemeColors } from '../constants/theme';
 import { VIZ_PALETTE } from '../constants/vizColors';
@@ -32,8 +32,6 @@ const TAB_BAR_BASE_HEIGHT = 56;
 /** Layout pitch as a fraction of card width; below 1 so neighbours overlap. */
 const SPREAD = 0.62;
 const RIM = 1.5;
-/** Extra canvas around the arch so the glow is not clipped by the SVG bounds. */
-const GLOW_PAD = 48;
 /** Cycling needs enough cards to fill the screen on both sides. */
 const MIN_CYCLIC = 3;
 const REPEATS = 3;
@@ -150,8 +148,8 @@ const Card = memo(function Card({
     >
       <Pressable onPress={handlePress} style={styles.card}>
         <Svg
-          width={width + GLOW_PAD * 2}
-          height={height + GLOW_PAD * 2}
+          width={width}
+          height={height}
           style={styles.svg}
           pointerEvents="none"
         >
@@ -176,24 +174,11 @@ const Card = memo(function Card({
               <Stop offset="0.6" stopColor={tint} stopOpacity="0.18" />
               <Stop offset="1" stopColor={tint} stopOpacity="0" />
             </RadialGradient>
-            <RadialGradient id={`glow-${id}`} cx="50%" cy="50%" rx="50%" ry="50%">
-              <Stop offset="0" stopColor={tint} stopOpacity="0.5" />
-              <Stop offset="1" stopColor={tint} stopOpacity="0" />
-            </RadialGradient>
           </Defs>
-          <G x={GLOW_PAD} y={GLOW_PAD}>
-            <Ellipse
-              cx={width / 2}
-              cy={ry * 0.15}
-              rx={width * 0.7}
-              ry={ry * 0.9}
-              fill={`url(#glow-${id})`}
-            />
-            <Path d={`${outline} Z`} fill="url(#body-dark)" />
-            <Path d={`${outline} Z`} fill={`url(#fill-${id})`} />
-            <Path d={`${outline} Z`} fill={`url(#top-${id})`} />
-            <Path d={outline} fill="none" stroke={`url(#rim-${id})`} strokeWidth={RIM} />
-          </G>
+          <Path d={`${outline} Z`} fill="url(#body-dark)" />
+          <Path d={`${outline} Z`} fill={`url(#fill-${id})`} />
+          <Path d={`${outline} Z`} fill={`url(#top-${id})`} />
+          <Path d={outline} fill="none" stroke={`url(#rim-${id})`} strokeWidth={RIM} />
         </Svg>
         <View style={styles.iconWrap}>
           {loading ? (
@@ -325,8 +310,8 @@ const styles = StyleSheet.create({
   },
   svg: {
     position: 'absolute',
-    top: -GLOW_PAD,
-    left: -GLOW_PAD,
+    top: 0,
+    left: 0,
   },
   iconWrap: {
     width: ICON_GLYPH,
