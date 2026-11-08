@@ -25,7 +25,7 @@ import Animated, {
 import { type ThemeColors } from '../constants/theme';
 import { getOfflineSongsByGenre, getOfflineSongsAll } from '../services/searchService';
 import { getRandomSongs, type Child } from '../services/subsonicService';
-import { playTrack } from '../services/playerService';
+import { playTrack, togglePlayPause } from '../services/playerService';
 import { shuffleArray } from '../utils/arrayHelpers';
 import { connectivityStore } from '../store/connectivityStore';
 import { genreStore } from '../store/genreStore';
@@ -35,7 +35,11 @@ import { layoutPreferencesStore } from '../store/layoutPreferencesStore';
 import { offlineModeStore } from '../store/offlineModeStore';
 import { selectionAsync } from '../utils/haptics';
 import { VIZ_PALETTE } from '../constants/vizColors';
+import { useImagePalette } from '../hooks/useImagePalette';
+import { usePlaybackState } from '../hooks/usePlaybackState';
 import { useTheme } from '../hooks/useTheme';
+import { CachedImage } from './CachedImage';
+import { FavoriteButton } from './FavoriteButton';
 import { hexWithAlpha, readableOn } from '../utils/colors';
 
 const MAX_GENRES = 8;
@@ -184,7 +188,13 @@ const FanCard = memo(function FanCard({
           locations={[0, 0.5, 1]}
           style={[
             styles.arch,
-            { borderTopLeftRadius: width / 2, borderTopRightRadius: width / 2 },
+            {
+              borderTopLeftRadius: width / 2,
+              borderTopRightRadius: width / 2,
+              borderWidth: 1,
+              borderBottomWidth: 0,
+              borderColor: hexWithAlpha(tint, 0.55),
+            },
           ]}
         />
         <View
@@ -227,6 +237,11 @@ export const GenreChipSection = memo(function GenreChipSection({
   const [mixLoading, setMixLoading] = useState(false);
   const currentTrack = playerStore((s) => s.currentTrack);
   const headerHeight = searchStore((s) => s.headerHeight);
+  const { isPlaying, isBuffering } = usePlaybackState();
+  const { primary: palettePrimary } = useImagePalette(
+    currentTrack?.coverArt ?? undefined,
+    currentTrack?.albumId,
+  );
   const scrollX = useSharedValue(0);
 
   const genres = useMemo(() => {
@@ -295,15 +310,18 @@ export const GenreChipSection = memo(function GenreChipSection({
     scrollX.value = e.contentOffset.x;
   });
 
-  const cardWidth = Math.min(Math.round(screenWidth * 0.42), 200);
-  const cardHeight = Math.round(cardWidth * 1.5);
+  const cardWidth = Math.min(Math.round(screenWidth * 0.46), 210);
+  const cardHeight = Math.round(cardWidth * 1.4);
   const itemSize = cardWidth + CARD_GAP;
   const sidePad = (screenWidth - cardWidth) / 2 - CARD_GAP / 2;
   const playBg = primaryColor ?? colors.textPrimary;
   const items = useMemo<(string | null)[]>(() => [null, ...genres], [genres]);
   const glow = useMemo(
-    () => [genreColor(genres[0] ?? 'a'), genreColor(genres[1] ?? 'b')],
-    [genres],
+    () => [
+      currentTrack && palettePrimary ? palettePrimary : genreColor(genres[0] ?? 'a'),
+      genreColor(genres[1] ?? 'b'),
+    ],
+    [genres, currentTrack, palettePrimary],
   );
 
   return (
@@ -315,35 +333,72 @@ export const GenreChipSection = memo(function GenreChipSection({
         pointerEvents="none"
       />
       <View style={[styles.hero, { paddingTop: headerHeight }]}>
-        <Text style={[styles.heroTitle, { color: colors.textPrimary }]} numberOfLines={1}>
-          {t('homeHeroTitle')}
-        </Text>
-        <Pressable
-          onPress={handlePlayAll}
-          style={({ pressed }) => [styles.playButton, { backgroundColor: playBg }, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel={t('randomMix')}
-        >
-          {mixLoading ? (
-            <ActivityIndicator size="small" color={readableOn(playBg)} />
-          ) : (
-            <Ionicons name="play" size={34} color={readableOn(playBg)} style={styles.playGlyph} />
-          )}
-        </Pressable>
-        {currentTrack && (
-          <Pressable
-            onPress={handleOpenPlayer}
-            style={({ pressed }) => [
-              styles.nowPlaying,
-              { backgroundColor: 'rgba(255,255,255,0.12)' },
-              pressed && styles.pressed,
-            ]}
-            accessibilityRole="button"
-          >
-            <Text style={[styles.nowPlayingText, { color: colors.textPrimary }]} numberOfLines={2}>
-              {currentTrack.artist ? `${currentTrack.artist} — ${currentTrack.title}` : currentTrack.title}
+        {currentTrack ? (
+          <>
+            <Text
+              style={[styles.artistTitle, { color: colors.textPrimary }]}
+              numberOfLines={2}
+              adjustsFontSizeToFit
+            >
+              {currentTrack.artist || currentTrack.title}
             </Text>
-          </Pressable>
+            <Pressable onPress={handleOpenPlayer} accessibilityRole="button">
+              <CachedImage
+                coverArtId={currentTrack.coverArt ?? undefined}
+                albumId={currentTrack.albumId}
+                size={300}
+                style={styles.cover}
+                resizeMode="cover"
+              />
+            </Pressable>
+            <View style={styles.controlRow}>
+              <Pressable
+                onPress={togglePlayPause}
+                style={({ pressed }) => [styles.roundControl, pressed && styles.pressed]}
+                accessibilityRole="button"
+              >
+                {isBuffering ? (
+                  <ActivityIndicator size="small" color={colors.textPrimary} />
+                ) : (
+                  <Ionicons
+                    name={isPlaying ? 'pause' : 'play'}
+                    size={26}
+                    color={colors.textPrimary}
+                  />
+                )}
+              </Pressable>
+              <Pressable
+                onPress={handleOpenPlayer}
+                style={({ pressed }) => [styles.trackPill, pressed && styles.pressed]}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.trackPillText, { color: colors.textPrimary }]} numberOfLines={1}>
+                  {currentTrack.title}
+                </Text>
+              </Pressable>
+              <View style={styles.roundControl}>
+                <FavoriteButton trackId={currentTrack.id} size={26} />
+              </View>
+            </View>
+          </>
+        ) : (
+          <>
+            <Text style={[styles.heroTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+              {t('homeHeroTitle')}
+            </Text>
+            <Pressable
+              onPress={handlePlayAll}
+              style={({ pressed }) => [styles.playButton, { backgroundColor: playBg }, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={t('randomMix')}
+            >
+              {mixLoading ? (
+                <ActivityIndicator size="small" color={readableOn(playBg)} />
+              ) : (
+                <Ionicons name="play" size={34} color={readableOn(playBg)} style={styles.playGlyph} />
+              )}
+            </Pressable>
+          </>
         )}
         {online && (
           <Pressable
@@ -366,7 +421,7 @@ export const GenreChipSection = memo(function GenreChipSection({
         onScroll={onScroll}
         onMomentumScrollEnd={handleSettle}
         scrollEventThrottle={16}
-        style={[styles.fan, { height: cardHeight + ICON_TILE }]}
+        style={[styles.fan, { height: Math.round(cardHeight * 0.75) + ICON_TILE / 2 }]}
         contentContainerStyle={{ paddingHorizontal: sidePad, paddingTop: ICON_TILE / 2 }}
       >
         {items.map((genre, index) => (
@@ -403,18 +458,47 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
-  nowPlaying: {
+  artistTitle: {
     alignSelf: 'stretch',
-    marginTop: 22,
-    marginHorizontal: 8,
-    borderRadius: 32,
-    paddingVertical: 14,
-    paddingHorizontal: 22,
-  },
-  nowPlayingText: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 46,
+    fontWeight: '800',
+    letterSpacing: -1,
     textAlign: 'center',
+    lineHeight: 50,
+  },
+  cover: {
+    width: 104,
+    height: 104,
+    borderRadius: 20,
+    marginTop: 14,
+  },
+  controlRow: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 14,
+  },
+  roundControl: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  trackPill: {
+    flex: 1,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  trackPillText: {
+    fontSize: 16,
+    fontWeight: '700',
   },
   heroTitle: {
     fontSize: 56,
@@ -472,9 +556,9 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '-6deg' }],
   },
   cardTitle: {
-    marginTop: 14,
-    paddingHorizontal: 12,
-    fontSize: 17,
+    marginTop: 10,
+    paddingHorizontal: 14,
+    fontSize: 18,
     fontWeight: '700',
     textAlign: 'center',
   },
