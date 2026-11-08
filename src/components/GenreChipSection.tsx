@@ -37,7 +37,8 @@ import { usePlaybackState } from '../hooks/usePlaybackState';
 import { useTheme } from '../hooks/useTheme';
 import { CachedImage } from './CachedImage';
 import { FavoriteButton } from './FavoriteButton';
-import { hexWithAlpha, readableOn } from '../utils/colors';
+import { hexWithAlpha } from '../utils/colors';
+import { GlassSurface } from './GlassSurface';
 import { GenreCarousel, genreColor } from './GenreCarousel';
 import { LightRaysBackground } from './LightRaysBackground';
 
@@ -241,33 +242,39 @@ export const GenreChipSection = memo(function GenreChipSection({
               />
             </Pressable>
             <View style={styles.controlRow}>
-              <Pressable
-                onPress={togglePlayPause}
-                style={({ pressed }) => [styles.roundControl, pressed && styles.pressed]}
-                accessibilityRole="button"
-              >
-                {isBuffering ? (
-                  <ActivityIndicator size="small" color={colors.textPrimary} />
-                ) : (
-                  <Ionicons
-                    name={isPlaying ? 'pause' : 'play'}
-                    size={26}
-                    color={colors.textPrimary}
-                  />
-                )}
-              </Pressable>
-              <Pressable
-                onPress={handleOpenPlayer}
-                style={({ pressed }) => [styles.trackPill, pressed && styles.pressed]}
-                accessibilityRole="button"
-              >
-                <Text style={[styles.trackPillText, { color: colors.textPrimary }]} numberOfLines={1}>
-                  {currentTrack.title}
-                </Text>
-              </Pressable>
-              <View style={styles.roundControl}>
-                <FavoriteButton trackId={currentTrack.id} size={26} />
-              </View>
+              <GlassSurface radius={28} style={styles.roundControl}>
+                <Pressable
+                  onPress={togglePlayPause}
+                  style={({ pressed }) => [styles.glassFill, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                >
+                  {isBuffering ? (
+                    <ActivityIndicator size="small" color={colors.textPrimary} />
+                  ) : (
+                    <Ionicons
+                      name={isPlaying ? 'pause' : 'play'}
+                      size={26}
+                      color={colors.textPrimary}
+                    />
+                  )}
+                </Pressable>
+              </GlassSurface>
+              <GlassSurface radius={28} style={styles.trackPill}>
+                <Pressable
+                  onPress={handleOpenPlayer}
+                  style={({ pressed }) => [styles.glassFill, styles.trackPillInner, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                >
+                  <Text style={[styles.trackPillText, { color: colors.textPrimary }]} numberOfLines={1}>
+                    {currentTrack.title}
+                  </Text>
+                </Pressable>
+              </GlassSurface>
+              <GlassSurface radius={28} style={styles.roundControl}>
+                <View style={styles.glassFill}>
+                  <FavoriteButton trackId={currentTrack.id} size={26} />
+                </View>
+              </GlassSurface>
             </View>
           </>
         ) : (
@@ -275,18 +282,20 @@ export const GenreChipSection = memo(function GenreChipSection({
             <Text style={[styles.heroTitle, { color: colors.textPrimary }]} numberOfLines={1}>
               {t('homeHeroTitle')}
             </Text>
-            <Pressable
-              onPress={handlePlayAll}
-              style={({ pressed }) => [styles.playButton, { backgroundColor: playBg }, pressed && styles.pressed]}
-              accessibilityRole="button"
-              accessibilityLabel={t('randomMix')}
-            >
-              {mixLoading ? (
-                <ActivityIndicator size="small" color={readableOn(playBg)} />
-              ) : (
-                <Ionicons name="play" size={34} color={readableOn(playBg)} style={styles.playGlyph} />
-              )}
-            </Pressable>
+            <GlassSurface radius={42} strength={1.3} tint={playBg} style={styles.playButton}>
+              <Pressable
+                onPress={handlePlayAll}
+                style={({ pressed }) => [styles.glassFill, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel={t('randomMix')}
+              >
+                {mixLoading ? (
+                  <ActivityIndicator size="small" color={colors.textPrimary} />
+                ) : (
+                  <Ionicons name="play" size={34} color={colors.textPrimary} style={styles.playGlyph} />
+                )}
+              </Pressable>
+            </GlassSurface>
           </>
         )}
         {online && (
@@ -355,18 +364,19 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
+  },
+  glassFill: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  trackPillInner: {
+    paddingHorizontal: 18,
   },
   trackPill: {
     flex: 1,
     height: 56,
     borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 18,
-    backgroundColor: 'rgba(255,255,255,0.12)',
   },
   trackPillText: {
     fontSize: 16,
@@ -395,8 +405,6 @@ const styles = StyleSheet.create({
     width: 84,
     height: 84,
     borderRadius: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
     marginTop: 22,
   },
   playGlyph: {

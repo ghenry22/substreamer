@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { GlassSurface } from './GlassSurface';
 import { useTheme } from '../hooks/useTheme';
 
 const ICON_SIZE = 26;
@@ -19,38 +20,44 @@ export function HomeHeader() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.row}>
         <View style={[styles.side, styles.left]}>
+          <GlassSurface radius={20} style={styles.button}>
           <Pressable
             onPress={() => router.push('/my-listening')}
             hitSlop={8}
-            style={({ pressed }) => [styles.button, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.fill, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel={t('viewListeningHistory')}
           >
             <Ionicons name="time-outline" size={ICON_SIZE} color={colors.textPrimary} />
           </Pressable>
+          </GlassSurface>
+          <GlassSurface radius={20} style={styles.button}>
           <Pressable
             onPress={() => router.push('/collections')}
             hitSlop={8}
-            style={({ pressed }) => [styles.button, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.fill, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel={t('collections')}
           >
             <Ionicons name="albums-outline" size={ICON_SIZE} color={colors.textPrimary} />
           </Pressable>
+          </GlassSurface>
         </View>
         <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>
           XXW Music
         </Text>
         <View style={[styles.side, styles.right]}>
+          <GlassSurface radius={20} style={styles.button}>
           <Pressable
             onPress={() => router.navigate('/search')}
             hitSlop={8}
-            style={({ pressed }) => [styles.button, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.fill, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel={t('search')}
           >
             <Ionicons name="search" size={ICON_SIZE} color={colors.textPrimary} />
           </Pressable>
+          </GlassSurface>
         </View>
       </View>
     </View>
@@ -82,6 +89,11 @@ const styles = StyleSheet.create({
   button: {
     width: 40,
     height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fill: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },

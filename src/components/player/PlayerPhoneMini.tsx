@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
 import { CachedImage } from '@/components/CachedImage';
+import { GlassSurface } from '@/components/GlassSurface';
 import { MarqueeText } from '@/components/MarqueeText';
 import WaveformLogo from '@/components/WaveformLogo';
 import { useImagePalette } from '@/hooks/useImagePalette';
@@ -85,7 +86,7 @@ export function PlayerPhoneMini() {
   const gradientLocations: readonly [number, number, ...number[]] = [0, 1];
 
   return (
-    <View style={[styles.container, { backgroundColor: withAlpha(colors.card, 0.65) }]}>
+    <GlassSurface radius={0} strength={0.9} style={styles.container}>
       {/* Progress bar */}
       <View style={styles.progressTrack}>
         <View
@@ -179,7 +180,7 @@ export function PlayerPhoneMini() {
         </Pressable>
       </View>
 
-    </View>
+    </GlassSurface>
   );
 }
 
