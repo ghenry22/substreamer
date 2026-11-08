@@ -60,7 +60,7 @@ import { usePlayerAlbumInfo } from '@/hooks/usePlayerAlbumInfo';
 import { usePlayerLyrics, type PlayerLyricsResult } from '@/hooks/usePlayerLyrics';
 import { moreOptionsStore } from '@/store/moreOptionsStore';
 import { playerStore } from '@/store/playerStore';
-import { mixHexColors } from '@/utils/colors';
+import { mixHexColors, readableOn } from '@/utils/colors';
 
 
 import { absoluteFill } from '@/utils/styles';
@@ -75,21 +75,13 @@ const TAB_FADE_DURATION = 300;
 const TAB_FADE_EASING = Easing.out(Easing.cubic);
 const TAB_SLIDE_DISTANCE = 12;
 
-/** Black or white, whichever reads better on the given #RRGGBB accent. */
-function readableOn(hex: string): string {
-  if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return '#FFFFFF';
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return 0.299 * r + 0.587 * g + 0.114 * b > 160 ? '#000000' : '#FFFFFF';
-}
-
 /** Static content inset for the queue list — module-scope so FlashList isn't
  *  handed a fresh object on every parent re-render. */
 const QUEUE_CONTENT_CONTAINER_STYLE = { paddingBottom: 12 } as const;
 
 export function PlayerPhonePortrait() {
-  const { colors } = useTheme();
+  const { colors, primaryColor } = useTheme();
+  const playAccent = primaryColor ?? colors.textPrimary;
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -621,17 +613,17 @@ const PlayerContent = memo(function PlayerContent({
             onPress={togglePlayPause}
             style={({ pressed }) => [
               styles.playPauseButton,
-              { width: m.playButton, height: m.playButton, borderRadius: m.playButton / 2, backgroundColor: colors.primary },
+              { width: m.playButton, height: m.playButton, borderRadius: m.playButton / 2, backgroundColor: playAccent },
               pressed && styles.playPausePressed,
             ]}
           >
             {isBuffering ? (
-              <ActivityIndicator size="small" color={readableOn(colors.primary)} />
+              <ActivityIndicator size="small" color={readableOn(playAccent)} />
             ) : (
               <Ionicons
                 name={isPlaying ? 'pause' : 'play'}
                 size={m.playIcon}
-                color={readableOn(colors.primary)}
+                color={readableOn(playAccent)}
                 style={!isPlaying ? styles.playIcon : undefined}
               />
             )}

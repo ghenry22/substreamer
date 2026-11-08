@@ -63,27 +63,7 @@ jest.mock('../../components/GenreChipSection', () => ({ GenreChipSection: () => 
 jest.mock('../../components/ResumeBookmarksSection', () => ({
   ResumeBookmarksSection: () => null,
 }));
-jest.mock('../../components/AnimatedNumber', () => ({ AnimatedNumber: () => null }));
 jest.mock('../../components/DownloadedIcon', () => ({ DownloadedIcon: () => null }));
-
-// Reanimated's real entry point pulls in the worklets native module, which has no Jest
-// bridge. Only the stat-icon pop uses it here, and that is not what this suite tests.
-jest.mock('react-native-reanimated', () => {
-  const React = require('react');
-  const { View } = require('react-native');
-  return {
-    __esModule: true,
-    default: { View },
-    useSharedValue: (init: number) => {
-      const ref = React.useRef({ value: init });
-      return ref.current;
-    },
-    useAnimatedStyle: (fn: () => object) => fn(),
-    withTiming: (val: number) => val,
-    withSequence: (val: number) => val,
-    withSpring: (val: number) => val,
-  };
-});
 
 // The horizontal section lists: render every row synchronously so `renderItem` runs.
 jest.mock('@shopify/flash-list', () => {

@@ -30,7 +30,7 @@ import {
   type CertificateInfo,
 } from '../../modules/expo-ssl-trust/src';
 
-const PRIMARY = '#1D9BF0';
+const PRIMARY = '#000000';
 
 export function LoginScreen() {
   const router = useRouter();

@@ -9,7 +9,8 @@ import { DEFAULT_PRIMARY_COLOR } from '../../store/themeStore';
 import { SettingsSectionTitle } from './SettingsSectionTitle';
 
 const ACCENT_COLORS: { labelKey: string; hex: string }[] = [
-  { labelKey: 'colorBlueDefault', hex: '#1D9BF0' },
+  { labelKey: 'colorGraphiteDefault', hex: '#8A8A8A' },
+  { labelKey: 'colorBlue', hex: '#1D9BF0' },
   { labelKey: 'colorRed', hex: '#E91429' },
   { labelKey: 'colorGreen', hex: '#00BA7C' },
   { labelKey: 'colorOrange', hex: '#FF6F00' },

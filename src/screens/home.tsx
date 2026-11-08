@@ -2,7 +2,7 @@ import Ionicons from "@react-native-vector-icons/ionicons/static";
 import { useIsFocused } from "expo-router/react-navigation";
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -10,24 +10,15 @@ import {
   Text,
   View,
 } from 'react-native';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSequence,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
 
 import { AlbumCard } from '../components/AlbumCard';
-import { AnimatedNumber } from '../components/AnimatedNumber';
 import { DownloadedIcon } from '../components/DownloadedIcon';
 import { EmptyState } from '../components/EmptyState';
 import { GenreChipSection } from '../components/GenreChipSection';
 import { PlaylistCard } from '../components/PlaylistCard';
 import { ResumeBookmarksSection } from '../components/ResumeBookmarksSection';
 import WaveformLogo from '../components/WaveformLogo';
-import { computeStreaks, dateKey } from '../hooks/usePlaybackAnalytics';
 import { useTheme } from '../hooks/useTheme';
 import type { AlbumID3, Playlist } from '../services/subsonicService';
 import { composeHomeAlbumSections } from '../services/homeSectionsService';
@@ -45,7 +36,6 @@ import {
 } from '../store/albumListsStore';
 import { completedScrobbleStore } from '../store/completedScrobbleStore';
 import { favoritesStore } from '../store/favoritesStore';
-import { pendingScrobbleStore } from '../store/pendingScrobbleStore';
 import { filterBarStore } from '../store/filterBarStore';
 import { layoutPreferencesStore } from '../store/layoutPreferencesStore';
 import { musicCacheStore } from '../store/musicCacheStore';
@@ -334,41 +324,6 @@ function PlaylistSection({
   );
 }
 
-function AnimatedStatIcon({
-  value,
-  iconBgColor,
-  children,
-}: {
-  value: number | string;
-  iconBgColor: string;
-  children: React.ReactNode;
-}) {
-  const scale = useSharedValue(1);
-  const isFirstRender = useRef(true);
-
-  useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
-    scale.value = withSequence(
-      withTiming(1.1, { duration: 300 }),
-      withSpring(1, { damping: 10, stiffness: 120 })
-    );
-  }, [value, scale]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  return (
-    <Animated.View style={[styles.statIcon, { backgroundColor: iconBgColor }, animatedStyle]}>
-      {children}
-    </Animated.View>
-  );
-}
-
-
 export function HomeScreen() {
   const { colors } = useTheme();
   const { t } = useTranslation();
@@ -382,19 +337,6 @@ export function HomeScreen() {
   const randomSelection = albumListsStore((s) => s.randomSelection);
 
   const genreCounts = completedScrobbleStore((s) => s.aggregates.genreCounts);
-  const totalPlays = completedScrobbleStore((s) => s.stats.totalPlays);
-  const totalSeconds = completedScrobbleStore((s) => s.stats.totalListeningSeconds);
-  const uniqueArtistCount = completedScrobbleStore(
-    (s) => Object.keys(s.stats.uniqueArtists).length
-  );
-  const dayCounts = completedScrobbleStore((s) => s.aggregates.dayCounts);
-  const pendingScrobbles = pendingScrobbleStore((s) => s.pendingScrobbles);
-  const listeningStats = useMemo(() => {
-    const dayKeys = new Set(Object.keys(dayCounts));
-    for (const s of pendingScrobbles) dayKeys.add(dateKey(s.time));
-    const { current: streak } = computeStreaks(Array.from(dayKeys));
-    return { total: totalPlays, totalSeconds, artists: uniqueArtistCount, streak };
-  }, [totalPlays, totalSeconds, uniqueArtistCount, dayCounts, pendingScrobbles]);
 
   useEffect(() => {
     if (!isFocused) return;
@@ -558,108 +500,23 @@ export function HomeScreen() {
           contentContainerStyle={[styles.scrollContent, { paddingTop: headerHeight + 16 }]}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Pressable
-                onPress={() => router.push('/my-listening')}
-                style={({ pressed }) => [
-                  { flex: 1 },
-                  pressed && styles.iconButtonPressed,
-                ]}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={t('viewListeningHistory')}
-              >
-                <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
-                  {t('myListening')}
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => router.push('/my-listening')}
-                style={({ pressed }) => [
-                  styles.iconButton,
-                  pressed && styles.iconButtonPressed,
-                ]}
-                hitSlop={8}
-              >
-                <Ionicons name="chevron-forward" size={24} color={colors.textSecondary} />
-              </Pressable>
-            </View>
-            <Pressable
-              onPress={() => router.push('/my-listening')}
-              style={({ pressed }) => [
-                styles.listeningCard,
-                { backgroundColor: colors.card + 'B3' },
-                pressed && styles.listeningCardPressed,
-              ]}
-            >
-              {listeningStats.total > 0 ? (
-                <View style={styles.statsRow}>
-                  <View style={styles.statBlock}>
-                    <AnimatedStatIcon value={listeningStats.total} iconBgColor={colors.primary + '18'}>
-                      <Ionicons name="musical-notes" size={20} color={colors.primary} />
-                    </AnimatedStatIcon>
-                    <AnimatedNumber
-                      value={listeningStats.total}
-                      style={[styles.statValue, { color: colors.textPrimary }]}
-                    />
-                    <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
-                      {t('plays')}
-                    </Text>
-                  </View>
-                  <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-                  <View style={styles.statBlock}>
-                    <AnimatedStatIcon value={listeningStats.totalSeconds} iconBgColor={colors.primary + '18'}>
-                      <Ionicons name="time" size={20} color={colors.primary} />
-                    </AnimatedStatIcon>
-                    <AnimatedNumber
-                      value={listeningStats.totalSeconds}
-                      format="duration"
-                      style={[styles.statValue, { color: colors.textPrimary }]}
-                    />
-                    <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
-                      {t('listening')}
-                    </Text>
-                  </View>
-                  <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-                  <View style={styles.statBlock}>
-                    <AnimatedStatIcon value={listeningStats.artists} iconBgColor={colors.primary + '18'}>
-                      <Ionicons name="people" size={20} color={colors.primary} />
-                    </AnimatedStatIcon>
-                    <AnimatedNumber
-                      value={listeningStats.artists}
-                      style={[styles.statValue, { color: colors.textPrimary }]}
-                    />
-                    <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
-                      {t('artistsLabel')}
-                    </Text>
-                  </View>
-                  <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-                  <View style={styles.statBlock}>
-                    <AnimatedStatIcon value={listeningStats.streak} iconBgColor={colors.primary + '18'}>
-                      <Ionicons name="flame" size={20} color={colors.primary} />
-                    </AnimatedStatIcon>
-                    <AnimatedNumber
-                      value={listeningStats.streak}
-                      style={[styles.statValue, { color: colors.textPrimary }]}
-                      suffix="d"
-                    />
-                    <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
-                      {t('streak')}
-                    </Text>
-                  </View>
-                </View>
-              ) : (
-                <View style={styles.statsEmpty}>
-                  <Ionicons name="analytics-outline" size={24} color={colors.primary} />
-                  <Text style={[styles.statsEmptyText, { color: colors.textSecondary }]}>
-                    {t('listenToSeeStats')}
-                  </Text>
-                </View>
-              )}
-            </Pressable>
-          </View>
           <GenreChipSection genreCounts={genreCounts} colors={colors} />
+          <Pressable
+            onPress={() => router.push('/my-listening')}
+            style={({ pressed }) => [
+              styles.historyButton,
+              { backgroundColor: colors.card, borderColor: colors.border },
+              pressed && styles.listeningCardPressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={t('viewListeningHistory')}
+          >
+            <Ionicons name="time-outline" size={20} color={colors.textPrimary} />
+            <Text style={[styles.historyButtonText, { color: colors.textPrimary }]}>
+              {t('myListening')}
+            </Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+          </Pressable>
           <ResumeBookmarksSection />
           {albumSections.map((section) => {
             if (section.type === 'downloadedAlbums') {
@@ -784,52 +641,22 @@ const styles = StyleSheet.create({
   horizontalList: {
     paddingRight: 16,
   },
-  listeningCard: {
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 2,
+  historyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    gap: 10,
+    height: 46,
+    paddingHorizontal: 18,
+    borderRadius: 23,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginBottom: 28,
+  },
+  historyButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   listeningCardPressed: {
     opacity: 0.7,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  statBlock: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 8,
-  },
-  statIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  statLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  statDivider: {
-    width: StyleSheet.hairlineWidth,
-    height: 48,
-    opacity: 0.6,
-  },
-  statsEmpty: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 4,
-  },
-  statsEmptyText: {
-    fontSize: 14,
-    fontWeight: '500',
-    flex: 1,
   },
 });

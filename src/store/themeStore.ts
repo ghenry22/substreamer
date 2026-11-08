@@ -7,7 +7,7 @@ import { kvStorageSync as kvStorage } from './persistence';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
 
-export const DEFAULT_PRIMARY_COLOR = '#1D9BF0';
+export const DEFAULT_PRIMARY_COLOR = '#8A8A8A';
 
 export interface ThemeState {
   themePreference: ThemePreference;

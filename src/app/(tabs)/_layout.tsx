@@ -17,7 +17,7 @@ import { searchStore } from '../../store/searchStore';
 
 export default function TabLayout() {
   const { t } = useTranslation();
-  const { colors } = useTheme();
+  const { colors, primaryColor } = useTheme();
 
   const renderTabBar = useCallback(
     (props: React.ComponentProps<typeof BottomTabBar>) => (
@@ -49,7 +49,8 @@ export default function TabLayout() {
           },
           headerTransparent: true,
           sceneStyle: { backgroundColor: 'transparent' },
-          tabBarActiveTintColor: colors.primary,
+          tabBarShowLabel: false,
+          tabBarActiveTintColor: primaryColor ?? colors.textPrimary,
           tabBarInactiveTintColor: colors.textSecondary,
           // The default tab button uses a borderless Android ripple — an
           // unbounded circle sized to the tab width that overshoots the short

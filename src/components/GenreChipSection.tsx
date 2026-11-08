@@ -2,18 +2,22 @@ import Ionicons from "@react-native-vector-icons/ionicons/static";
 import { useRouter } from 'expo-router';
 import { memo, useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import Animated, {
+  Extrapolation,
+  interpolate,
+  useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
+  type SharedValue,
 } from 'react-native-reanimated';
 
 import { type ThemeColors } from '../constants/theme';
@@ -27,8 +31,10 @@ import { layoutPreferencesStore } from '../store/layoutPreferencesStore';
 import { offlineModeStore } from '../store/offlineModeStore';
 import { selectionAsync } from '../utils/haptics';
 import { VIZ_PALETTE } from '../constants/vizColors';
+import { useTheme } from '../hooks/useTheme';
+import { hexWithAlpha, readableOn } from '../utils/colors';
 
-const MAX_GENRE_CHIPS = 8;
+const MAX_GENRES = 8;
 
 
 /** Deterministic color for a genre name (stable across re-renders/sessions). */
@@ -40,7 +46,6 @@ function genreColor(genre: string): string {
   return VIZ_PALETTE[Math.abs(hash) % VIZ_PALETTE.length];
 }
 
-/** Fisher-Yates shuffle (in-place, returns same array). */
 function isOnline(): boolean {
   const { offlineMode } = offlineModeStore.getState();
   if (offlineMode) return false;
@@ -65,141 +70,98 @@ async function playGenre(genre: string): Promise<boolean> {
   return true;
 }
 
-interface GenreChipProps {
-  genre: string;
+async function playRandomMix(): Promise<void> {
+  const { listLength } = layoutPreferencesStore.getState();
+  let songs: Child[] | null;
+  if (isOnline()) {
+    songs = await getRandomSongs(listLength);
+  } else {
+    songs = getOfflineSongsAll();
+    if (songs) songs = shuffleArray(songs).slice(0, listLength);
+  }
+  if (songs && songs.length > 0) {
+    await playTrack(songs[0], songs);
+  }
+}
+
+const SHUFFLE_KEY = '__shuffle__';
+const CARD_GAP = 14;
+
+interface FanCardProps {
+  index: number;
+  scrollX: SharedValue<number>;
+  itemSize: number;
+  width: number;
+  height: number;
+  /** null renders the shuffle-everything card. */
+  genre: string | null;
   colors: ThemeColors;
 }
 
-const GenreChip = memo(function GenreChip({ genre, colors }: GenreChipProps) {
+const FanCard = memo(function FanCard({
+  index,
+  scrollX,
+  itemSize,
+  width,
+  height,
+  genre,
+  colors,
+}: FanCardProps) {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
-  const color = useMemo(() => genreColor(genre), [genre]);
+  const tint = useMemo(() => (genre ? genreColor(genre) : '#6B6B6B'), [genre]);
 
-  // No useEffect-driven entrance animation — see the explanatory comment
-  // in `MixItUpChip` below. Starting opacity at 0 and fading in via
-  // useEffect leaves the chip invisible whenever the effect misses
-  // (double-mount, strict-mode quirks, worklet timing). The chip simply
-  // appears at full opacity; the stagger isn't worth a real bug where
-  // chips disappear and require an app kill+restart to recover.
-  const scale = useSharedValue(1);
-  const handlePressIn = useCallback(() => {
-    scale.value = withSpring(0.96, { damping: 15, stiffness: 150 });
-  }, [scale]);
-  const handlePressOut = useCallback(() => {
-    scale.value = withSpring(1, { damping: 15, stiffness: 150 });
-  }, [scale]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
+  const animatedStyle = useAnimatedStyle(() => {
+    const d = (scrollX.value - index * itemSize) / itemSize;
+    const input = [-2, -1, 0, 1, 2];
+    return {
+      transform: [
+        { translateY: interpolate(d, input, [64, 22, 0, 22, 64], Extrapolation.CLAMP) },
+        { rotate: `${interpolate(d, input, [-26, -13, 0, 13, 26], Extrapolation.CLAMP)}deg` },
+        { scale: interpolate(d, input, [0.84, 0.93, 1, 0.93, 0.84], Extrapolation.CLAMP) },
+      ],
+    };
+  });
 
   const handlePress = useCallback(async () => {
     if (loading) return;
     selectionAsync();
     setLoading(true);
     try {
-      await playGenre(genre);
+      if (genre) await playGenre(genre);
+      else await playRandomMix();
     } finally {
       setLoading(false);
     }
   }, [genre, loading]);
 
   return (
-    <Animated.View style={animatedStyle}>
-      <Pressable
-        onPress={handlePress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        style={[
-          styles.chip,
-          {
-            backgroundColor: color + '1A',
-            borderColor: color + '4D',
-          },
-        ]}
-      >
-        {loading && (
-          <ActivityIndicator size={12} color={color} />
-        )}
-        <Text
-          style={[styles.chipText, { color: colors.textPrimary }]}
-          numberOfLines={1}
-        >
-          {genre}
-        </Text>
-        <Ionicons name="play" size={12} color={color} />
-      </Pressable>
-    </Animated.View>
-  );
-});
-
-const MixItUpChip = memo(function MixItUpChip({ colors }: { colors: ThemeColors }) {
-  const { t } = useTranslation();
-  const [loading, setLoading] = useState(false);
-  const color = colors.primary;
-
-  // Always-visible primary chip: no useEffect-driven entrance animation like the
-  // genre chips have. Starting opacity at 0 and fading in via `useEffect +
-  // withTiming` leaves the chip permanently invisible whenever the effect doesn't
-  // fire as expected (double-mount, strict-mode quirks, worklet timing).
-  const scale = useSharedValue(1);
-  const handlePressIn = useCallback(() => {
-    scale.value = withSpring(0.96, { damping: 15, stiffness: 150 });
-  }, [scale]);
-  const handlePressOut = useCallback(() => {
-    scale.value = withSpring(1, { damping: 15, stiffness: 150 });
-  }, [scale]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const handlePress = useCallback(async () => {
-    if (loading) return;
-    selectionAsync();
-    setLoading(true);
-    try {
-      const { listLength } = layoutPreferencesStore.getState();
-      let songs: Child[] | null;
-      if (isOnline()) {
-        songs = await getRandomSongs(listLength);
-      } else {
-        songs = getOfflineSongsAll();
-        if (songs) songs = shuffleArray(songs).slice(0, listLength);
-      }
-      if (songs && songs.length > 0) {
-        await playTrack(songs[0], songs);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [loading]);
-
-  return (
-    <Animated.View style={animatedStyle}>
-      <Pressable
-        onPress={handlePress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        style={[
-          styles.chip,
-          {
-            backgroundColor: color + '1A',
-            borderColor: color + '4D',
-          },
-        ]}
-      >
-        {loading ? (
-          <ActivityIndicator size={12} color={color} />
-        ) : (
-          <Ionicons name="shuffle" size={14} color={color} />
-        )}
-        <Text
-          style={[styles.chipText, { color: colors.textPrimary }]}
-          numberOfLines={1}
-        >
-          {t('mixItUp')}
-        </Text>
-        <Ionicons name="play" size={12} color={color} />
+    <Animated.View
+      style={[{ width, height, marginHorizontal: CARD_GAP / 2, transformOrigin: 'center bottom' }, animatedStyle]}
+    >
+      <Pressable onPress={handlePress} style={[styles.card, { borderTopLeftRadius: width / 2, borderTopRightRadius: width / 2 }]}>
+        <LinearGradient
+          colors={[hexWithAlpha(tint, 0.85), hexWithAlpha(tint, 0.25), colors.card]}
+          locations={[0, 0.55, 1]}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.cardIcon}>
+          {genre ? (
+            <Ionicons name="musical-notes" size={44} color="rgba(255,255,255,0.9)" />
+          ) : (
+            <Ionicons name="shuffle" size={52} color="rgba(255,255,255,0.9)" />
+          )}
+        </View>
+        <View style={styles.cardFooter}>
+          <Text style={[styles.cardTitle, { color: colors.textPrimary }]} numberOfLines={2}>
+            {genre ?? t('mixItUp')}
+          </Text>
+          {loading ? (
+            <ActivityIndicator size="small" color={colors.textPrimary} />
+          ) : (
+            <Ionicons name="play" size={16} color={colors.textPrimary} />
+          )}
+        </View>
       </Pressable>
     </Animated.View>
   );
@@ -216,10 +178,14 @@ export const GenreChipSection = memo(function GenreChipSection({
 }: GenreChipSectionProps) {
   const { t } = useTranslation();
   const router = useRouter();
+  const { primaryColor } = useTheme();
+  const { width: screenWidth } = useWindowDimensions();
   const serverGenres = genreStore((s) => s.genres);
   const offlineMode = offlineModeStore((s) => s.offlineMode);
   const isServerReachable = connectivityStore((s) => s.isServerReachable);
   const online = !offlineMode && isServerReachable;
+  const [mixLoading, setMixLoading] = useState(false);
+  const scrollX = useSharedValue(0);
 
   const genres = useMemo(() => {
     // Start with listening history genres sorted by play count
@@ -227,8 +193,8 @@ export const GenreChipSection = memo(function GenreChipSection({
       .sort(([, a], [, b]) => b - a)
       .map(([genre]) => genre);
 
-    if (historyGenres.length >= MAX_GENRE_CHIPS) {
-      return historyGenres.slice(0, MAX_GENRE_CHIPS);
+    if (historyGenres.length >= MAX_GENRES) {
+      return historyGenres.slice(0, MAX_GENRES);
     }
 
     // Backfill from server genres (sorted by songCount desc)
@@ -240,7 +206,7 @@ export const GenreChipSection = memo(function GenreChipSection({
         (a, b) => (b.songCount ?? 0) - (a.songCount ?? 0)
       );
       for (const g of sorted) {
-        if (result.length >= MAX_GENRE_CHIPS) break;
+        if (result.length >= MAX_GENRES) break;
         if (!existing.has(g.value.toLowerCase())) {
           existing.add(g.value.toLowerCase());
           result.push(g.value);
@@ -255,92 +221,146 @@ export const GenreChipSection = memo(function GenreChipSection({
     router.push('/tuned-in');
   }, [router]);
 
-  if (genres.length === 0) return null;
+  const handlePlayAll = useCallback(async () => {
+    if (mixLoading) return;
+    selectionAsync();
+    setMixLoading(true);
+    try {
+      await playRandomMix();
+    } finally {
+      setMixLoading(false);
+    }
+  }, [mixLoading]);
+
+  const onScroll = useAnimatedScrollHandler((e) => {
+    scrollX.value = e.contentOffset.x;
+  });
+
+  const cardWidth = Math.min(Math.round(screenWidth * 0.5), 220);
+  const cardHeight = Math.round(cardWidth * 1.45);
+  const itemSize = cardWidth + CARD_GAP;
+  const sidePad = (screenWidth - cardWidth) / 2 - CARD_GAP / 2;
+  const playBg = primaryColor ?? colors.textPrimary;
+  const items = useMemo<(string | null)[]>(() => [null, ...genres], [genres]);
 
   return (
     <View style={styles.section}>
-      <View style={styles.header}>
-        {online ? (
-          <Pressable
-            onPress={handleTunedInPress}
-            style={({ pressed }) => [{ flex: 1 }, pressed && styles.headerPressed]}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={t('openTunedIn')}
-          >
-            <Text style={[styles.title, { color: colors.textPrimary }]}>
-              {t('tunedIn')}
-            </Text>
-          </Pressable>
+      <Text style={[styles.heroTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+        {t('homeHeroTitle')}
+      </Text>
+      {online && (
+        <Pressable
+          onPress={handleTunedInPress}
+          hitSlop={8}
+          style={({ pressed }) => [styles.tunedIn, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel={t('openTunedIn')}
+        >
+          <Text style={[styles.tunedInText, { color: colors.textSecondary }]}>{t('tunedIn')}</Text>
+          <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+        </Pressable>
+      )}
+      <Pressable
+        onPress={handlePlayAll}
+        style={({ pressed }) => [styles.playButton, { backgroundColor: playBg }, pressed && styles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel={t('mixItUp')}
+      >
+        {mixLoading ? (
+          <ActivityIndicator size="small" color={readableOn(playBg)} />
         ) : (
-          <Text style={[styles.title, { color: colors.textPrimary, flex: 1 }]}>
-            {t('tunedIn')}
-          </Text>
+          <Ionicons name="play" size={30} color={readableOn(playBg)} style={styles.playGlyph} />
         )}
-        {online && (
-          <Pressable
-            onPress={handleTunedInPress}
-            style={({ pressed }) => [styles.chevronButton, pressed && styles.headerPressed]}
-            hitSlop={8}
-          >
-            <Ionicons name="chevron-forward" size={24} color={colors.textSecondary} />
-          </Pressable>
-        )}
-      </View>
-      <ScrollView
+      </Pressable>
+      <Animated.ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chipRow}
+        snapToInterval={itemSize}
+        decelerationRate="fast"
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        style={[styles.fan, { marginHorizontal: -16, height: cardHeight + 72 }]}
+        contentContainerStyle={{ paddingHorizontal: sidePad, paddingTop: 8 }}
       >
-        <MixItUpChip colors={colors} />
-        {genres.map((genre) => (
-          <GenreChip
-            key={genre}
+        {items.map((genre, index) => (
+          <FanCard
+            key={genre ?? SHUFFLE_KEY}
+            index={index}
+            scrollX={scrollX}
+            itemSize={itemSize}
+            width={cardWidth}
+            height={cardHeight}
             genre={genre}
             colors={colors}
           />
         ))}
-      </ScrollView>
+      </Animated.ScrollView>
     </View>
   );
 });
 
 const styles = StyleSheet.create({
   section: {
-    marginBottom: 24,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: 8,
   },
-  headerPressed: {
+  heroTitle: {
+    fontSize: 40,
+    fontWeight: '800',
+    letterSpacing: -1,
+    textAlign: 'center',
+  },
+  tunedIn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    marginTop: 4,
+  },
+  tunedInText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  pressed: {
     opacity: 0.6,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
+  playButton: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 18,
+    marginBottom: 20,
   },
-  chevronButton: {
-    padding: 4,
+  playGlyph: {
+    marginLeft: 3,
   },
-  chipRow: {
-    gap: 8,
+  fan: {
+    alignSelf: 'stretch',
+    flexGrow: 0,
   },
-  chip: {
+  card: {
+    flex: 1,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    overflow: 'hidden',
+    justifyContent: 'space-between',
+  },
+  cardIcon: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 42,
-    paddingHorizontal: 14,
-    borderRadius: 21,
-    borderWidth: 1,
+    justifyContent: 'space-between',
     gap: 8,
-    maxWidth: 200,
+    padding: 14,
   },
-  chipText: {
+  cardTitle: {
+    flex: 1,
     fontSize: 16,
-    fontWeight: '600',
-    flexShrink: 1,
+    fontWeight: '700',
   },
 });

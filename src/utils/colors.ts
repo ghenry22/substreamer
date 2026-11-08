@@ -33,3 +33,12 @@ export function mixHexColors(base: string, blend: string, ratio: number): string
   const b = Math.round(bb + (lb - bb) * t);
   return '#' + r.toString(16).padStart(2, '0') + g.toString(16).padStart(2, '0') + b.toString(16).padStart(2, '0');
 }
+
+/** Black or white, whichever reads better on top of the given #RRGGBB color. */
+export function readableOn(hex: string): string {
+  if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return '#FFFFFF';
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return 0.299 * r + 0.587 * g + 0.114 * b > 160 ? '#000000' : '#FFFFFF';
+}
