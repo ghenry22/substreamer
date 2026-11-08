@@ -26,14 +26,14 @@ import { VIZ_PALETTE } from '../constants/vizColors';
 import { selectionAsync } from '../utils/haptics';
 import { GenreGlyph, type GlyphName } from './GenreGlyph';
 
-const ICON_GLYPH = 54;
+const ICON_GLYPH = 60;
 const ICON_OVERLAP = 0.6;
 const TAB_BAR_BASE_HEIGHT = 56;
 /** Layout pitch as a fraction of card width; below 1 so neighbours overlap. */
-const SPREAD = 0.84;
+const SPREAD = 0.62;
 const RIM = 1.5;
 /** Extra canvas around the arch so the glow is not clipped by the SVG bounds. */
-const GLOW_PAD = 36;
+const GLOW_PAD = 48;
 /** Cycling needs enough cards to fill the screen on both sides. */
 const MIN_CYCLIC = 3;
 const REPEATS = 3;
@@ -112,11 +112,11 @@ const Card = memo(function Card({
     const input = [-2, -1, 0, 1, 2];
     return {
       zIndex: 10 - Math.round(Math.abs(d)),
-      opacity: interpolate(d, input, [0.3, 0.75, 1, 0.75, 0.3], Extrapolation.CLAMP),
+      opacity: interpolate(d, input, [0.5, 0.85, 1, 0.85, 0.5], Extrapolation.CLAMP),
       transform: [
-        { translateY: interpolate(d, input, [44, 20, 0, 20, 44], Extrapolation.CLAMP) },
-        { rotate: `${interpolate(d, input, [-4, -2, 0, 2, 4], Extrapolation.CLAMP)}deg` },
-        { scale: interpolate(d, input, [0.66, 0.83, 1, 0.83, 0.66], Extrapolation.CLAMP) },
+        { translateY: interpolate(d, input, [34, 14, 0, 14, 34], Extrapolation.CLAMP) },
+        { rotate: `${interpolate(d, input, [-7, -3.5, 0, 3.5, 7], Extrapolation.CLAMP)}deg` },
+        { scale: interpolate(d, input, [0.72, 0.87, 1, 0.87, 0.72], Extrapolation.CLAMP) },
       ],
     };
   });
@@ -133,10 +133,13 @@ const Card = memo(function Card({
   }, [genre, loading, onSelect]);
 
   const id = tint.slice(1);
-  const r = Math.min(width * 0.46, width / 2);
+  // A wide dome: the top is a full half-ellipse spanning the card, so the card reads
+  // as a rounded hemisphere stretched downwards rather than a door-like arch.
+  const rx = width / 2 - RIM / 2;
+  const ry = Math.min(width * 0.46, height * 0.6);
   const left = RIM / 2;
   const right = width - RIM / 2;
-  const outline = `M${left} ${height} V${r} A${r - RIM / 2} ${r - RIM / 2} 0 0 1 ${left + r - RIM / 2} ${RIM / 2} H${right - r + RIM / 2} A${r - RIM / 2} ${r - RIM / 2} 0 0 1 ${right} ${r} V${height}`;
+  const outline = `M${left} ${height} V${ry} A${rx} ${ry} 0 0 1 ${right} ${ry} V${height}`;
 
   return (
     <Animated.View
@@ -154,20 +157,25 @@ const Card = memo(function Card({
         >
           <Defs>
             <LinearGradient id={`fill-${id}`} x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor={tint} stopOpacity="0.55" />
-              <Stop offset="0.45" stopColor={tint} stopOpacity="0.16" />
-              <Stop offset="0.85" stopColor={tint} stopOpacity="0" />
+              <Stop offset="0" stopColor={tint} stopOpacity="0.4" />
+              <Stop offset="0.5" stopColor={tint} stopOpacity="0.12" />
+              <Stop offset="1" stopColor={tint} stopOpacity="0" />
             </LinearGradient>
             <LinearGradient id={`rim-${id}`} x1="0" y1="0" x2="0" y2="1">
               <Stop offset="0" stopColor={tint} stopOpacity="0.95" />
-              <Stop offset="0.5" stopColor={tint} stopOpacity="0.35" />
-              <Stop offset="0.85" stopColor={tint} stopOpacity="0" />
+              <Stop offset="0.55" stopColor={tint} stopOpacity="0.35" />
+              <Stop offset="0.95" stopColor={tint} stopOpacity="0" />
             </LinearGradient>
             <LinearGradient id="body-dark" x1="0" y1="0" x2="0" y2="1">
               <Stop offset="0" stopColor={colors.background} stopOpacity="1" />
-              <Stop offset="0.4" stopColor={colors.background} stopOpacity="1" />
-              <Stop offset="0.85" stopColor={colors.background} stopOpacity="0" />
+              <Stop offset="0.45" stopColor={colors.background} stopOpacity="1" />
+              <Stop offset="1" stopColor={colors.background} stopOpacity="0" />
             </LinearGradient>
+            <RadialGradient id={`top-${id}`} cx="50%" cy="0%" rx="75%" ry="85%">
+              <Stop offset="0" stopColor={tint} stopOpacity="0.7" />
+              <Stop offset="0.6" stopColor={tint} stopOpacity="0.18" />
+              <Stop offset="1" stopColor={tint} stopOpacity="0" />
+            </RadialGradient>
             <RadialGradient id={`glow-${id}`} cx="50%" cy="50%" rx="50%" ry="50%">
               <Stop offset="0" stopColor={tint} stopOpacity="0.5" />
               <Stop offset="1" stopColor={tint} stopOpacity="0" />
@@ -176,13 +184,14 @@ const Card = memo(function Card({
           <G x={GLOW_PAD} y={GLOW_PAD}>
             <Ellipse
               cx={width / 2}
-              cy={r * 0.1}
-              rx={width * 0.62}
-              ry={ICON_GLYPH * 1.1}
+              cy={ry * 0.15}
+              rx={width * 0.7}
+              ry={ry * 0.9}
               fill={`url(#glow-${id})`}
             />
             <Path d={`${outline} Z`} fill="url(#body-dark)" />
             <Path d={`${outline} Z`} fill={`url(#fill-${id})`} />
+            <Path d={`${outline} Z`} fill={`url(#top-${id})`} />
             <Path d={outline} fill="none" stroke={`url(#rim-${id})`} strokeWidth={RIM} />
           </G>
         </Svg>
@@ -231,8 +240,8 @@ export const GenreCarousel = memo(function GenreCarousel({
     [items, count, repeats],
   );
 
-  const cardWidth = Math.min(Math.round(screenWidth * 0.4), 190);
-  const cardHeight = Math.round(cardWidth * 1.55);
+  const cardWidth = Math.min(Math.round(screenWidth * 0.5), 240);
+  const cardHeight = Math.round(cardWidth * 0.95);
   // The layout pitch equals the snap interval, so the card the fan rests on is
   // always the one centred on screen.
   const itemSize = Math.round(cardWidth * SPREAD);
@@ -327,9 +336,9 @@ const styles = StyleSheet.create({
     marginTop: -ICON_GLYPH * ICON_OVERLAP,
   },
   title: {
-    marginTop: 8,
-    paddingHorizontal: 8,
-    fontSize: 16,
+    marginTop: 6,
+    paddingHorizontal: 14,
+    fontSize: 17,
     fontWeight: '600',
     textAlign: 'center',
   },
