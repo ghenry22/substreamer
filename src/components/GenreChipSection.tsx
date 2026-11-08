@@ -1,5 +1,6 @@
 import Ionicons from "@react-native-vector-icons/ionicons/static";
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { memo, useCallback, useMemo, useRef, useState, type ComponentProps } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -98,7 +99,8 @@ async function playRandomMix(): Promise<void> {
 }
 
 const SHUFFLE_KEY = '__shuffle__';
-const ICON_SIZE = 72;
+const ICON_SIZE = 60;
+const TAB_BAR_BASE_HEIGHT = 56;
 const SPREAD = 0.8;
 const RIM = 1.5;
 
@@ -160,23 +162,24 @@ const FanCard = memo(function FanCard({
 }: FanCardProps) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
-  const { icon, color: tint } = useMemo<GenreStyle>(
-    () => (genre ? genreStyle(genre) : { icon: 'shuffle', color: '#E6E6E6' }),
-    [genre],
-  );
+  const { icon, color: tint } = useMemo<GenreStyle>(() => {
+    const base = genre ? genreStyle(genre) : { icon: 'shuffle' as IconName, color: '#E6E6E6' };
+    // Pull the neon accents towards grey so the cards read as calm glass.
+    return { icon: base.icon, color: mixHexColors(base.color, '#707070', 0.3) };
+  }, [genre]);
 
-  const glowColor = useMemo(() => mixHexColors(tint, '#FFFFFF', 0.3), [tint]);
+  const glowColor = useMemo(() => mixHexColors(tint, '#FFFFFF', 0.4), [tint]);
 
   const animatedStyle = useAnimatedStyle(() => {
     const d = (scrollX.value - index * itemSize) / itemSize;
     const input = [-2, -1, 0, 1, 2];
     return {
       zIndex: 10 - Math.round(Math.abs(d)),
-      opacity: interpolate(d, input, [0.4, 0.7, 1, 0.7, 0.4], Extrapolation.CLAMP),
+      opacity: interpolate(d, input, [0.25, 0.5, 1, 0.5, 0.25], Extrapolation.CLAMP),
       transform: [
-        { translateY: interpolate(d, input, [110, 52, 0, 52, 110], Extrapolation.CLAMP) },
+        { translateY: interpolate(d, input, [64, 30, 0, 30, 64], Extrapolation.CLAMP) },
         { rotate: `${interpolate(d, input, [-6, -3, 0, 3, 6], Extrapolation.CLAMP)}deg` },
-        { scale: interpolate(d, input, [0.74, 0.87, 1, 0.87, 0.74], Extrapolation.CLAMP) },
+        { scale: interpolate(d, input, [0.72, 0.86, 1, 0.86, 0.72], Extrapolation.CLAMP) },
       ],
     };
   });
@@ -203,8 +206,8 @@ const FanCard = memo(function FanCard({
       <Pressable onPress={handlePress} style={styles.card}>
         {/* Rim: a bright edge that fades out towards the bottom. */}
         <LinearGradient
-          colors={[hexWithAlpha(tint, 0.95), hexWithAlpha(tint, 0.35), hexWithAlpha(tint, 0)]}
-          locations={[0, 0.55, 1]}
+          colors={[hexWithAlpha(tint, 0.7), hexWithAlpha(tint, 0.25), hexWithAlpha(tint, 0)]}
+          locations={[0, 0.45, 0.85]}
           style={[styles.arch, { borderTopLeftRadius: width / 2, borderTopRightRadius: width / 2 }]}
         />
         {/* Body: dark glass with a coloured tint near the top. */}
@@ -222,12 +225,12 @@ const FanCard = memo(function FanCard({
         >
           <LinearGradient
             colors={[colors.background, colors.background, hexWithAlpha(colors.background, 0)]}
-            locations={[0, 0.5, 1]}
+            locations={[0, 0.4, 0.85]}
             style={StyleSheet.absoluteFill}
           />
           <LinearGradient
-            colors={[hexWithAlpha(tint, 0.5), hexWithAlpha(tint, 0.14), hexWithAlpha(tint, 0)]}
-            locations={[0, 0.5, 1]}
+            colors={[hexWithAlpha(tint, 0.32), hexWithAlpha(tint, 0.08), hexWithAlpha(tint, 0)]}
+            locations={[0, 0.45, 0.85]}
             style={StyleSheet.absoluteFill}
           />
         </View>
@@ -240,8 +243,8 @@ const FanCard = memo(function FanCard({
               size={ICON_SIZE}
               color={glowColor}
               style={{
-                textShadowColor: hexWithAlpha(tint, 0.9),
-                textShadowRadius: 18,
+                textShadowColor: hexWithAlpha(tint, 0.6),
+                textShadowRadius: 10,
                 textShadowOffset: { width: 0, height: 0 },
               }}
             />
@@ -268,6 +271,8 @@ export const GenreChipSection = memo(function GenreChipSection({
   const router = useRouter();
   const { primaryColor } = useTheme();
   const { width: screenWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = TAB_BAR_BASE_HEIGHT + insets.bottom;
   const serverGenres = genreStore((s) => s.genres);
   const offlineMode = offlineModeStore((s) => s.offlineMode);
   const isServerReachable = connectivityStore((s) => s.isServerReachable);
@@ -364,7 +369,7 @@ export const GenreChipSection = memo(function GenreChipSection({
   });
 
   const cardWidth = Math.min(Math.round(screenWidth * 0.44), 210);
-  const cardHeight = Math.round(cardWidth * 1.6);
+  const cardHeight = Math.round(cardWidth * 1.4);
   // Neighbouring cards overlap: the layout pitch equals the snap interval, so the
   // card the fan rests on is always the one centred on screen.
   const itemSize = Math.round(cardWidth * SPREAD);
@@ -499,7 +504,10 @@ export const GenreChipSection = memo(function GenreChipSection({
         onScroll={onScroll}
         onMomentumScrollEnd={handleSettle}
         scrollEventThrottle={16}
-        style={[styles.fan, { height: Math.round(cardHeight * 0.7) + ICON_SIZE * 0.7 }]}
+        style={[
+          styles.fan,
+          { height: cardHeight + ICON_SIZE * 0.7, marginBottom: tabBarHeight - 28 },
+        ]}
         contentContainerStyle={{ paddingHorizontal: sidePad, paddingTop: ICON_SIZE * 0.7 }}
       >
         {items.map((genre, index) => (
