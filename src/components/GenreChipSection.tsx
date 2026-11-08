@@ -1,7 +1,6 @@
 import Ionicons from "@react-native-vector-icons/ionicons/static";
 import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -10,22 +9,15 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
 } from 'react-native';
 import Animated, {
-  Extrapolation,
   FadeIn,
   FadeOut,
-  interpolate,
   runOnJS,
-  useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
-  type SharedValue,
 } from 'react-native-reanimated';
 
 import { type ThemeColors } from '../constants/theme';
@@ -40,26 +32,16 @@ import { searchStore } from '../store/searchStore';
 import { layoutPreferencesStore } from '../store/layoutPreferencesStore';
 import { offlineModeStore } from '../store/offlineModeStore';
 import { selectionAsync } from '../utils/haptics';
-import { VIZ_PALETTE } from '../constants/vizColors';
 import { useImagePalette } from '../hooks/useImagePalette';
 import { usePlaybackState } from '../hooks/usePlaybackState';
 import { useTheme } from '../hooks/useTheme';
 import { CachedImage } from './CachedImage';
 import { FavoriteButton } from './FavoriteButton';
 import { hexWithAlpha, readableOn } from '../utils/colors';
-import { GenreGlyph, type GlyphName } from './GenreGlyph';
+import { GenreCarousel, genreColor } from './GenreCarousel';
 
 const MAX_GENRES = 8;
 
-
-/** Deterministic color for a genre name (stable across re-renders/sessions). */
-function genreColor(genre: string): string {
-  let hash = 0;
-  for (let i = 0; i < genre.length; i++) {
-    hash = (hash * 31 + genre.charCodeAt(i)) | 0;
-  }
-  return VIZ_PALETTE[Math.abs(hash) % VIZ_PALETTE.length];
-}
 
 function isOnline(): boolean {
   const { offlineMode } = offlineModeStore.getState();
@@ -99,150 +81,6 @@ async function playRandomMix(): Promise<void> {
   }
 }
 
-const SHUFFLE_KEY = '__shuffle__';
-const ICON_GLYPH = 54;
-const ICON_OVERLAP = 0.6;
-const TAB_BAR_BASE_HEIGHT = 56;
-const SPREAD = 0.84;
-const RIM = 1.5;
-
-interface GenreStyle {
-  icon: GlyphName;
-  color: string;
-}
-
-const GENRE_STYLE_RULES: [RegExp, GenreStyle][] = [
-  [/rap|hip|trap|drill|grime/, { icon: 'crown', color: '#F5A524' }],
-  [/rock|punk|grunge|metal|hardcore/, { icon: 'note', color: '#34D058' }],
-  [/electro|techno|house|dance|edm|trance|dub|synth/, { icon: 'headphones', color: '#2EA8FF' }],
-  [/jazz|blues|swing|soul|funk/, { icon: 'equalizer', color: '#A23DFF' }],
-  [/pop|r&b|rnb|disco/, { icon: 'sparkle', color: '#B65CFF' }],
-  [/folk|country|acoustic|bluegrass/, { icon: 'leaf', color: '#7BC043' }],
-  [/ambient|chill|lofi|lo-fi|downtempo|sleep/, { icon: 'moon', color: '#6C8CFF' }],
-  [/soundtrack|score|film|game|classic|orchestra|opera|piano/, { icon: 'disc', color: '#4DD0C8' }],
-];
-const FALLBACK_ICONS: GlyphName[] = ['disc', 'mic', 'moon', 'leaf', 'headphones', 'note'];
-
-/** Glyph and colour for a genre: keyword match first, otherwise a stable pick. */
-function genreStyle(genre: string): GenreStyle {
-  const g = genre.toLowerCase();
-  for (const [re, style] of GENRE_STYLE_RULES) {
-    if (re.test(g)) return style;
-  }
-  let hash = 0;
-  for (let i = 0; i < g.length; i++) hash = (hash * 31 + g.charCodeAt(i)) | 0;
-  return {
-    icon: FALLBACK_ICONS[Math.abs(hash) % FALLBACK_ICONS.length],
-    color: genreColor(genre),
-  };
-}
-
-interface FanCardProps {
-  index: number;
-  scrollX: SharedValue<number>;
-  itemSize: number;
-  width: number;
-  height: number;
-  /** null renders the shuffle-everything card. */
-  genre: string | null;
-  colors: ThemeColors;
-}
-
-const FanCard = memo(function FanCard({
-  index,
-  scrollX,
-  itemSize,
-  width,
-  height,
-  genre,
-  colors,
-}: FanCardProps) {
-  const { t } = useTranslation();
-  const [loading, setLoading] = useState(false);
-  const { icon, color: tint } = useMemo<GenreStyle>(
-    () => (genre ? genreStyle(genre) : { icon: 'shuffle', color: '#E6E6E6' }),
-    [genre],
-  );
-
-  const animatedStyle = useAnimatedStyle(() => {
-    const d = (scrollX.value - index * itemSize) / itemSize;
-    const input = [-2, -1, 0, 1, 2];
-    return {
-      zIndex: 10 - Math.round(Math.abs(d)),
-      opacity: interpolate(d, input, [0.3, 0.75, 1, 0.75, 0.3], Extrapolation.CLAMP),
-      transform: [
-        { translateY: interpolate(d, input, [44, 20, 0, 20, 44], Extrapolation.CLAMP) },
-        { rotate: `${interpolate(d, input, [-4, -2, 0, 2, 4], Extrapolation.CLAMP)}deg` },
-        { scale: interpolate(d, input, [0.66, 0.83, 1, 0.83, 0.66], Extrapolation.CLAMP) },
-      ],
-    };
-  });
-
-  const handlePress = useCallback(async () => {
-    if (loading) return;
-    selectionAsync();
-    setLoading(true);
-    try {
-      if (genre) await playGenre(genre);
-      else await playRandomMix();
-    } finally {
-      setLoading(false);
-    }
-  }, [genre, loading]);
-
-  return (
-    <Animated.View
-      style={[
-        { width, height, marginHorizontal: (itemSize - width) / 2, transformOrigin: 'center bottom' },
-        animatedStyle,
-      ]}
-    >
-      <Pressable onPress={handlePress} style={styles.card}>
-        {/* Rim: a bright edge that fades out towards the bottom. */}
-        <LinearGradient
-          colors={[hexWithAlpha(tint, 0.9), hexWithAlpha(tint, 0.35), hexWithAlpha(tint, 0)]}
-          locations={[0, 0.45, 0.85]}
-          style={[styles.arch, { borderTopLeftRadius: width * 0.46, borderTopRightRadius: width * 0.46 }]}
-        />
-        {/* Body: dark glass with a coloured tint near the top. */}
-        <View
-          style={[
-            styles.archBody,
-            {
-              top: RIM,
-              left: RIM,
-              right: RIM,
-              borderTopLeftRadius: width * 0.46 - RIM,
-              borderTopRightRadius: width * 0.46 - RIM,
-            },
-          ]}
-        >
-          <LinearGradient
-            colors={[colors.background, colors.background, hexWithAlpha(colors.background, 0)]}
-            locations={[0, 0.4, 0.85]}
-            style={StyleSheet.absoluteFill}
-          />
-          <LinearGradient
-            colors={[hexWithAlpha(tint, 0.55), hexWithAlpha(tint, 0.16), hexWithAlpha(tint, 0)]}
-            locations={[0, 0.45, 0.85]}
-            style={StyleSheet.absoluteFill}
-          />
-        </View>
-        <View style={styles.iconWrap}>
-          {loading ? (
-            <ActivityIndicator size="large" color={tint} />
-          ) : (
-            <GenreGlyph name={icon} color={tint} size={ICON_GLYPH} />
-          )}
-        </View>
-        <Text style={[styles.cardTitle, { color: colors.textPrimary }]} numberOfLines={2}>
-          {genre ?? t('randomMix')}
-        </Text>
-      </Pressable>
-    </Animated.View>
-  );
-});
-
 interface GenreChipSectionProps {
   genreCounts: Record<string, number>;
   colors: ThemeColors;
@@ -255,9 +93,6 @@ export const GenreChipSection = memo(function GenreChipSection({
   const { t } = useTranslation();
   const router = useRouter();
   const { primaryColor } = useTheme();
-  const { width: screenWidth } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  const tabBarHeight = TAB_BAR_BASE_HEIGHT + insets.bottom;
   const serverGenres = genreStore((s) => s.genres);
   const offlineMode = offlineModeStore((s) => s.offlineMode);
   const isServerReachable = connectivityStore((s) => s.isServerReachable);
@@ -270,7 +105,6 @@ export const GenreChipSection = memo(function GenreChipSection({
     currentTrack?.coverArt ?? undefined,
     currentTrack?.albumId,
   );
-  const scrollX = useSharedValue(0);
 
   const heroShift = useSharedValue(0);
   const heroShiftStyle = useAnimatedStyle(() => ({
@@ -349,31 +183,16 @@ export const GenreChipSection = memo(function GenreChipSection({
     }
   }, [mixLoading]);
 
-  const onScroll = useAnimatedScrollHandler((e) => {
-    scrollX.value = e.contentOffset.x;
-  });
-
-  const cardWidth = Math.min(Math.round(screenWidth * 0.4), 190);
-  const cardHeight = Math.round(cardWidth * 1.55);
-  // Neighbouring cards overlap: the layout pitch equals the snap interval, so the
-  // card the fan rests on is always the one centred on screen.
-  const itemSize = Math.round(cardWidth * SPREAD);
-  const sidePad = (screenWidth - cardWidth) / 2 - (itemSize - cardWidth) / 2;
-  const playBg = primaryColor ?? colors.textPrimary;
-  const items = useMemo<(string | null)[]>(() => [null, ...genres], [genres]);
-
-  const settledIndex = useRef(0);
-  const handleSettle = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const i = Math.round(e.nativeEvent.contentOffset.x / itemSize);
-      if (i === settledIndex.current || i < 0 || i >= items.length) return;
-      settledIndex.current = i;
-      selectionAsync();
-      const genre = items[i];
-      void (genre ? playGenre(genre) : playRandomMix()).catch(() => {});
-    },
-    [itemSize, items],
+  const handleSelectGenre = useCallback(
+    (genre: string | null) => (genre ? playGenre(genre) : playRandomMix()),
+    [],
   );
+  const handleSettleGenre = useCallback((genre: string | null) => {
+    selectionAsync();
+    void (genre ? playGenre(genre) : playRandomMix()).catch(() => {});
+  }, []);
+
+  const playBg = primaryColor ?? colors.textPrimary;
   const glow = useMemo(
     () => [
       currentTrack && palettePrimary ? palettePrimary : genreColor(genres[0] ?? 'a'),
@@ -481,33 +300,12 @@ export const GenreChipSection = memo(function GenreChipSection({
         )}
       </Animated.View>
       </GestureDetector>
-      <Animated.ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        snapToInterval={itemSize}
-        decelerationRate="fast"
-        onScroll={onScroll}
-        onMomentumScrollEnd={handleSettle}
-        scrollEventThrottle={16}
-        style={[
-          styles.fan,
-          { height: cardHeight + ICON_GLYPH * ICON_OVERLAP, marginBottom: tabBarHeight - 28 },
-        ]}
-        contentContainerStyle={{ paddingHorizontal: sidePad, paddingTop: ICON_GLYPH * ICON_OVERLAP }}
-      >
-        {items.map((genre, index) => (
-          <FanCard
-            key={genre ?? SHUFFLE_KEY}
-            index={index}
-            scrollX={scrollX}
-            itemSize={itemSize}
-            width={cardWidth}
-            height={cardHeight}
-            genre={genre}
-            colors={colors}
-          />
-        ))}
-      </Animated.ScrollView>
+      <GenreCarousel
+        genres={genres}
+        colors={colors}
+        onSelect={handleSelectGenre}
+        onSettle={handleSettleGenre}
+      />
     </View>
   );
 });
@@ -600,39 +398,5 @@ const styles = StyleSheet.create({
   },
   playGlyph: {
     marginLeft: 3,
-  },
-  fan: {
-    alignSelf: 'stretch',
-    flexGrow: 0,
-  },
-  card: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  arch: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  archBody: {
-    position: 'absolute',
-    bottom: 0,
-    overflow: 'hidden',
-  },
-  iconWrap: {
-    width: ICON_GLYPH,
-    height: ICON_GLYPH,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: -ICON_GLYPH * ICON_OVERLAP,
-  },
-  cardTitle: {
-    marginTop: 8,
-    paddingHorizontal: 8,
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
   },
 });
