@@ -27,6 +27,7 @@ import { playTrack } from '../services/playerService';
 import { shuffleArray } from '../utils/arrayHelpers';
 import { connectivityStore } from '../store/connectivityStore';
 import { genreStore } from '../store/genreStore';
+import { playerStore } from '../store/playerStore';
 import { layoutPreferencesStore } from '../store/layoutPreferencesStore';
 import { offlineModeStore } from '../store/offlineModeStore';
 import { selectionAsync } from '../utils/haptics';
@@ -185,6 +186,7 @@ export const GenreChipSection = memo(function GenreChipSection({
   const isServerReachable = connectivityStore((s) => s.isServerReachable);
   const online = !offlineMode && isServerReachable;
   const [mixLoading, setMixLoading] = useState(false);
+  const currentTrack = playerStore((s) => s.currentTrack);
   const scrollX = useSharedValue(0);
 
   const genres = useMemo(() => {
@@ -221,6 +223,10 @@ export const GenreChipSection = memo(function GenreChipSection({
     router.push('/tuned-in');
   }, [router]);
 
+  const handleOpenPlayer = useCallback(() => {
+    router.push('/player');
+  }, [router]);
+
   const handlePlayAll = useCallback(async () => {
     if (mixLoading) return;
     selectionAsync();
@@ -242,36 +248,63 @@ export const GenreChipSection = memo(function GenreChipSection({
   const sidePad = (screenWidth - cardWidth) / 2 - CARD_GAP / 2;
   const playBg = primaryColor ?? colors.textPrimary;
   const items = useMemo<(string | null)[]>(() => [null, ...genres], [genres]);
+  const glow = useMemo(
+    () => [genreColor(genres[0] ?? 'a'), genreColor(genres[1] ?? 'b')],
+    [genres],
+  );
 
   return (
     <View style={styles.section}>
-      <Text style={[styles.heroTitle, { color: colors.textPrimary }]} numberOfLines={1}>
-        {t('homeHeroTitle')}
-      </Text>
-      {online && (
+      <LinearGradient
+        colors={[hexWithAlpha(glow[0], 0.5), hexWithAlpha(glow[1], 0.22), 'transparent']}
+        locations={[0, 0.45, 1]}
+        style={styles.glow}
+        pointerEvents="none"
+      />
+      <View style={styles.hero}>
+        <Text style={[styles.heroTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+          {t('homeHeroTitle')}
+        </Text>
         <Pressable
-          onPress={handleTunedInPress}
-          hitSlop={8}
-          style={({ pressed }) => [styles.tunedIn, pressed && styles.pressed]}
+          onPress={handlePlayAll}
+          style={({ pressed }) => [styles.playButton, { backgroundColor: playBg }, pressed && styles.pressed]}
           accessibilityRole="button"
-          accessibilityLabel={t('openTunedIn')}
+          accessibilityLabel={t('mixItUp')}
         >
-          <Text style={[styles.tunedInText, { color: colors.textSecondary }]}>{t('tunedIn')}</Text>
-          <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+          {mixLoading ? (
+            <ActivityIndicator size="small" color={readableOn(playBg)} />
+          ) : (
+            <Ionicons name="play" size={34} color={readableOn(playBg)} style={styles.playGlyph} />
+          )}
         </Pressable>
-      )}
-      <Pressable
-        onPress={handlePlayAll}
-        style={({ pressed }) => [styles.playButton, { backgroundColor: playBg }, pressed && styles.pressed]}
-        accessibilityRole="button"
-        accessibilityLabel={t('mixItUp')}
-      >
-        {mixLoading ? (
-          <ActivityIndicator size="small" color={readableOn(playBg)} />
-        ) : (
-          <Ionicons name="play" size={30} color={readableOn(playBg)} style={styles.playGlyph} />
+        {currentTrack && (
+          <Pressable
+            onPress={handleOpenPlayer}
+            style={({ pressed }) => [
+              styles.nowPlaying,
+              { backgroundColor: 'rgba(255,255,255,0.12)' },
+              pressed && styles.pressed,
+            ]}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.nowPlayingText, { color: colors.textPrimary }]} numberOfLines={2}>
+              {currentTrack.artist ? `${currentTrack.artist} — ${currentTrack.title}` : currentTrack.title}
+            </Text>
+          </Pressable>
         )}
-      </Pressable>
+        {online && (
+          <Pressable
+            onPress={handleTunedInPress}
+            hitSlop={8}
+            style={({ pressed }) => [styles.tunedIn, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={t('openTunedIn')}
+          >
+            <Text style={[styles.tunedInText, { color: colors.textSecondary }]}>{t('tunedIn')}</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+          </Pressable>
+        )}
+      </View>
       <Animated.ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -279,7 +312,7 @@ export const GenreChipSection = memo(function GenreChipSection({
         decelerationRate="fast"
         onScroll={onScroll}
         scrollEventThrottle={16}
-        style={[styles.fan, { marginHorizontal: -16, height: cardHeight + 72 }]}
+        style={[styles.fan, { height: cardHeight + 72 }]}
         contentContainerStyle={{ paddingHorizontal: sidePad, paddingTop: 8 }}
       >
         {items.map((genre, index) => (
@@ -301,11 +334,36 @@ export const GenreChipSection = memo(function GenreChipSection({
 
 const styles = StyleSheet.create({
   section: {
+    flex: 1,
+  },
+  glow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '70%',
+  },
+  hero: {
+    flex: 1,
     alignItems: 'center',
-    marginBottom: 8,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  nowPlaying: {
+    alignSelf: 'stretch',
+    marginTop: 22,
+    marginHorizontal: 8,
+    borderRadius: 32,
+    paddingVertical: 14,
+    paddingHorizontal: 22,
+  },
+  nowPlayingText: {
+    fontSize: 15,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   heroTitle: {
-    fontSize: 40,
+    fontSize: 56,
     fontWeight: '800',
     letterSpacing: -1,
     textAlign: 'center',
@@ -314,7 +372,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
-    marginTop: 4,
+    marginTop: 16,
   },
   tunedInText: {
     fontSize: 15,
@@ -324,13 +382,12 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   playButton: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    width: 84,
+    height: 84,
+    borderRadius: 42,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 18,
-    marginBottom: 20,
+    marginTop: 22,
   },
   playGlyph: {
     marginLeft: 3,

@@ -10,6 +10,7 @@ import WaveformLogo from '../../components/WaveformLogo';
 import { BannerStack } from '../../components/BannerStack';
 import { BottomChrome } from '../../components/BottomChrome';
 import { GradientBackground } from '../../components/GradientBackground';
+import { HomeHeader } from '../../components/HomeHeader';
 import { SearchableHeader } from '../../components/SearchableHeader';
 import { SearchResultsOverlay } from '../../components/SearchResultsOverlay';
 import { useTheme } from '../../hooks/useTheme';
@@ -39,7 +40,7 @@ export default function TabLayout() {
         screenOptions={{
           header: (props) => (
             <View onLayout={(e) => searchStore.getState().setHeaderHeight(e.nativeEvent.layout.height)}>
-              <SearchableHeader {...props} />
+              {props.route.name === 'index' ? <HomeHeader /> : <SearchableHeader {...props} />}
               <BannerStack />
             </View>
           ),
