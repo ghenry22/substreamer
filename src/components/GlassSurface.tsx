@@ -14,6 +14,8 @@ interface GlassSurfaceProps {
   strength?: number;
   /** Optional colour that tints the glass (e.g. the cover colour). */
   tint?: string;
+  /** Solid-ish colour under the glass layers (gives dark/white body). */
+  base?: string;
 }
 
 /**
@@ -29,6 +31,7 @@ function GlassSurfaceBase({
   radius = 24,
   strength = 1,
   tint,
+  base,
 }: GlassSurfaceProps) {
   const { theme } = useTheme();
   const dark = theme === 'dark';
@@ -40,7 +43,7 @@ function GlassSurfaceBase({
   const rimSoft = dark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.35)';
 
   return (
-    <View style={[{ borderRadius: radius, overflow: 'hidden' }, style]}>
+    <View style={[{ borderRadius: radius, overflow: 'hidden', backgroundColor: base }, style]}>
       {Platform.OS === 'ios' && (
         <BlurView
           tint={dark ? 'dark' : 'light'}
