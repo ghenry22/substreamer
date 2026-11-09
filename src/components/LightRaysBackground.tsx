@@ -110,6 +110,7 @@ const Ray = memo(function Ray({
 
   return (
     <Animated.View
+      renderToHardwareTextureAndroid
       style={[
         {
           position: 'absolute',
@@ -167,6 +168,7 @@ const Blob = memo(function Blob({
 
   return (
     <Animated.View
+      renderToHardwareTextureAndroid
       style={[
         {
           position: 'absolute',
@@ -241,6 +243,7 @@ export const LightRaysBackground = memo(function LightRaysBackground() {
         />
       ))}
       <Animated.View
+        renderToHardwareTextureAndroid
         style={[
           {
             position: 'absolute',

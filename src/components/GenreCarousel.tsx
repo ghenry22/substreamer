@@ -141,6 +141,7 @@ const Card = memo(function Card({
 
   return (
     <Animated.View
+      renderToHardwareTextureAndroid
       style={[
         { width, height, marginHorizontal: (itemSize - width) / 2, transformOrigin: 'center bottom' },
         animatedStyle,
