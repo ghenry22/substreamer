@@ -165,19 +165,9 @@ const Card = memo(function Card({
               <Stop offset="0.95" stopColor={tint} stopOpacity="0" />
             </LinearGradient>
             <LinearGradient id="body-dark" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor={colors.background} stopOpacity="0.55" />
-              <Stop offset="0.5" stopColor={colors.background} stopOpacity="0.4" />
+              <Stop offset="0" stopColor={colors.background} stopOpacity="1" />
+              <Stop offset="0.45" stopColor={colors.background} stopOpacity="1" />
               <Stop offset="1" stopColor={colors.background} stopOpacity="0" />
-            </LinearGradient>
-            <LinearGradient id="glass-sheen" x1="0" y1="0" x2="1" y2="1">
-              <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0.28" />
-              <Stop offset="0.45" stopColor="#FFFFFF" stopOpacity="0.05" />
-              <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0.1" />
-            </LinearGradient>
-            <LinearGradient id="glass-rim" x1="0" y1="0" x2="1" y2="1">
-              <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0.9" />
-              <Stop offset="0.5" stopColor="#FFFFFF" stopOpacity="0.12" />
-              <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0.35" />
             </LinearGradient>
             <RadialGradient id={`top-${id}`} cx="50%" cy="0%" rx="75%" ry="85%">
               <Stop offset="0" stopColor={tint} stopOpacity="0.7" />
@@ -188,9 +178,7 @@ const Card = memo(function Card({
           <Path d={`${outline} Z`} fill="url(#body-dark)" />
           <Path d={`${outline} Z`} fill={`url(#fill-${id})`} />
           <Path d={`${outline} Z`} fill={`url(#top-${id})`} />
-          <Path d={`${outline} Z`} fill="url(#glass-sheen)" />
           <Path d={outline} fill="none" stroke={`url(#rim-${id})`} strokeWidth={RIM} />
-          <Path d={outline} fill="none" stroke="url(#glass-rim)" strokeWidth={RIM * 0.8} />
         </Svg>
         <View style={styles.iconWrap}>
           {loading ? (

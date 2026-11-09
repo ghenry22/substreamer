@@ -4,12 +4,11 @@ import { PlatformPressable } from "expo-router/react-navigation";
 import { Tabs } from 'expo-router';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Keyboard, StyleSheet, View } from 'react-native';
+import { Keyboard, View } from 'react-native';
 
 import WaveformLogo from '../../components/WaveformLogo';
 import { BannerStack } from '../../components/BannerStack';
 import { BottomChrome } from '../../components/BottomChrome';
-import { GlassSurface } from '../../components/GlassSurface';
 import { GradientBackground } from '../../components/GradientBackground';
 import { HomeHeader } from '../../components/HomeHeader';
 import { SearchableHeader } from '../../components/SearchableHeader';
@@ -46,13 +45,9 @@ export default function TabLayout() {
             </View>
           ),
           tabBarStyle: {
-            backgroundColor: 'transparent',
+            backgroundColor: colors.background,
             borderTopColor: 'transparent',
-            elevation: 0,
           },
-          tabBarBackground: () => (
-            <GlassSurface radius={0} strength={0.8} style={StyleSheet.absoluteFill} />
-          ),
           headerTransparent: true,
           sceneStyle: { backgroundColor: 'transparent' },
           tabBarShowLabel: false,
