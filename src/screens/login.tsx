@@ -30,7 +30,7 @@ import {
   type CertificateInfo,
 } from '../../modules/expo-ssl-trust/src';
 
-const PRIMARY = '#1D9BF0';
+const PRIMARY = '#000000';
 
 export function LoginScreen() {
   const router = useRouter();
@@ -250,7 +250,7 @@ export function LoginScreen() {
           <WaveformLogo size={80} color="#FFFFFF" />
         </View>
 
-        <Text style={styles.title}>substreamer</Text>
+        <Text style={styles.title}>XXW Music</Text>
         <Text style={styles.subtitle}>
           {t('loginSubtitle')}
         </Text>
@@ -387,16 +387,16 @@ export function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  // Full-bleed blue background: fills the whole screen incl. behind the
+  // Full-bleed black background: fills the whole screen incl. behind the
   // navigation bar / bottom safe area, independent of the KeyboardAvoidingView's
   // measured height (which on Android can stop short of the nav bar → black bar).
   root: {
     flex: 1,
-    backgroundColor: PRIMARY,
+    backgroundColor: '#000000',
   },
   container: {
     flex: 1,
-    backgroundColor: PRIMARY,
+    backgroundColor: '#000000',
     justifyContent: 'center',
   },
   inner: {
@@ -456,7 +456,7 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   buttonText: {
-    color: PRIMARY,
+    color: '#000000',
     fontSize: 16,
     fontWeight: '700',
   },

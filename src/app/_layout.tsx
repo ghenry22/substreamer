@@ -841,6 +841,10 @@ export default function RootLayout() {
           options={{ ...blurHeaderOptions, title: i18n.t('myListening'), headerBackTitle: i18n.t('back') }}
         />
         <Stack.Screen
+          name="collections"
+          options={{ ...blurHeaderOptions, title: i18n.t('collections'), headerBackTitle: i18n.t('back') }}
+        />
+        <Stack.Screen
           name="tuned-in"
           options={{ ...blurHeaderOptions, title: i18n.t('tunedIn'), headerBackTitle: i18n.t('back') }}
         />

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "substreamer",
+    "name": "XXW Music",
     "slug": "substreamer",
     "version": "8.1.9",
     "scheme": "substreamer",
@@ -23,7 +23,7 @@
           "NSAllowsArbitraryLoads": true
         },
         "ITSAppUsesNonExemptEncryption": false,
-        "NSLocalNetworkUsageDescription": "Substreamer uses your local network to connect to your self-hosted music server.",
+        "NSLocalNetworkUsageDescription": "XXW Music uses your local network to connect to your self-hosted music server.",
         "NSBonjourServices": [
           "_googlecast._tcp",
           "_CC1AD845._googlecast._tcp"
@@ -31,7 +31,7 @@
         "NSLocationWhenInUseUsageDescription": "Location access is needed to detect your WiFi network name for automatic offline mode switching.",
         "INAlternativeAppNames": [
           {
-            "INAlternativeAppName": "Substreamer",
+            "INAlternativeAppName": "XXW Music",
             "INAlternativeAppNamePronunciationHint": "Sub Streamer"
           },
           {
@@ -47,7 +47,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./src/assets/adaptive-icon.png",
-        "backgroundColor": "#1D9BF0"
+        "backgroundColor": "#000000"
       },
       "permissions": [
         "ACCESS_FINE_LOCATION",
@@ -68,7 +68,7 @@
         {
           "logo": "./src/assets/splash-logo.svg",
           "logoWidth": 130,
-          "background": "#1D9BF0"
+          "background": "#000000"
         }
       ],
       "./plugins/silence-hermes-warning",

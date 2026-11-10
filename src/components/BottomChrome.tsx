@@ -33,9 +33,14 @@ import { playerStore } from '../store/playerStore';
  */
 interface BottomChromeProps {
   withSafeAreaPadding?: boolean;
+  /** Suppresses the mini player (the download banner is unaffected). */
+  hideMiniPlayer?: boolean;
 }
 
-export function BottomChrome({ withSafeAreaPadding = false }: BottomChromeProps = {}) {
+export function BottomChrome({
+  withSafeAreaPadding = false,
+  hideMiniPlayer = false,
+}: BottomChromeProps = {}) {
   const isWide = useLayoutMode() === 'wide';
   const isTabletPortrait = useIsTabletPortrait();
   const isLoggedIn = authStore((s) => s.isLoggedIn);
@@ -53,9 +58,8 @@ export function BottomChrome({ withSafeAreaPadding = false }: BottomChromeProps 
   if (!isLoggedIn) return null;
   // On wide layouts the mini player never renders, so the chrome only has a
   // reason to mount when there are downloads.
-  if (isWide && !hasDownloads) return null;
-  // On compact layouts we need EITHER a track or an active download.
-  if (!isWide && !hasCurrentTrack && !hasDownloads) return null;
+  const showMini = !isWide && hasCurrentTrack && !hideMiniPlayer;
+  if (!showMini && !hasDownloads) return null;
 
   return (
     <View
@@ -65,7 +69,7 @@ export function BottomChrome({ withSafeAreaPadding = false }: BottomChromeProps 
       ]}
     >
       {hasDownloads && <DownloadBanner />}
-      {!isWide && hasCurrentTrack && (
+      {showMini && (
         isTabletPortrait ? <PlayerTabletPortraitMini /> : <PlayerPhoneMini />
       )}
     </View>

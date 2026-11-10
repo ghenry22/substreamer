@@ -17,14 +17,20 @@ jest.mock('../../hooks/useTheme', () => ({
 }));
 
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }) }));
-jest.mock('expo-router/react-navigation', () => ({ useIsFocused: () => true }));
+jest.mock('expo-router/react-navigation', () => ({
+  HeaderHeightContext: require('react').createContext(0),
+}));
+jest.mock('../../components/GradientBackground', () => ({
+  GradientBackground: ({ children }: { children: React.ReactNode }) => children,
+}));
+jest.mock('../../components/BottomChrome', () => ({ BottomChrome: () => null }));
 
 /**
  * Two recorders, both driven by RENDER rather than final state — the regression this
  * suite exists for is a single frame.
  *
  * `emptyStateRenders` — the whole-screen "No downloaded music" state.
- * `placeholderRenders` — `SectionPlaceholder`, which is the only thing in `home.tsx`
+ * `placeholderRenders` — `SectionPlaceholder`, which is the only thing in `collections.tsx`
  *   that draws a `WaveformLogo`, so mocking the logo counts placeholder frames without
  *   reaching into a component the screen doesn't export.
  */
@@ -59,31 +65,10 @@ const stubCard =
   };
 jest.mock('../../components/AlbumCard', () => ({ AlbumCard: stubCard('album') }));
 jest.mock('../../components/PlaylistCard', () => ({ PlaylistCard: stubCard('playlist') }));
-jest.mock('../../components/GenreChipSection', () => ({ GenreChipSection: () => null }));
 jest.mock('../../components/ResumeBookmarksSection', () => ({
   ResumeBookmarksSection: () => null,
 }));
-jest.mock('../../components/AnimatedNumber', () => ({ AnimatedNumber: () => null }));
 jest.mock('../../components/DownloadedIcon', () => ({ DownloadedIcon: () => null }));
-
-// Reanimated's real entry point pulls in the worklets native module, which has no Jest
-// bridge. Only the stat-icon pop uses it here, and that is not what this suite tests.
-jest.mock('react-native-reanimated', () => {
-  const React = require('react');
-  const { View } = require('react-native');
-  return {
-    __esModule: true,
-    default: { View },
-    useSharedValue: (init: number) => {
-      const ref = React.useRef({ value: init });
-      return ref.current;
-    },
-    useAnimatedStyle: (fn: () => object) => fn(),
-    withTiming: (val: number) => val,
-    withSequence: (val: number) => val,
-    withSpring: (val: number) => val,
-  };
-});
 
 // The horizontal section lists: render every row synchronously so `renderItem` runs.
 jest.mock('@shopify/flash-list', () => {
@@ -119,7 +104,7 @@ import { filterBarStore } from '../../store/filterBarStore';
 import { layoutPreferencesStore } from '../../store/layoutPreferencesStore';
 import { musicCacheStore } from '../../store/musicCacheStore';
 import { offlineModeStore } from '../../store/offlineModeStore';
-import { HomeScreen } from '../home';
+import { CollectionsScreen } from '../collections';
 
 const db = () => getDb()!;
 
@@ -188,12 +173,12 @@ beforeEach(() => {
   });
 });
 
-describe('HomeScreen — Downloaded sections read SQL without flashing an empty state', () => {
+describe('CollectionsScreen — Downloaded sections read SQL without flashing an empty state', () => {
   it('shows neither the empty state nor a section placeholder before the read resolves', async () => {
     seedDownloadedAlbum('dl1');
     seedDownloadedPlaylist('pl1');
 
-    const r = render(<HomeScreen />);
+    const r = render(<CollectionsScreen />);
     // The reads run in an effect. Claiming "nothing downloaded" here would replace the
     // whole screen for a frame with content that is about to arrive.
     expect(emptyStateRenders).toEqual([]);
@@ -209,7 +194,7 @@ describe('HomeScreen — Downloaded sections read SQL without flashing an empty 
   it('holds the section placeholder back until the playlist read has answered', async () => {
     seedDownloadedAlbum('dl1'); // albums downloaded, no playlists
 
-    const r = render(<HomeScreen />);
+    const r = render(<CollectionsScreen />);
     expect(placeholderRenders).toEqual([]);
 
     await waitFor(() => expect(r.queryByTestId('album:dl1')).not.toBeNull());
@@ -219,7 +204,7 @@ describe('HomeScreen — Downloaded sections read SQL without flashing an empty 
   });
 
   it('reports a genuinely empty downloaded set only AFTER the reads complete', async () => {
-    render(<HomeScreen />);
+    render(<CollectionsScreen />);
     expect(emptyStateRenders).toEqual([]);
     await waitFor(() => expect(emptyStateRenders.length).toBeGreaterThan(0));
   });
@@ -230,7 +215,7 @@ describe('HomeScreen — Downloaded sections read SQL without flashing an empty 
         'downloaded_at) VALUES (?, ?, ?, ?, ?, ?)',
       ['dl1', 'album', 'Album dl1', 0, 0, 0],
     );
-    const r = render(<HomeScreen />);
+    const r = render(<CollectionsScreen />);
     await waitFor(() => expect(emptyStateRenders.length).toBeGreaterThan(0));
     expect(r.queryByTestId('album:dl1')).toBeNull();
   });
@@ -238,7 +223,7 @@ describe('HomeScreen — Downloaded sections read SQL without flashing an empty 
   it('does not read at all when the Downloaded filter is off', async () => {
     seedDownloadedAlbum('dl1');
     filterBarStore.setState({ downloadedOnly: false });
-    const r = render(<HomeScreen />);
+    const r = render(<CollectionsScreen />);
     await waitFor(() => expect(placeholderRenders.length).toBeGreaterThan(0)); // curated lists
     expect(r.queryByTestId('album:dl1')).toBeNull();
     expect(emptyStateRenders).toEqual([]);
@@ -250,14 +235,14 @@ describe('HomeScreen — Downloaded sections read SQL without flashing an empty 
  * downloaded by `composeHomeAlbumSections`, which now takes an id SET read from SQL rather
  * than walking `cachedItems`. Same async hazards as the section reads above.
  */
-describe('HomeScreen — curated lists filter on the downloaded id set', () => {
+describe('CollectionsScreen — curated lists filter on the downloaded id set', () => {
   beforeEach(() => {
     albumListsStore.setState({ recentlyAdded: [curated('ra1'), curated('ra2')] as never });
   });
 
   it('keeps only downloaded albums — membership needs no cached_albums row', async () => {
     seedDownloadedItemOnly('ra1');
-    const r = render(<HomeScreen />);
+    const r = render(<CollectionsScreen />);
     await waitFor(() => expect(r.queryByTestId('album:ra1')).not.toBeNull());
     expect(r.queryByTestId('album:ra2')).toBeNull();
     // …and it is NOT in the Downloaded Albums body, which needs renderable metadata.
@@ -269,7 +254,7 @@ describe('HomeScreen — curated lists filter on the downloaded id set', () => {
     // undownloaded albums under the Downloaded filter.
     seedDownloadedItemOnly('ra1');
     seedDownloadedItemOnly('ra2');
-    const r = render(<HomeScreen />);
+    const r = render(<CollectionsScreen />);
     expect(r.queryByTestId('album:ra1')).toBeNull();
     expect(r.queryByTestId('album:ra2')).toBeNull();
     await waitFor(() => expect(r.queryByTestId('album:ra1')).not.toBeNull());
@@ -278,7 +263,7 @@ describe('HomeScreen — curated lists filter on the downloaded id set', () => {
 
   it('re-filters when a download completes on screen', async () => {
     seedDownloadedItemOnly('ra1');
-    const r = render(<HomeScreen />);
+    const r = render(<CollectionsScreen />);
     await waitFor(() => expect(r.queryByTestId('album:ra1')).not.toBeNull());
 
     seedDownloadedItemOnly('ra2');
@@ -289,7 +274,7 @@ describe('HomeScreen — curated lists filter on the downloaded id set', () => {
 
   it('shows every curated album when the Downloaded filter is off', async () => {
     filterBarStore.setState({ downloadedOnly: false });
-    const r = render(<HomeScreen />);
+    const r = render(<CollectionsScreen />);
     await waitFor(() => expect(r.queryByTestId('album:ra1')).not.toBeNull());
     expect(r.queryByTestId('album:ra2')).not.toBeNull();
   });
@@ -302,20 +287,20 @@ describe('HomeScreen — curated lists filter on the downloaded id set', () => {
  * the Favourites filter emptying everything left a screen with no album sections and no
  * explanation.
  */
-describe('HomeScreen — whole-screen empty state under a filter', () => {
+describe('CollectionsScreen — whole-screen empty state under a filter', () => {
   beforeEach(() => {
     albumListsStore.setState({ recentlyAdded: [curated('ra1')] as never });
   });
 
   it('keeps the "no downloaded music" copy under the Downloaded filter', async () => {
-    const r = render(<HomeScreen />); // downloadedOnly, nothing seeded
+    const r = render(<CollectionsScreen />); // downloadedOnly, nothing seeded
     await waitFor(() => expect(r.queryByText('No downloaded music')).not.toBeNull());
     expect(r.queryByText('Nothing matches your filters')).toBeNull();
   });
 
   it('says the FILTER emptied it under Favourites, where nothing was said before', async () => {
     filterBarStore.setState({ downloadedOnly: false, favoritesOnly: true });
-    const r = render(<HomeScreen />); // no starred album ids → every section empties
+    const r = render(<CollectionsScreen />); // no starred album ids → every section empties
     await waitFor(() => expect(r.queryByText('Nothing matches your filters')).not.toBeNull());
     expect(r.queryByText('No downloaded music')).toBeNull();
   });
@@ -323,7 +308,7 @@ describe('HomeScreen — whole-screen empty state under a filter', () => {
   it('shows no whole-screen empty state when a filtered section still has albums', async () => {
     filterBarStore.setState({ downloadedOnly: false, favoritesOnly: true });
     favoritesStore.setState({ albumIds: new Set(['ra1']) });
-    const r = render(<HomeScreen />);
+    const r = render(<CollectionsScreen />);
     await waitFor(() => expect(r.queryByTestId('album:ra1')).not.toBeNull());
     expect(emptyStateRenders).toEqual([]);
   });
@@ -333,7 +318,7 @@ describe('HomeScreen — whole-screen empty state under a filter', () => {
     // ("New albums added to your server will appear here") — not a filter message.
     filterBarStore.setState({ downloadedOnly: false, favoritesOnly: false });
     albumListsStore.setState({ recentlyAdded: [] });
-    const r = render(<HomeScreen />);
+    const r = render(<CollectionsScreen />);
     await waitFor(() => expect(placeholderRenders.length).toBeGreaterThan(0));
     expect(emptyStateRenders).toEqual([]);
     expect(r.queryByText('Nothing matches your filters')).toBeNull();
@@ -342,10 +327,10 @@ describe('HomeScreen — whole-screen empty state under a filter', () => {
 
 /** SQL has no Zustand subscription, so without keying on `revision` both sections go
  *  stale under a completing download. */
-describe('HomeScreen — Downloaded sections track musicCacheStore.revision', () => {
+describe('CollectionsScreen — Downloaded sections track musicCacheStore.revision', () => {
   it('re-reads albums AND playlists when a download completes on screen', async () => {
     seedDownloadedAlbum('dl1');
-    const r = render(<HomeScreen />);
+    const r = render(<CollectionsScreen />);
     await waitFor(() => expect(r.queryByTestId('album:dl1')).not.toBeNull());
 
     seedDownloadedAlbum('dl2');
@@ -360,7 +345,7 @@ describe('HomeScreen — Downloaded sections track musicCacheStore.revision', ()
 
   it('drops a deleted download on the next bump', async () => {
     seedDownloadedAlbum('dl1');
-    const r = render(<HomeScreen />);
+    const r = render(<CollectionsScreen />);
     await waitFor(() => expect(r.queryByTestId('album:dl1')).not.toBeNull());
 
     db().runSync('DELETE FROM cached_items');
@@ -372,7 +357,7 @@ describe('HomeScreen — Downloaded sections track musicCacheStore.revision', ()
 
 /** The Downloaded sections come back ORDERED from SQL, on the same stored keys the
  *  library browse pages through — the Home screen no longer re-sorts them. */
-describe('HomeScreen — the Downloaded sections are SQL-ordered', () => {
+describe('CollectionsScreen — the Downloaded sections are SQL-ordered', () => {
   const seedAlbum = (itemId: string, name: string, artist?: string): Promise<void> =>
     upsertCachedItem({
       itemId,
@@ -405,7 +390,7 @@ describe('HomeScreen — the Downloaded sections are SQL-ordered', () => {
     // Ids run opposite to the artist keys, so an unordered read gives the other answer.
     await seedAlbum('a-zulu', 'Zulu', 'Zebra');
     await seedAlbum('z-quoted', 'Quoted', '"Alpaca"');
-    const r = render(<HomeScreen />);
+    const r = render(<CollectionsScreen />);
     await waitFor(() => expect(r.queryByTestId('album:a-zulu')).not.toBeNull());
     expect(idsFor(r, 'album')).toEqual(['z-quoted', 'a-zulu']);
   });
@@ -413,7 +398,7 @@ describe('HomeScreen — the Downloaded sections are SQL-ordered', () => {
   it('re-reads when the album-sort preference changes', async () => {
     await seedAlbum('a-zulu', 'Zulu', 'Alpaca');
     await seedAlbum('z-alpha', 'Alpha', 'Zebra');
-    const r = render(<HomeScreen />);
+    const r = render(<CollectionsScreen />);
     await waitFor(() => expect(idsFor(r, 'album')).toEqual(['a-zulu', 'z-alpha']));
 
     act(() => {
@@ -427,7 +412,7 @@ describe('HomeScreen — the Downloaded sections are SQL-ordered', () => {
     // Ids run opposite to the names, so an unordered read gives the other answer.
     await seedPlaylist('a-zulu', 'Zulu Mix');
     await seedPlaylist('z-alpha', 'The Alpha Mix');
-    const r = render(<HomeScreen />);
+    const r = render(<CollectionsScreen />);
     await waitFor(() => expect(r.queryByTestId('playlist:a-zulu')).not.toBeNull());
     expect(idsFor(r, 'playlist')).toEqual(['z-alpha', 'a-zulu']);
   });

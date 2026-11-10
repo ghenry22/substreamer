@@ -77,7 +77,7 @@ describe('RoutePickerSheet', () => {
     render(<RoutePickerSheet />);
     expect(screen.getByText('Local Network Permission has not been granted.')).toBeTruthy();
     expect(
-      screen.getByText('Substreamer needs this to be able to find Chromecast receivers on your network.'),
+      screen.getByText('XXW Music needs this to be able to find Chromecast receivers on your network.'),
     ).toBeTruthy();
     expect(screen.getByText('Open Settings & Allow')).toBeTruthy();
     fireEvent.press(screen.getByTestId('route-picker-open-settings'));

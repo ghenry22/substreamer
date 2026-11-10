@@ -1,7 +1,7 @@
 /**
  * Home album-list composition — the single source of truth for WHICH album
  * lists appear on the Home surface, in what order, and how they're filtered.
- * Shared by the Home screen (`src/screens/home.tsx`) and the CarPlay / Android
+ * Shared by the Home screen (`src/screens/collections.tsx`) and the CarPlay / Android
  * Auto browse tree (`headlessMediaService`) so both agree exactly, especially offline.
  *
  * Rules:

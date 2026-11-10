@@ -26,7 +26,7 @@ const lightTheme: ThemeColors = {
   textSecondary: '#535353',
   label: '#6b6b6b',
   border: 'rgba(0,0,0,0.08)',
-  primary: '#1D9BF0',
+  primary: '#8A8A8A',
   red: '#e91429',
   green: '#34C759',
   orange: '#FF9500',
@@ -35,18 +35,18 @@ const lightTheme: ThemeColors = {
 };
 
 export const darkTheme: ThemeColors = {
-  background: '#121212',
-  card: '#181818',
+  background: '#0a0a0a',
+  card: '#161616',
   textPrimary: '#ffffff',
-  textSecondary: '#b3b3b3',
-  label: '#888888',
-  border: 'rgba(255,255,255,0.06)',
-  primary: '#1D9BF0',
+  textSecondary: '#a8a8a8',
+  label: '#8a8a8a',
+  border: 'rgba(255,255,255,0.08)',
+  primary: '#8A8A8A',
   red: '#e91429',
   green: '#30D158',
   orange: '#FF9F0A',
   partialDownload: '#FF9F0A',
-  inputBg: '#282828',
+  inputBg: '#232323',
 };
 
 export const themeColors: Record<ResolvedTheme, ThemeColors> = {
