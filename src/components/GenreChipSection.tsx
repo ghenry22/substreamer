@@ -38,6 +38,7 @@ import { useTheme } from '../hooks/useTheme';
 import { CachedImage } from './CachedImage';
 import { FavoriteButton } from './FavoriteButton';
 import { hexWithAlpha, readableOn } from '../utils/colors';
+import { BeatStar } from './BeatStar';
 import { GenreCarousel, genreColor } from './GenreCarousel';
 import { LightRaysBackground } from './LightRaysBackground';
 
@@ -85,6 +86,14 @@ async function playRandomMix(): Promise<void> {
 interface GenreChipSectionProps {
   genreCounts: Record<string, number>;
   colors: ThemeColors;
+}
+
+/** Tempo for the beat star: the server's BPM, else a stable per-track estimate. */
+function trackBpm(track: { id: string; bpm?: number | null }): number {
+  if (track.bpm != null && track.bpm > 0) return track.bpm;
+  let hash = 0;
+  for (let i = 0; i < track.id.length; i++) hash = (hash * 31 + track.id.charCodeAt(i)) | 0;
+  return 96 + (Math.abs(hash) % 37);
 }
 
 export const GenreChipSection = memo(function GenreChipSection({
@@ -220,6 +229,9 @@ export const GenreChipSection = memo(function GenreChipSection({
       </Animated.View>
       {/* Above the cover-colour glow so the beams stay visible. */}
       <LightRaysBackground />
+      {currentTrack && (
+        <BeatStar color={glow[0]} bpm={trackBpm(currentTrack)} />
+      )}
       <GestureDetector gesture={swipeGesture}>
       <Animated.View style={[styles.hero, { paddingTop: headerHeight }, heroShiftStyle]}>
         {currentTrack ? (
