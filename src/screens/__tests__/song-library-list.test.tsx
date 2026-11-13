@@ -22,6 +22,8 @@ interface SongRender {
   onSeekLetter?: (letter: string) => void | Promise<void>;
   onScrollToTop?: () => boolean | Promise<boolean>;
   scrollToTopTrigger?: string;
+  /** Present only on the paged keyset list — its single-track tap override. */
+  onSongPress?: unknown;
 }
 const mockRenders: SongRender[] = [];
 /** Mounts, not renders: the filtered screen picks its adapter per branch, so it renders
@@ -162,6 +164,34 @@ describe('SongLibraryListScreen — downloaded filter', () => {
     expect(mockRenders[0].loading).toBe(true);
     await waitFor(() => expect(latest().loading).toBe(false));
     expect(latest().items).toEqual([]);
+  });
+});
+
+/** Both filters are WHOLE-SET reads, unlike the paged keyset list. Leaving
+ *  `onSongPress` unset makes SongListView queue the entire filtered list, which is
+ *  what lets the global repeat mode and the shuffle button act on every downloaded
+ *  or starred song. The paged list must keep its single-track override. */
+describe('SongLibraryListScreen — play queue scope', () => {
+  it('queues the whole DOWNLOADED list instead of a single track', async () => {
+    markDownloadedInDb('dl1');
+    markDownloadedInDb('dl2');
+    render(<SongLibraryListScreen downloadedOnly />);
+    await waitFor(() => expect(latest().items).toHaveLength(2));
+    expect(latest().onSongPress).toBeUndefined();
+  });
+
+  it('queues the whole FAVOURITES list instead of a single track', async () => {
+    await upsertSongs(db(), [song('star-a'), song('plain-b')]);
+    await markStarredSongs(db(), [{ id: 'star-a', starredAt: 400 }]);
+    render(<SongLibraryListScreen favoritesOnly />);
+    await waitFor(() => expect(latest().items).toHaveLength(1));
+    expect(latest().onSongPress).toBeUndefined();
+  });
+
+  it('keeps the single-track override on the paged keyset browse list', async () => {
+    render(<SongLibraryListScreen />);
+    await waitFor(() => expect(mockRenders.length).toBeGreaterThan(0));
+    expect(typeof latest().onSongPress).toBe('function');
   });
 });
 
