@@ -38,7 +38,11 @@ const ALL_LETTERS = new Set<string>([
   ...Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i)),
 ]);
 
-/** Play just the tapped song (a bounded keyset window can't be the whole queue). */
+/** Play just the tapped song. Only the paged keyset browse list uses this: a bounded
+ *  window can't stand in for the whole library. The Downloaded/Favourites filters are
+ *  whole-set reads, so they deliberately leave `onSongPress` unset and let
+ *  `SongListView` queue the entire filtered list (making repeat/shuffle act on all of
+ *  the downloaded or starred songs). */
 const handleSongPress = (song: Child): void => {
   void playTrack(song, [song]);
 };
@@ -298,7 +302,7 @@ function FilteredSongList({
     layout,
     onRefresh: handleRefresh,
     refreshing,
-    onSongPress: handleSongPress,
+    // No `onSongPress`: SongListView's default queues the whole filtered list.
     showAlphabetScroller: true,
     scrollToTopTrigger: `${downloadedOnly}:${favoritesOnly}`,
     contentInsetTop,
