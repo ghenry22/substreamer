@@ -61,19 +61,15 @@ platform :ios do
       UI.message("Found editable version #{edit_version.version_string} — pushing metadata")
       deliver_params[:skip_app_version_update] = true
     else
-      # No editable version — create the next patch version
-      live_version = app.get_live_app_store_version(platform: Spaceship::ConnectAPI::Platform::IOS)
-      if live_version
-        current = live_version.version_string
-      else
-        app_json = JSON.parse(File.read(File.join(project_root, "app.json")))
-        current = app_json.dig("expo", "version")
-      end
-      parts = current.split(".").map(&:to_i)
-      parts[2] = (parts[2] || 0) + 1
-      next_version = parts.join(".")
-      UI.message("No editable version found — creating #{next_version} for metadata push")
-      deliver_params[:app_version] = next_version
+      # No editable version — target the version this repo is on, exactly.
+      # create-release.js bumps app.json and commits it together with the
+      # metadata files this workflow watches, so app.json already holds the
+      # release version by the time this runs. Incrementing it here produced
+      # versions no build was ever uploaded against: 8.0.92 on 2026-10-03,
+      # while the repo was on 8.1.4.
+      target = JSON.parse(File.read(File.join(project_root, "app.json"))).dig("expo", "version")
+      UI.message("No editable version found — targeting #{target} from the repo")
+      deliver_params[:app_version] = target
     end
 
     deliver(deliver_params)
@@ -119,7 +115,7 @@ platform :android do
       skip_upload_apk: true,
       skip_upload_images: skip_images,
       skip_upload_screenshots: skip_images,
-      skip_upload_changelogs: true,
+      skip_upload_changelogs: false,
       metadata_path: "./fastlane/metadata/android",
       track: "beta"
     )
