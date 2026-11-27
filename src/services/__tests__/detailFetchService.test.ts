@@ -7,10 +7,13 @@
  */
 import {
   fetchAlbumDetail,
+  fetchArtistBase,
   fetchArtistBio,
   fetchArtistTopSongs,
   fetchPlaylistDetail,
 } from '../detailFetchService';
+import { getArtist } from '../subsonicService';
+import { getArtistBase } from '../../db/repository/details';
 
 const mockGetAlbum = jest.fn();
 const mockGetPlaylist = jest.fn();
@@ -131,11 +134,14 @@ describe('fetchAlbumDetail — local first', () => {
     expect(result?.name).toBe('Fetched');
   });
 
-  it('fetches when nothing is cached', async () => {
+  it('fetches an external album by ID when nothing is cached', async () => {
+    const id = 'external-album-123';
+    const song = { id: 'external-song-789' };
     mockLocalAlbum.mockResolvedValue(null);
-    mockGetAlbum.mockResolvedValue({ id: 'al1', name: 'Fetched', song: [{ id: 's9' }] });
+    mockGetAlbum.mockResolvedValue({ id, name: 'Fetched', song: [song] });
 
-    expect((await fetchAlbumDetail('al1', { prefetchCovers: false }))?.name).toBe('Fetched');
+    expect(await fetchAlbumDetail(id, { prefetchCovers: false })).toMatchObject({ id, song: [song] });
+    expect(mockGetAlbum).toHaveBeenCalledWith(id);
   });
 
   it('hands the prune the response\'s own songCount so a truncated list cannot delete', async () => {
@@ -180,6 +186,18 @@ describe('fetchAlbumDetail — local first', () => {
 
     expect(mockGetAlbum).not.toHaveBeenCalled();
     expect(result?.song).toHaveLength(1);
+  });
+});
+
+describe('fetchArtistBase — local first', () => {
+  it('fetches an external artist by ID when nothing is cached', async () => {
+    const id = 'external-artist-456';
+    const album = { id: 'external-album-123', name: 'External album', duration: 200, songCount: 1 };
+    jest.mocked(getArtistBase).mockResolvedValueOnce(null);
+    jest.mocked(getArtist).mockResolvedValueOnce({ id, name: 'External artist', albumCount: 1, album: [album] });
+
+    expect(await fetchArtistBase(id)).toMatchObject({ artist: { id }, albums: [album] });
+    expect(getArtist).toHaveBeenCalledWith(id);
   });
 });
 

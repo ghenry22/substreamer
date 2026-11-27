@@ -14,6 +14,7 @@ jest.mock('../../db/repository/search');
 import { ensureCoverArtAuth, search3 } from '../subsonicService';
 import { musicCacheStore } from '../../store/musicCacheStore';
 import { offlineModeStore } from '../../store/offlineModeStore';
+import { searchSettingsStore } from '../../store/searchSettingsStore';
 import { syncStatusStore } from '../../store/syncStatusStore';
 import { connectivityStore } from '../../store/connectivityStore';
 import { getDb } from '../../store/persistence/db';
@@ -130,6 +131,8 @@ beforeAll(() => ensureNormalizedSchema(db()));
 beforeEach(() => {
   jest.clearAllMocks();
   resetStores();
+  searchSettingsStore.setState(searchSettingsStore.getInitialState());
+  mockSearch3.mockResolvedValue({ albums: [], artists: [], songs: [] });
   for (const t of ['albums', 'playlists', 'songs', 'artists']) db().runSync(`DELETE FROM ${t}`);
   // Auto-mocked candidate fns default to undefined; give them empty resolutions so
   // the ranking maps run. Individual tests override.
@@ -608,7 +611,39 @@ describe('searchLibrary — data-state routing', () => {
     expect(mockSearch3).not.toHaveBeenCalled();
   });
 
+  it('surfaces fully synced local hits before merging external server results', async () => {
+    searchSettingsStore.getState().setAlwaysSearchServer(true);
+    const album = { id: 'external-album-123', name: 'External album', duration: 200, songCount: 1 };
+    const artist = { id: 'external-artist-456', name: 'External artist', albumCount: 1 };
+    const song = { id: 'external-song-789', title: 'External song', isDir: false };
+    mockSearchSongs.mockResolvedValue([localSong('loc')]);
+    mockSearch3.mockResolvedValue({
+      albums: [album],
+      artists: [artist],
+      songs: [{ id: 'loc', title: 'Server copy', isDir: false }, song, song],
+    });
+    const onLocalResults = jest.fn();
+
+    const result = await searchLibrary('test song', { onLocalResults });
+
+    expect(mockSearch3).toHaveBeenCalledWith('test song');
+    expect(onLocalResults).toHaveBeenCalledWith({
+      albums: [],
+      artists: [],
+      songs: [expect.objectContaining({ id: 'loc', title: 'Test Song' })],
+    });
+    expect(onLocalResults.mock.invocationCallOrder[0]).toBeLessThan(
+      mockSearch3.mock.invocationCallOrder[0],
+    );
+    expect(result).toEqual({
+      albums: [album],
+      artists: [artist],
+      songs: [expect.objectContaining({ id: 'loc', title: 'Test Song' }), song],
+    });
+  });
+
   it('offlineMode ON → downloaded-only scan, never the full-library path or server', async () => {
+    searchSettingsStore.getState().setAlwaysSearchServer(true);
     offlineModeStore.setState({ offlineMode: true });
     seedCache({
       a1: { name: 'Album', tracks: [{ id: 't1', title: 'Freak on a Leash', artist: 'Korn', duration: 200 }] },
@@ -619,11 +654,13 @@ describe('searchLibrary — data-state routing', () => {
     expect(mockSearchSongs).not.toHaveBeenCalled();
   });
 
-  it('online + fully synced + confident local hit → local authoritative, no server', async () => {
+  it('uses local results after sync by default', async () => {
     mockSearchSongs.mockResolvedValue([localSong('s1')]);
-    const res = await searchLibrary('test song');
+    const onLocalResults = jest.fn();
+    const res = await searchLibrary('test song', { onLocalResults });
     expect(res.songs.map((s) => s.id)).toEqual(['s1']);
     expect(mockSearch3).not.toHaveBeenCalled();
+    expect(onLocalResults).not.toHaveBeenCalled();
   });
 
   it('returns matching ARTISTS from the synced artist library (search3 parity)', async () => {
@@ -660,10 +697,8 @@ describe('searchLibrary — data-state routing', () => {
     expect(res.artists.map((a) => a.id)).toEqual(['ar1', 'ar2']);
   });
 
-  it('a failing server call leaves the local results intact', async () => {
-    // The server half is wrapped so a 500 / dropped connection mid-search degrades to
-    // "local only" rather than failing the whole search.
-    syncStatusStore.setState({ librarySyncComplete: false, songSyncComplete: false });
+  it('a failing server call after full sync leaves local results intact', async () => {
+    searchSettingsStore.getState().setAlwaysSearchServer(true);
     mockSearchSongs.mockResolvedValue([localSong('loc')]);
     mockSearch3.mockRejectedValue(new Error('Network error'));
     const res = await searchLibrary('test song');
@@ -671,13 +706,13 @@ describe('searchLibrary — data-state routing', () => {
     expect(res.songs.map((s) => s.id)).toEqual(['loc']);
   });
 
-  it('online + fully synced + weak/empty local hit → local only, NEVER the server (no blocking)', async () => {
-    mockSearchSongs.mockResolvedValue([]); // nothing local
+  it('returns external-only hits after full sync when SQLite has no match', async () => {
+    searchSettingsStore.getState().setAlwaysSearchServer(true);
+    const song = { id: 'external-song-789', title: 'External song', isDir: false };
+    mockSearch3.mockResolvedValue({ albums: [], artists: [], songs: [song] });
     const res = await searchLibrary('test song');
-    // Fully synced ⇒ local is complete; an interactive search must not block on
-    // the network for a weak hit.
-    expect(mockSearch3).not.toHaveBeenCalled();
-    expect(res).toEqual({ albums: [], artists: [], songs: [] });
+    expect(mockSearch3).toHaveBeenCalledWith('test song');
+    expect(res.songs).toEqual([song]);
   });
 
   it('online + partially synced + reachable → local-first MERGED with server', async () => {
@@ -701,9 +736,9 @@ describe('searchLibrary — data-state routing', () => {
     expect(res.songs.map((s) => s.id)).toEqual(['loc', 'srv']);
   });
 
-  it('online + partially synced + unreachable → local only, no server', async () => {
-    syncStatusStore.setState({ librarySyncComplete: false, songSyncComplete: false });
-    connectivityStore.setState({ hasConnection: false, isServerReachable: false });
+  it('uses local results when the server is unreachable even with server search enabled', async () => {
+    searchSettingsStore.getState().setAlwaysSearchServer(true);
+    connectivityStore.setState({ hasConnection: true, isServerReachable: false });
     mockSearchSongs.mockResolvedValue([localSong('loc')]);
     const res = await searchLibrary('test song');
     expect(mockSearch3).not.toHaveBeenCalled();

@@ -8,6 +8,7 @@ import {
 } from './subsonicService';
 import { musicCacheStore, getSongEnvelope } from '../store/musicCacheStore';
 import { offlineModeStore } from '../store/offlineModeStore';
+import { searchSettingsStore } from '../store/searchSettingsStore';
 import { syncStatusStore } from '../store/syncStatusStore';
 import { connectivityStore } from '../store/connectivityStore';
 import { getDb } from '../store/persistence/db';
@@ -146,9 +147,8 @@ function relevance(query: string, name: string, artist?: string | null): number 
  * Local fuzzy search over the ENTIRE synced library (the normalized `songs` +
  * `albums` tables) via candidate SQL + JS re-rank. Distinct from
  * `performOfflineSearch`, which scans only the downloaded set held in memory.
- * Returns the ranked results plus the top relevance score — the routing gate for
- * whether the server is still worth consulting. `shouldAbort` bails a superseded
- * query (the user typed further).
+ * Returns the ranked results plus the top relevance score. `shouldAbort` bails a
+ * superseded query (the user typed further).
  */
 export async function searchFullLibraryScored(
   query: string,
@@ -230,7 +230,13 @@ async function guardedServerSearch(
 function mergeResults(local: SearchResults, server: SearchResults): SearchResults {
   const merge = <T extends { id: string }>(a: T[], b: T[]): T[] => {
     const seen = new Set(a.map((x) => x.id));
-    return [...a, ...b.filter((x) => !seen.has(x.id))];
+    const merged = [...a];
+    for (const item of b) {
+      if (seen.has(item.id)) continue;
+      seen.add(item.id);
+      merged.push(item);
+    }
+    return merged;
   };
   return {
     albums: merge(local.albums, server.albums),
@@ -245,25 +251,18 @@ export interface SearchLibraryOptions {
   /**
    * Called with the LOCAL results the instant they're ready, BEFORE any server
    * augmentation. Lets an interactive caller (the search box) render locally
-   * without waiting on the network. Only fires on the partial-sync path — the
-   * fully-synced / offline / unreachable paths return local directly with
-   * nothing further to wait for.
+   * without waiting on the network. Only fires when a server search follows
+   * a local search.
    */
   onLocalResults?: (results: SearchResults) => void;
 }
 
 /**
- * Data-state-aware search router shared by the in-app box AND voice. Keys off
- * the hard `offlineMode` toggle, the `isFullySynced` flags, and reachability:
+ * Search router shared by the in-app box and voice.
  *   - offlineMode ON → downloaded-only local scan, never the server.
  *   - online, no local corpus → straight to the server (empty if unreachable).
- *   - online, fully synced (or unreachable) → local is authoritative and
- *     COMPLETE; return it immediately — NEVER block an interactive search on the
- *     network (a weak/typo/partial hit is still just local; the server can't
- *     hold anything a fully-synced library doesn't).
- *   - online, partially synced + reachable → surface local FIRST (via
- *     `onLocalResults`), then augment with a timeout-guarded server search for
- *     the entries not yet synced, MERGED into the returned value.
+ *   - online with a local corpus → surface local results first. When reachable,
+ *     merge in server results if sync is incomplete or server search is enabled.
  */
 export async function searchLibrary(
   query: string,
@@ -289,10 +288,9 @@ export async function searchLibrary(
   const { results: local } = await searchFullLibraryScored(query, shouldAbort);
   if (shouldAbort?.()) return EMPTY_RESULTS;
 
-  // Local is the complete answer — return instantly, no network wait.
-  if (fullySynced || !reachable) return local;
+  const { alwaysSearchServer } = searchSettingsStore.getState();
+  if (!reachable || (fullySynced && !alwaysSearchServer)) return local;
 
-  // Partial sync + reachable → show local now, then augment with the server.
   onLocalResults?.(local);
   const server = await guardedServerSearch(query, shouldAbort);
   if (!server || shouldAbort?.()) return local;
