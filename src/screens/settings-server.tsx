@@ -9,6 +9,7 @@ import { AccountCard } from '../components/settings/AccountCard';
 import { LibraryScanCard } from '../components/settings/LibraryScanCard';
 import { ServerAddressCard } from '../components/settings/ServerAddressCard';
 import { ServerInformationCard } from '../components/settings/ServerInformationCard';
+import { ServerSearchCard } from '../components/settings/ServerSearchCard';
 import { settingsStyles } from '../styles/settingsStyles';
 
 export function SettingsServerScreen() {
@@ -30,6 +31,7 @@ export function SettingsServerScreen() {
       >
         <ServerInformationCard />
         <ServerAddressCard />
+        <ServerSearchCard />
         <LibraryScanCard />
         <AccountCard />
       </ScrollView>

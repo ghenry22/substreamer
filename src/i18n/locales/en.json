@@ -143,6 +143,8 @@
   "passwordChangedMessage": "Your password has been updated successfully.",
   "failedToChangePassword": "Failed to change password. The server may not support this feature.",
   "serverInformation": "Server information",
+  "includeServerSearchResults": "Include server search results",
+  "includeServerSearchResultsHint": "Search your server after library sync finishes to find results beyond your synced library.",
   "serverType": "Server type",
   "serverVersion": "Server version",
   "apiVersion": "API version",

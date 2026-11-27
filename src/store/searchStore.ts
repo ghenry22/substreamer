@@ -12,7 +12,7 @@ const EMPTY_RESULTS: SearchResults = {
 export interface SearchState {
   /** Current search query text */
   query: string;
-  /** Full search results from the server */
+  /** Current local or merged search results */
   results: SearchResults;
   /** Whether a search request is in progress */
   loading: boolean;
@@ -64,9 +64,7 @@ export const searchStore = create<SearchState>()((set, get) => ({
 
     set({ loading: true, error: null });
     try {
-      // Routing lives in `searchLibrary`. `onLocalResults` renders local hits
-      // instantly so a partial-sync search never blanks on the network;
-      // `shouldAbort` bails a superseded query.
+      // Render local hits while the server search runs and bail on superseded queries.
       const results = await searchLibrary(requestQuery.trim(), {
         shouldAbort: () => get().query !== requestQuery,
         onLocalResults: (local) => {

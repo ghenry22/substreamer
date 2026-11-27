@@ -136,6 +136,8 @@
   "passwordChangedMessage": "La tua password è stata aggiornata correttamente.",
   "failedToChangePassword": "Impossibile modificare la password. Il server potrebbe non supportare questa funzione.",
   "serverInformation": "Informazioni server",
+  "includeServerSearchResults": "Includi i risultati di ricerca del server",
+  "includeServerSearchResultsHint": "Cerca sul server anche dopo la fine della sincronizzazione per trovare risultati al di fuori della libreria sincronizzata.",
   "serverType": "Tipo di server",
   "serverVersion": "Versione server",
   "apiVersion": "Versione API",

@@ -163,6 +163,15 @@ describe('getStreamUrl', () => {
     expect(url).not.toContain('estimateContentLength=');
   });
 
+  it('passes an external song ID through to the stream endpoint', async () => {
+    const id = 'external-song-789';
+    await ensureCoverArtAuth();
+
+    const url = new URL(getStreamUrl(id)!);
+    expect(url.pathname).toBe('/rest/stream.view');
+    expect(url.searchParams.get('id')).toBe(id);
+  });
+
   it('returns null when offline mode is on', async () => {
     await ensureCoverArtAuth();
     const { offlineModeStore } = require('../../store/offlineModeStore');

@@ -15,6 +15,7 @@ import { pendingScrobbleStore } from '../pendingScrobbleStore';
 import { playbackSettingsStore } from '../playbackSettingsStore';
 import { scanStatusStore } from '../scanStatusStore';
 import { scrobbleExclusionStore } from '../scrobbleExclusionStore';
+import { searchSettingsStore } from '../searchSettingsStore';
 import { serverInfoStore } from '../serverInfoStore';
 import { sharesStore } from '../sharesStore';
 import { syncStatusStore } from '../syncStatusStore';
@@ -131,6 +132,7 @@ const STARTUP_KV_STORES = [
   // Settings the headless (car/voice) service reads offline before any UI mounts —
   // awaited here so a headless start + the app boot both have them ready.
   playbackSettingsStore,
+  searchSettingsStore,
   // Read by `initPlayer`, which runs as soon as this resolves.
   equalizerSettingsStore,
 ];

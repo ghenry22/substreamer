@@ -47,6 +47,7 @@ import { ratingStore } from './ratingStore';
 import { recentSearchStore } from './recentSearchStore';
 import { scanStatusStore } from './scanStatusStore';
 import { scrobbleExclusionStore } from './scrobbleExclusionStore';
+import { searchSettingsStore } from './searchSettingsStore';
 import { serverInfoStore } from './serverInfoStore';
 import { shareSettingsStore } from './shareSettingsStore';
 import { sharesStore } from './sharesStore';
@@ -101,6 +102,7 @@ const allStores = [
   recentSearchStore,
   scanStatusStore,
   scrobbleExclusionStore,
+  searchSettingsStore,
   serverInfoStore,
   shareSettingsStore,
   sharesStore,
